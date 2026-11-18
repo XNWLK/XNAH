@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.1
+
+- Fixed: on WoW Forever the game reports the server shard you landed on as the realm name, and it changes between
+  logins - prices were kept apart per shard. XNAH now uses the realm number, and at your next login it joins the data
+  of every shard into one realm (newest price of each item; characters, sales and scans along with them).
+- Sync accounts: keeps the last 10 backups; a watcher (tools/sync-watch.js) can sync by itself after the game closes,
+  for those who want that.
+
 ## v0.3.0
 
 - New Strategies page: ready-made ways to make gold, each with its own numbers to adjust, the items it finds right now
