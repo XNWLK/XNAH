@@ -32,6 +32,7 @@ T.scene("realm: data under shard names joins the realm key", function()
 	T.check("shard keys of this faction are gone", X.db.realms["CAMWOW EU5 Realm 4 PvP-Horde"], nil)
 	T.ok("the other faction stays apart", X.db.realms["CAMWOW EU5 Realm 4 PvP-Alliance"] ~= nil)
 	T.check("the character moved along", X.db.chars["Xn Ascalon"].realm, "Realm 93-Horde")
+	W.advance(9)
 	T.ok("Xn is told", #W.said("joined under Realm 93-Horde") > 0)
 	-- once moved, nothing more happens
 	X = W.reload()

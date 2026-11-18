@@ -125,7 +125,11 @@ function X.MigrateRealms(key)
 			c.realm = key
 		end
 	end
-	if moved > 0 then X.Print("price data of " .. moved .. " server shard" .. (moved > 1 and "s" or "") .. " joined under " .. key) end
+	-- told a little after login, so the line is not lost among the login messages
+	if moved > 0 then
+		local text = "price data of " .. moved .. " server shard" .. (moved > 1 and "s" or "") .. " joined under " .. key
+		if C_Timer then X.After(8, function() X.Print(text) end) else X.Print(text) end
+	end
 	return moved
 end
 function X.Realm(key)
