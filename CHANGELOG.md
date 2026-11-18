@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0
+
+- New Strategies page: ready-made ways to make gold, each with its own numbers to adjust, the items it finds right now
+  (what to do, target price, profit, risk and why), and buttons to search them, put them on a shopping list or snipe
+  them. Items a strategy finds can be marked on their tooltips.
+- A guide to every page: opens by itself the first time, and any time with the Guide button or /xnah guide.
+- Fixed: rare and epic items could show with a white name (the full scan gave the wrong quality for items the game had
+  not loaded yet). XNAH now asks the game for each item's quality.
+- Scroll bars on every list (drag them, click above or below, or use the mouse wheel).
+- All your WoW accounts in one place: "Sync accounts" (in the XNAH folder, run on your PC with the game closed) joins
+  the characters, sales and newest prices of every account on the PC, so the Wealth page shows all your characters.
+
 ## v0.2.0
 
 New pages: Sell, Buy, Ledger, Wealth. All ten tabs now fit the window.

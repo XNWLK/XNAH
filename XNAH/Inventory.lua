@@ -1,5 +1,7 @@
 -- Inventory and net worth of your characters (this realm and faction): what each one has in its bags, bank, mailbox and
 -- on the auction house, and its gold - saved when you log in, open the bank or the mailbox, or look at your auctions.
+--   Characters of your OTHER WoW accounts come from tools/sync-accounts.js (run on the PC with the game closed): their
+--   records carry acct = that account's name and are only read here; XNAHDB.sync = {at, label, accounts} tells when.
 --   XNAHDB.chars[character] = {realm = "Realm-Faction", money, bags = {[item key] = count}, bank = {...}, mail = {...},
 --     mailMoney, auctions = {...}, bound = {[item key] = true} (soulbound), at, bagsAt, bankAt, mailAt, aucAt}
 --   XNAHDB.warbank = {items = {[item key] = count}, bound = {...}, at}  the account bank (shared by all characters)
@@ -37,6 +39,7 @@ local function me()
 		d.chars[k] = c
 	end
 	c.realm = realmKey()
+	c.acct = nil -- written by this account (characters of your other accounts come with acct = their name, see below)
 	c.bags, c.bank, c.mail, c.auctions, c.bound = c.bags or {}, c.bank or {}, c.mail or {}, c.auctions or {}, c.bound or {}
 	return c, k
 end
@@ -239,7 +242,7 @@ function X.Chars()
 		if c.realm == rk then
 			local total, p = X.CharWorth(c)
 			out[#out + 1] = {name = k, key = k, money = c.money or 0, worth = total, at = c.at, gold = p.gold, bags = p.bags,
-				bank = p.bank, mail = p.mail, auctions = p.auctions, me = k == mine}
+				bank = p.bank, mail = p.mail, auctions = p.auctions, me = k == mine, acct = c.acct}
 		end
 	end
 	table.sort(out, function(a, b)

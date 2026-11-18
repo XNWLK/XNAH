@@ -237,7 +237,7 @@ local function build(panel)
 		if not rows then
 			tbl.empty:SetText("Reading prices...")
 		elseif total == 0 then
-			tbl.empty:SetText("No prices yet. Open the auction house and start a full scan (Scan & settings tab).")
+			tbl.empty:SetText("No prices yet. Open the auction house and start a full scan (Scan tab).")
 		else
 			tbl.empty:SetText("Nothing matches the search and filters.")
 		end

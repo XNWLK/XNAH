@@ -41,7 +41,7 @@ function X.CheckUnits(key, sureMin)
 	c.keys[key] = nil
 	if mode ~= before then
 		X.Print("|cffffd100price check:|r the full scan gives the price of ONE item, not of the stack (checked with " ..
-			X.ItemName(key) .. "). Fixed from now on - run a new full scan; /xnah forget deletes the wrong prices of the last one.")
+			X.ItemName(key) .. "). Fixed from now on - run a new full scan (it replaces the prices of stacks; /xnah forget starts this realm from scratch).")
 	elseif not c.told then
 		c.told = true
 		X.Print("price check passed: full scan prices of stacks are right (checked with " .. X.ItemName(key) .. ")")
@@ -127,6 +127,8 @@ local function readRow(i, rows, seen, force)
 	local link = X.Try(C_AuctionHouse.GetReplicateItemLink, i)
 	if type(link) ~= "string" then link = nil end
 	if not name and link then name = link:match("|h%[(.-)%]|h") end
+	-- the link's colour is the item's real quality (the row's own quality can be wrong while the item is not loaded)
+	quality = X.QualityFromLink(link) or (hasAll ~= false and quality) or nil
 	if name == "" then name = nil end
 	if (hasAll == false or not name) and not force and not (link and name) then return false end
 	local key = X.KeyFromLink(link) or tostring(itemID)
@@ -450,14 +452,14 @@ local function nameStep()
 		local id = table.remove(nameQueue)
 		n = n + 1
 		local name = X.Try(C_Item.GetItemInfo, id)
-		if name then X.NameLoaded(id) elseif C_Item.RequestLoadItemDataByID then X.Try(C_Item.RequestLoadItemDataByID, id) end
+		if name then X.NameLoaded(id, true) elseif C_Item.RequestLoadItemDataByID then X.Try(C_Item.RequestLoadItemDataByID, id) end
 	end
 	if #nameQueue > 0 then X.After(1, nameStep) else nameBusy = false end
 end
 function X.FillNames()
 	local ids, set = {}, {}
 	for _, it in pairs(X.Items()) do
-		if (not it.n or it.n == "") and it.id and not set[it.id] then set[it.id] = true ids[#ids + 1] = it.id end
+		if (not it.n or it.n == "" or not X.qualityOK[it.id]) and it.id and not set[it.id] then set[it.id] = true ids[#ids + 1] = it.id end
 	end
 	nameQueue = ids
 	if #ids > 0 and not nameBusy then nameBusy = true X.After(0.5, nameStep) end
@@ -465,13 +467,22 @@ function X.FillNames()
 end
 -- the game has an item now: its name and quality go to every key of that item (random bonus items keep the base name
 -- until a link with the full name is seen)
-function X.NameLoaded(id)
+function X.NameLoaded(id, quiet)
 	local name, link, q = X.Try(C_Item.GetItemInfo, id)
 	if not name or name == "" then return end
 	local items = X.Items()
 	local base = items[tostring(id)]
-	if base and (not base.n or base.n == "") then base.n, base.q = name, q end
-	X.Debounce("names", 2, function() X.Fire("XNAH_PRICES") end)
+	local changed = false
+	if base and (not base.n or base.n == "") then base.n = name changed = true end
+	-- the game's quality wins (also for the "id:suffix" keys of the same item)
+	if q and not X.qualityOK[id] then
+		X.qualityOK[id] = true
+		if base and base.q ~= q then base.q = q changed = true end
+		for key, it in pairs(items) do
+			if it.id == id and it ~= base and it.q ~= q then it.q = q changed = true end
+		end
+	end
+	if changed or not quiet then X.Debounce("names", 2, function() X.Fire("XNAH_PRICES") end) end
 end
 X.On("ITEM_DATA_LOAD_RESULT", function(id, ok) if ok and id then X.NameLoaded(id) end end)
 X.On("GET_ITEM_INFO_RECEIVED", function(id, ok) if ok and id then X.NameLoaded(id) end end)

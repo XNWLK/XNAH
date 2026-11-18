@@ -106,10 +106,29 @@ function X.Item(key, create)
 	end
 	return it
 end
+-- quality (rarity) checked with the game this session, per item ID: the full scan gives a wrong quality for items the
+-- game had not loaded yet, so the game is asked again once per session
+X.qualityOK = {}
+function X.CheckQuality(it)
+	if not it or not it.id or X.qualityOK[it.id] or not C_Item.GetItemQualityByID then return end
+	local q = X.Try(C_Item.GetItemQualityByID, it.id)
+	if q then it.q = q X.qualityOK[it.id] = true end
+end
+-- quality from the colour of an item link (nil if none)
+function X.QualityFromLink(link)
+	local hex = type(link) == "string" and link:match("|c%x%x(%x%x%x%x%x%x)")
+	if not hex then return nil end
+	hex = hex:lower()
+	for q = 0, 7 do if X.QUALITY_HEX[q] == hex then return q end end
+	return nil
+end
 -- the item's name and quality, from the record or the game
 function X.ItemName(key)
 	local it = X.Items()[key]
-	if it and it.n and it.n ~= "" then return it.n, it.q end
+	if it and it.n and it.n ~= "" then
+		X.CheckQuality(it)
+		return it.n, it.q
+	end
 	local id = X.KeyID(key)
 	local name, _, q = X.Try(C_Item.GetItemInfo, id)
 	if name and name ~= "" then

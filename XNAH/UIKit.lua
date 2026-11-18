@@ -98,6 +98,8 @@ end
 -- [[ scrolling list ]] K.List(parent, w, h, rowHeight, draw(row, item, index), columns); list:SetItems(items)
 -- columns (optional): {{"Header", width, "LEFT" / "RIGHT"}, ...} - a header line above the list, and in each row
 -- aligned cells filled with row:SetCols(text1, text2, ...)
+-- A scroll bar on the right (drag it, click above / below it, or use the mouse wheel); the rows leave room for it.
+local BAR = 10
 function K.List(parent, w, h, rowH, draw, columns)
 	local list = K.Panel(parent, w, h, {0, 0, 0, 0.35})
 	list.rowH = rowH
@@ -105,6 +107,19 @@ function K.List(parent, w, h, rowH, draw, columns)
 	list.offset = 0
 	list.rows = {}
 	local count = math.floor((h - 4) / rowH)
+	local rowW = w - 6 - BAR
+	if columns then
+		-- columns wider than the room left by the scroll bar: the first (usually the item name) gives way
+		local total = 0
+		for _, col in ipairs(columns) do total = total + col[2] end
+		local over = total + 4 - rowW
+		if over > 0 then
+			local copy = {}
+			for c, col in ipairs(columns) do copy[c] = {col[1], col[2], col[3]} end
+			copy[1][2] = math.max(40, copy[1][2] - over)
+			columns = copy
+		end
+	end
 	if columns then
 		list.headers = {}
 		local x = 6
@@ -117,7 +132,7 @@ function K.List(parent, w, h, rowH, draw, columns)
 		end
 	end
 	for i = 1, count do
-		local row = K.Flat(list, w - 4, rowH - 1)
+		local row = K.Flat(list, rowW, rowH - 1)
 		row:SetPoint("TOPLEFT", 2, -2 - (i - 1) * rowH)
 		row:Hide()
 		if columns then
@@ -141,9 +156,73 @@ function K.List(parent, w, h, rowH, draw, columns)
 	list.empty = K.Label(list, "", "GameFontDisableSmall", "CENTER")
 	list.empty:SetPoint("TOP", 0, -12)
 	list.empty:SetWidth(w - 20)
+	-- [[ scroll bar ]] a track and a thumb; hidden when everything fits
+	local track = CreateFrame("Button", nil, list)
+	track:SetPoint("TOPRIGHT", -2, -2)
+	track:SetPoint("BOTTOMRIGHT", -2, 2)
+	track:SetWidth(BAR)
+	local trackTex = track:CreateTexture(nil, "BACKGROUND")
+	trackTex:SetAllPoints()
+	trackTex:SetColorTexture(1, 1, 1, 0.05)
+	local thumb = CreateFrame("Button", nil, track)
+	thumb:SetWidth(BAR)
+	local thumbTex = thumb:CreateTexture(nil, "ARTWORK")
+	thumbTex:SetAllPoints()
+	thumbTex:SetColorTexture(K.colors.accent[1], K.colors.accent[2], K.colors.accent[3], 0.55)
+	local thumbHi = thumb:CreateTexture(nil, "HIGHLIGHT")
+	thumbHi:SetAllPoints()
+	thumbHi:SetColorTexture(1, 1, 1, 0.15)
+	list.track, list.thumb = track, thumb
+	local function maxOffset() return math.max(0, #list.items - #list.rows) end
+	local function placeThumb()
+		local max = maxOffset()
+		track:SetShown(max > 0)
+		if max == 0 then return end
+		local th = track:GetHeight() or (h - 4)
+		if th <= 0 then th = h - 4 end
+		local size = math.max(16, th * #list.rows / #list.items)
+		thumb:SetHeight(size)
+		thumb:ClearAllPoints()
+		thumb:SetPoint("TOP", track, "TOP", 0, -(th - size) * (list.offset / max))
+	end
+	-- offset from the mouse's height on the track (grab = where on the thumb it was taken)
+	local function offsetAtCursor(grab)
+		local top = track:GetTop()
+		local th = track:GetHeight()
+		if not top or not th or th <= 0 then return list.offset end
+		local _, y = GetCursorPosition()
+		y = y / (track:GetEffectiveScale() or 1)
+		local size = thumb:GetHeight() or 16
+		local frac = (top - y - (grab or size / 2)) / math.max(1, th - size)
+		frac = math.max(0, math.min(1, frac))
+		return math.floor(frac * maxOffset() + 0.5)
+	end
+	thumb:SetScript("OnMouseDown", function(self)
+		local _, y = GetCursorPosition()
+		y = y / (self:GetEffectiveScale() or 1)
+		local grab = (self:GetTop() or y) - y
+		self:SetScript("OnUpdate", function()
+			local o = offsetAtCursor(grab)
+			if o ~= list.offset then list.offset = o list:Refresh() end
+		end)
+	end)
+	thumb:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+	thumb:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+	-- a click above or below the thumb moves one page
+	track:SetScript("OnClick", function()
+		local _, y = GetCursorPosition()
+		y = y / (track:GetEffectiveScale() or 1)
+		local tTop = thumb:GetTop()
+		local page = math.max(1, #list.rows - 1)
+		if tTop and y > tTop then list.offset = math.max(0, list.offset - page)
+		else list.offset = math.min(maxOffset(), list.offset + page) end
+		list:Refresh()
+	end)
+
 	function list:Refresh()
 		local max = math.max(0, #self.items - #self.rows)
 		if self.offset > max then self.offset = max end
+		placeThumb()
 		for i, row in ipairs(self.rows) do
 			local item = self.items[i + self.offset]
 			if item then

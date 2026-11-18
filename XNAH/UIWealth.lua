@@ -24,7 +24,8 @@ end
 local CHAR_COLS = {
 	{"Character", 180, "LEFT", text = function(r)
 		if r.warbank then return "|cff8aa4ffAccount bank|r" end
-		return (r.me and "|cffffd100" or "|cffffffff") .. r.name .. "|r" .. (r.me and (GREY .. "  (this one)|r") or "")
+		return (r.me and "|cffffd100" or "|cffffffff") .. r.name .. "|r" .. (r.me and (GREY .. "  (this one)|r") or "") ..
+			(r.acct and (GREY .. "  (" .. r.acct .. ")|r") or "")
 	end, sort = function(r) return r.name end, desc = false},
 	{"Gold", 115, "RIGHT", text = function(r) return M(r.gold) end, sort = function(r) return r.gold end},
 	{"Bags", 100, "RIGHT", text = function(r) return M(r.bags) end, sort = function(r) return r.bags end},
@@ -65,6 +66,11 @@ local function refresh(p)
 		total = total + v
 	end
 	p.chars:SetRows(rows, "No characters yet - log in, open your bags, bank and mailbox.")
+	local sync = X.db.sync
+	p.help:SetText(GREY .. "Gold and items of your characters, worth their auction house price after the cut (soulbound: what a " ..
+		"vendor pays). Open your bank and mailbox once to count them. " .. (sync and sync.at and
+		("Other accounts joined " .. X.Ago(sync.at) .. " (Sync accounts on your PC, game closed).") or
+		"Characters of your other WoW accounts: run \"Sync accounts\" in the XNAH folder on your PC with the game closed.") .. "|r")
 	local gold = 0
 	for _, c in ipairs(chars) do gold = gold + (c.gold or 0) end
 	p.total:SetText("All characters" .. (wb and " and the account bank" or "") .. ":  " .. X.Money(total, true) ..
@@ -91,6 +97,7 @@ local function build(p)
 	help:SetPoint("TOPLEFT", 0, 0)
 	help:SetWidth(W - 160)
 	help:SetWordWrap(true)
+	p.help = help
 	local del = K.Button(p, "Delete a character", 150, 20, function(self)
 		local items = {{text = "Delete which character?", isTitle = true}}
 		local mine = X.CharKey()

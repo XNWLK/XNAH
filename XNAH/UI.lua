@@ -85,6 +85,10 @@ local function build()
 	frame.title:SetPoint("TOPLEFT", 12, -10)
 	local close = K.Button(frame, "X", 24, 20, function() frame:Hide() end)
 	close:SetPoint("TOPRIGHT", -6, -6)
+	-- the guide (Guide.lua) - how every page works
+	local guide = K.Button(frame, "Guide", 64, 20, function() if X.ShowGuide then X.ShowGuide() end end)
+	guide:SetPoint("RIGHT", close, "LEFT", -4, 0)
+	K.Tooltip(guide, "Guide", "How every page of XNAH works and how to use it to make gold.")
 
 	-- tabs share the width of the window
 	local x, n = 10, #UI.order

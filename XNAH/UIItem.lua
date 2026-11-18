@@ -10,7 +10,7 @@ local NONE = "|cff666666-|r"
 local RANGES = {{"1 day", 86400}, {"7 days", 7 * 86400}, {"30 days", 30 * 86400}, {"90 days", 90 * 86400}, {"All", nil}}
 local rangeIdx = 3
 local HOW = {vendor = "Vendor", ah = "Auction", craft = "Craft"}
-local NUMBERS = 18  -- rows in the number grid
+local NUMBERS = 19  -- rows in the number grid
 local PROFITS = 4   -- slots in the profit box (the best four ways)
 local PARTS = 8     -- reagent rows
 local USED = 8      -- "used in" rows
@@ -172,11 +172,11 @@ local function build(panel)
 	panel.numL, panel.numR = {}, {}
 	for i = 1, NUMBERS do
 		local l = K.Label(nums, "", "GameFontHighlightSmall")
-		l:SetPoint("TOPLEFT", 8, -7 - (i - 1) * 15)
+		l:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 14.3)
 		l:SetWidth(128)
 		l:SetWordWrap(false)
 		local r = K.Label(nums, "", "GameFontHighlightSmall")
-		r:SetPoint("TOPLEFT", 138, -7 - (i - 1) * 15)
+		r:SetPoint("TOPLEFT", 138, -6 - (i - 1) * 14.3)
 		r:SetWidth(156)
 		r:SetWordWrap(false)
 		panel.numL[i], panel.numR[i] = l, r
@@ -311,6 +311,7 @@ local function fillNumbers(panel, key, s)
 			(GREY .. "sold |r" .. X.Num(s.ledger.sold or 0) .. GREY .. ", bought |r" .. X.Num(s.ledger.bought or 0) ..
 			(s.ledger.sellThrough and (GREY .. ", " .. string.format("%.0f%%", s.ledger.sellThrough * 100) .. " sell|r") or "")) or NONE) or NONE},
 		{"Market shape", shape},
+		{"Strategies", s.marks and #s.marks > 0 and ("|cffffd100" .. table.concat(s.marks, ", ") .. "|r") or NONE},
 		{"Seen", cur and cur.t and (X.Ago(cur.t) .. GREY .. (st.first and ("  (first " .. X.Date(st.first * 86400 + 43200, "%b %d") .. ")") or "") .. "|r") or NONE},
 	}
 	for i = 1, NUMBERS do
@@ -494,6 +495,7 @@ refresh = function(panel)
 	if X.DEValue then s.de = X.DEValue(key) end
 	if X.LedgerItem then s.ledger = X.LedgerItem(key) end
 	if X.Shape then s.shape = X.Shape(key) end
+	if X.StrategyMarks then s.marks = X.StrategyMarks(key) end
 	local id = s.id
 	local tex = id and X.Try(C_Item.GetItemIconByID, id)
 	panel.icon.tex:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")

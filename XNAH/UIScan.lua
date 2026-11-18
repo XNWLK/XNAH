@@ -1,4 +1,4 @@
--- The Scan & settings tab: start and watch scans, the last scans, guild price sharing and the price export, every
+-- The Scan tab: start and watch scans, the last scans, guild price sharing and the price export, every
 -- setting, the size of the saved data.
 -- Also here: the minimap button, and the small XNAH bar on top of the auction house window.
 local ADDON, X = ...
@@ -223,6 +223,13 @@ local function buildSettings(p)
 	check(30, -416, "7-day and 30-day averages, trend", get, set)
 	get, set = boolSetting("tipStack")
 	check(30, -440, "Stack size next to the XNAH line (prices are for the whole stack)", get, set)
+	-- second column: the lines added in v0.2.0
+	get, set = boolSetting("tipSpeed")
+	check(250, -368, "Sells per day", get, set)
+	get, set = boolSetting("tipLedger")
+	check(250, -392, "Your own sales and buys", get, set)
+	get, set = boolSetting("tipDE")
+	check(250, -416, "Disenchant value", get, set)
 end
 
 -- [[ guild price sharing and the export ]] a box under the last scans

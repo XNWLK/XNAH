@@ -30,6 +30,8 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 - **Buy**: shopping lists with max prices, and a sniper that tells you when a watched item is listed under your price.
 - **Ledger**: your sales, purchases, expired auctions and profit, read from the auction house mails.
 - **Wealth**: net worth of all your characters with a graph, and what in your bags to sell where.
+- **Strategies**: ready-made ways to make gold (vendor floor, buy the dip, undercut gaps, resets, momentum, scarcity,
+  crafting, disenchanting, time-of-day and weekday cycles and more) with the items each one finds right now.
 - **Disenchant value** of gear, **market shape** (walls, reset chances, sellers), a **crafting queue**, and **guild
   price sharing**.
 
@@ -42,7 +44,16 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 | `/xnah watch` | scan the watch list |
 | `/xnah <item name or link>` | show that item |
 | `/xnah raw 5` | print the first auctions of the last full scan as the game gives them |
+| `/xnah guide` | the guide to every page |
 | `/xnah help` | all commands |
+
+## Several WoW accounts
+
+Each WoW account keeps its own saved data. To see the characters of all your accounts on the Wealth page (and share
+their sales and the newest prices), double-click `Sync accounts.cmd` in the XNAH project folder on your PC (from GitHub, not the AddOns folder; needs Node.js). It
+waits until every game window is closed, backs up the files and joins them. Run it again whenever you want the other
+accounts to be up to date. Optional names for the accounts: `private/sync-accounts.json`
+`{"labels": {"ACCOUNTFOLDER": "main"}}`.
 
 ## Install
 

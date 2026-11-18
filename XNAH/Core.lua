@@ -19,6 +19,7 @@ local HELP = {
 	"/xnah watch - scan the watch list (auction house open)",
 	"/xnah <item name or link> - show that item",
 	"/xnah raw [n] - print the first n auctions of the last full scan as the game gives them (to check prices)",
+	"/xnah guide - the guide to every page",
 	"/xnah debug - more messages",
 	"/xnah forget - delete this realm's price data (asks first)",
 }
@@ -35,6 +36,8 @@ SlashCmdList.XNAH = function(msg)
 		X.ScanItems()
 	elseif cmd == "raw" then
 		X.RawDump(tonumber(rest) or 5)
+	elseif cmd == "guide" then
+		if X.ShowGuide then X.ShowGuide() end
 	elseif cmd == "debug" then
 		X.S().debug = not X.S().debug
 		X.Print("debug " .. (X.S().debug and "on" or "off"))
