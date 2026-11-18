@@ -79,4 +79,8 @@ accounts.forEach((acct, i) => {
   run('XNAHDB = nil assert(load(__chk))() assert(type(XNAHDB) == "table")', '=check');
   fs.writeFileSync(file, text);
 });
+// keep the last 10 backups
+const backups = path.join(ROOT, 'private', 'backups');
+fs.readdirSync(backups).filter(n => n.startsWith('sync-')).sort().slice(0, -10)
+  .forEach(n => fs.rmSync(path.join(backups, n), { recursive: true, force: true }));
 console.log('Done. Backups: ' + backup);

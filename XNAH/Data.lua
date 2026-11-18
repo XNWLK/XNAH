@@ -62,10 +62,71 @@ function X.S()
 	return X.db.settings
 end
 -- the auction house is per realm and faction
+-- On Forever GetRealmName() gives the name of the server SHARD you landed on ("CAMWOW EU5 Realm 4 PvP"), which
+-- changes from login to login; the realm itself is the number GetRealmID() gives (the realm folder "93" in WTF).
+-- So the key is "Realm 93-Alliance" (the realm name only where there is no ID).
 function X.RealmKey()
-	local realm = X.Plain(GetRealmName and GetRealmName()) or "?"
+	local id = GetRealmID and X.Try(GetRealmID)
+	local realm = (id and id ~= 0) and ("Realm " .. id) or (X.Plain(GetRealmName and GetRealmName()) or "?")
 	local faction = X.Plain(UnitFactionGroup and UnitFactionGroup("player")) or "?"
 	return realm .. "-" .. faction
+end
+
+-- data saved under shard names (v0.3.0 and older) moves into the realm key of the same faction: newest price per item,
+-- ledgers and scan lists joined, characters and net worth moved along
+function X.MigrateRealms(key)
+	local db = X.db
+	local faction = key:match("%-([^%-]+)$")
+	if not faction or not key:find("^Realm %d") then return 0 end
+	local moved = 0
+	for old, r in pairs(db.realms) do
+		if old ~= key and not old:find("^Realm %d") and old:match("%-([^%-]+)$") == faction then
+			local to = db.realms[key]
+			if not to then
+				db.realms[key] = r
+			else
+				to.items = to.items or {}
+				for k, it in pairs(r.items or {}) do
+					local have = to.items[k]
+					if not have or ((it.cur and it.cur.t or 0) > (have.cur and have.cur.t or 0)) then to.items[k] = it end
+				end
+				to.scans = to.scans or {}
+				for _, sc in ipairs(r.scans or {}) do to.scans[#to.scans + 1] = sc end
+				table.sort(to.scans, function(a, b) return (a.t or 0) < (b.t or 0) end)
+				if r.lastFull and (not to.lastFull or r.lastFull > to.lastFull) then to.lastFull = r.lastFull end
+				if r.ledger then
+					to.ledger = to.ledger or {}
+					for kind, list in pairs(r.ledger) do
+						if type(list) == "table" then
+							to.ledger[kind] = to.ledger[kind] or {}
+							for k2, e in pairs(list) do
+								if type(k2) == "number" then table.insert(to.ledger[kind], e) else to.ledger[kind][k2] = e end
+							end
+						end
+					end
+				end
+				for _, field in ipairs({"speed", "shape", "hours", "hoursSeen"}) do
+					if r[field] and not to[field] then to[field] = r[field] end
+				end
+				if r.unitMode and not to.unitMode then to.unitMode, to.unitCheck = r.unitMode, r.unitCheck end
+			end
+			db.realms[old] = nil
+			for _, c in pairs(db.chars or {}) do if c.realm == old then c.realm = key end end
+			if db.worthTotal and db.worthTotal[old] then
+				if not db.worthTotal[key] then db.worthTotal[key] = db.worthTotal[old] end
+				db.worthTotal[old] = nil
+			end
+			moved = moved + 1
+		end
+	end
+	-- characters of other accounts (Sync accounts) may still carry a shard name: same faction = same realm
+	for _, c in pairs(db.chars or {}) do
+		if c.realm and c.realm ~= key and not c.realm:find("^Realm %d") and c.realm:match("%-([^%-]+)$") == faction then
+			c.realm = key
+		end
+	end
+	if moved > 0 then X.Print("price data of " .. moved .. " server shard" .. (moved > 1 and "s" or "") .. " joined under " .. key) end
+	return moved
 end
 function X.Realm(key)
 	key = key or X.realmKey or X.RealmKey()

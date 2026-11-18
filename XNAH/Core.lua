@@ -9,6 +9,7 @@ end)
 X.On("PLAYER_LOGIN", function()
 	if not X.db then X.InitDB() end
 	X.realmKey = X.RealmKey()
+	X.MigrateRealms(X.realmKey)
 	X.Realm()
 	X.Fire("XNAH_LOGIN")
 end)
