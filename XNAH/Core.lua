@@ -21,6 +21,7 @@ local HELP = {
 	"/xnah <item name or link> - show that item",
 	"/xnah raw [n] - print the first n auctions of the last full scan as the game gives them (to check prices)",
 	"/xnah guide - the guide to every page",
+	"/xnah perf - what XNAH is doing and how much memory it uses",
 	"/xnah debug - more messages",
 	"/xnah forget - delete this realm's price data (asks first)",
 }
@@ -37,6 +38,8 @@ SlashCmdList.XNAH = function(msg)
 		X.ScanItems()
 	elseif cmd == "raw" then
 		X.RawDump(tonumber(rest) or 5)
+	elseif cmd == "perf" then
+		X.Perf()
 	elseif cmd == "guide" then
 		if X.ShowGuide then X.ShowGuide() end
 	elseif cmd == "debug" then

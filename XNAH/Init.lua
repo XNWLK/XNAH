@@ -53,13 +53,32 @@ function X.On(event, fn)
 	end
 	table.insert(handlers[event], fn)
 end
+-- time spent (ms, debugprofilestop) in XNAH's handlers and jobs: per second for the last 60 s, and the worst one
+local perfSec, perfAt = {}, 0
+local clock = debugprofilestop or function() return 0 end
+local function spent(ms)
+	local now = math.floor(GetTime())
+	perfSec[now % 60] = (perfAt == now and (perfSec[now % 60] or 0) or 0) + ms
+	if perfAt ~= now then
+		for s = perfAt + 1, now - 1 do if now - s < 60 then perfSec[s % 60] = 0 end end
+		perfAt = now
+	end
+	if ms > (X.perfWorst or 0) then X.perfWorst = ms end
+end
+function X.PerfTime()
+	local now, sum = math.floor(GetTime()), 0
+	for s = now - 59, now do if now - perfAt < 60 then sum = sum + (perfSec[s % 60] or 0) end end
+	return sum
+end
 function X.Fire(event, ...)
 	local list = handlers[event]
 	if not list then return end
+	local t0 = clock()
 	for i = 1, #list do
 		local ok, err = pcall(list[i], ...)
 		if not ok then onError(err) end
 	end
+	spent(clock() - t0)
 end
 eventFrame:SetScript("OnEvent", function(_, event, ...) X.Fire(event, ...) end)
 
@@ -89,7 +108,9 @@ jobFrame:Hide()
 jobFrame:SetScript("OnUpdate", function(self)
 	local job = jobs[1]
 	if not job then self:Hide() return end
+	local t0 = clock()
 	local ok, done = pcall(job.step)
+	spent(clock() - t0)
 	if not ok then onError(done) done = true end
 	if done then
 		table.remove(jobs, 1)
@@ -99,6 +120,12 @@ end)
 function X.Job(name, step, finish)
 	jobs[#jobs + 1] = {name = name, step = step, finish = finish}
 	jobFrame:Show()
+end
+function X.JobList()
+	if #jobs == 0 then return "nothing" end
+	local names = {}
+	for i = 1, #jobs do names[i] = jobs[i].name end
+	return table.concat(names, ", ")
 end
 function X.JobRunning(name)
 	for i = 1, #jobs do if jobs[i].name == name then return true end end

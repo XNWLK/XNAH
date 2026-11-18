@@ -275,6 +275,7 @@ function X.ScanSave(token)
 		-- other parts (sales speed, market shape) look at every listing of this scan:
 		-- rows[key] = {list = {{price of one, count, time left band}, ...}, bidOnly, name, q}; seen = keys in order
 		X.Fire("XNAH_FULLSCAN", s.rows, t, s.seen)
+		X.After(5, function() X.PackScanRows(s.rows, s.seen) end)
 		X.FillNames()
 		local r = X.Realm()
 		table.insert(r.scans, {t = t, kind = "full", items = #s.seen, auctions = s.total, secs = X.Round(GetTime() - (s.startedAt or GetTime())),
@@ -448,18 +449,22 @@ end
 local nameQueue, nameBusy = {}, false
 local function nameStep()
 	local n = 0
-	while n < 40 and #nameQueue > 0 do
+	while n < 25 and #nameQueue > 0 do
 		local id = table.remove(nameQueue)
 		n = n + 1
 		local name = X.Try(C_Item.GetItemInfo, id)
 		if name then X.NameLoaded(id, true) elseif C_Item.RequestLoadItemDataByID then X.Try(C_Item.RequestLoadItemDataByID, id) end
 	end
-	if #nameQueue > 0 then X.After(1, nameStep) else nameBusy = false end
+	if #nameQueue > 0 then X.After(1, nameStep) else
+		nameBusy = false
+		X.Debounce("names", 1, function() X.Fire("XNAH_PRICES") end)
+	end
 end
 function X.FillNames()
 	local ids, set = {}, {}
 	for _, it in pairs(X.Items()) do
-		if (not it.n or it.n == "" or not X.qualityOK[it.id]) and it.id and not set[it.id] then set[it.id] = true ids[#ids + 1] = it.id end
+		-- it.qk = the quality was checked with the game once (saved), so this is not done again at every login
+		if (not it.n or it.n == "" or not (it.qk or X.qualityOK[it.id])) and it.id and not set[it.id] then set[it.id] = true ids[#ids + 1] = it.id end
 	end
 	nameQueue = ids
 	if #ids > 0 and not nameBusy then nameBusy = true X.After(0.5, nameStep) end
@@ -477,13 +482,81 @@ function X.NameLoaded(id, quiet)
 	-- the game's quality wins (also for the "id:suffix" keys of the same item)
 	if q and not X.qualityOK[id] then
 		X.qualityOK[id] = true
-		if base and base.q ~= q then base.q = q changed = true end
-		for key, it in pairs(items) do
-			if it.id == id and it ~= base and it.q ~= q then it.q = q changed = true end
+		if base then
+			if base.q ~= q then base.q = q changed = true end
+			base.qk = 1
+		end
+		-- the other keys of this item (random bonus)
+		for _, key in ipairs(X.SuffixKeys(id) or {}) do
+			local it = items[key]
+			if it and it.q ~= q then it.q = q changed = true end
+			if it then it.qk = 1 end
 		end
 	end
-	if changed or not quiet then X.Debounce("names", 2, function() X.Fire("XNAH_PRICES") end) end
+	-- while the background look-up runs, the window refreshes once at its end (not every 2 seconds)
+	if (changed or not quiet) and not nameBusy then X.Debounce("names", 2, function() X.Fire("XNAH_PRICES") end) end
 end
 X.On("ITEM_DATA_LOAD_RESULT", function(id, ok) if ok and id then X.NameLoaded(id) end end)
 X.On("GET_ITEM_INFO_RECEIVED", function(id, ok) if ok and id then X.NameLoaded(id) end end)
 X.On("XNAH_LOGIN", function() X.After(5, X.FillNames) end)
+
+-- [[ keeping the last full scan small ]] sales speed and strategies keep every listing of the last full scan for the
+-- session (about 300,000 of them). As small tables that is tens of megabytes the game has to sweep through - a cause of
+-- stutter, more so with several game windows. So a few seconds after the scan each item's listings become one string
+-- "price*100,count,band;..." (base 36); row.list unpacks it again whenever something reads it (a fresh table each time).
+local function packList(list)
+	local parts = {}
+	for i = 1, #list do
+		local l = list[i]
+		parts[i] = X.b36(math.floor(l[1] * 100 + 0.5)) .. "," .. X.b36(l[2] or 1) .. "," .. (l[3] and X.b36(l[3]) or "")
+	end
+	return table.concat(parts, ";")
+end
+local function unpackList(s)
+	local out = {}
+	for u, c, b in s:gmatch("([^,;]*),([^,;]*),([^,;]*)") do
+		out[#out + 1] = {(X.n36(u) or 0) / 100, X.n36(c) or 1, X.n36(b)}
+	end
+	return out
+end
+X.UnpackScanList = unpackList
+local LAZY = {__index = function(t, k)
+	if k == "list" then
+		local p = rawget(t, "packed")
+		return p and unpackList(p) or {}
+	end
+end}
+function X.PackScanRows(rows, seen)
+	if type(rows) ~= "table" then return end
+	local keys = seen
+	if not keys then keys = {} for key in pairs(rows) do keys[#keys + 1] = key end end
+	local i = 0
+	X.Job("pack", function()
+		local stop = math.min(#keys, i + 300)
+		while i < stop do
+			i = i + 1
+			local r = rows[keys[i]]
+			if r and rawget(r, "list") then
+				r.packed = packList(r.list)
+				r.list, r.owners, r.ma, r.mb = nil, nil, nil, nil
+				setmetatable(r, LAZY)
+			end
+		end
+		return i >= #keys
+	end, function() pcall(collectgarbage, "step", 1000) end)
+end
+
+-- [[ /xnah perf ]] what XNAH does right now and how much memory it uses
+function X.Perf()
+	if UpdateAddOnMemoryUsage then pcall(UpdateAddOnMemoryUsage) end
+	local kb = GetAddOnMemoryUsage and X.Try(GetAddOnMemoryUsage, ADDON)
+	X.Print(string.format("memory: %s (all addons' Lua: %.0f MB)", kb and string.format("%.1f MB", kb / 1024) or "?",
+		(select(2, pcall(collectgarbage, "count")) or 0) / 1024))
+	X.Print("busy: " .. (X.JobList and X.JobList() or "?") .. "; names to look up: " .. #nameQueue ..
+		"; scan: " .. tostring(X.scan.state) .. (X.SnipeOn and X.SnipeOn() and "; sniper ON" or "") ..
+		(X.ShareState and ("; sharing: " .. (X.ShareState().on and "on" or "off") .. ", queued " .. tostring(X.ShareState().queued or 0)) or ""))
+	local items, bytes = X.DataSize()
+	X.Print("saved data: " .. X.Num(items) .. " items, about " .. string.format("%.1f MB", bytes / 1048576))
+	X.Print("time spent in XNAH in the last 60 s: " .. string.format("%.0f ms", X.PerfTime and X.PerfTime() or 0) ..
+		" (worst single step " .. string.format("%.1f ms", X.perfWorst or 0) .. ")")
+end

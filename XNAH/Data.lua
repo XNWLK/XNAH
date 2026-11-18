@@ -164,6 +164,7 @@ function X.Item(key, create)
 	if not it and create then
 		it = {id = X.KeyID(key)}
 		items[key] = it
+		if tostring(key):find(":", 1, true) then X.suffixIndex = nil end -- a new random-bonus key
 	end
 	return it
 end
@@ -171,9 +172,23 @@ end
 -- game had not loaded yet, so the game is asked again once per session
 X.qualityOK = {}
 function X.CheckQuality(it)
-	if not it or not it.id or X.qualityOK[it.id] or not C_Item.GetItemQualityByID then return end
+	if not it or not it.id or it.qk or X.qualityOK[it.id] or not C_Item.GetItemQualityByID then return end
 	local q = X.Try(C_Item.GetItemQualityByID, it.id)
-	if q then it.q = q X.qualityOK[it.id] = true end
+	if q then it.q, it.qk = q, 1 X.qualityOK[it.id] = true end
+end
+-- the random-bonus keys of an item ("15210:-19", ...): built in one pass per session, cheap afterwards
+function X.SuffixKeys(id)
+	if not X.suffixIndex then
+		local index = {}
+		for key, it in pairs(X.Items()) do
+			if it.id and key:find(":", 1, true) then
+				index[it.id] = index[it.id] or {}
+				table.insert(index[it.id], key)
+			end
+		end
+		X.suffixIndex = index
+	end
+	return X.suffixIndex[id]
 end
 -- quality from the colour of an item link (nil if none)
 function X.QualityFromLink(link)
