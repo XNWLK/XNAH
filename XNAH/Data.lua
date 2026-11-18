@@ -32,6 +32,12 @@ X.DEFAULTS = {
 	scanOnOpen = false, -- start a full scan by itself when the auction house opens (and the server allows one)
 }
 
+-- a file of the addon adds its own settings: X.Default("key", value) at load time (before the saved data is read)
+function X.Default(key, value)
+	if X.DEFAULTS[key] == nil then X.DEFAULTS[key] = value end
+	if X.db and X.db.settings[key] == nil then X.db.settings[key] = X.Copy(value) end
+end
+
 -- [[ saved data ]]
 function X.InitDB()
 	XNAHDB = XNAHDB or {}
@@ -46,6 +52,10 @@ function X.InitDB()
 	db.vbuy = db.vbuy or {}
 	db.recipes = db.recipes or {}
 	db.watch = db.watch or {}
+	-- names saved empty by v0.1.0 (items the game had not loaded): asked for again
+	for _, r in pairs(db.realms) do
+		for _, it in pairs(r.items or {}) do if it.n == "" then it.n = nil end end
+	end
 	X.db = db
 end
 function X.S()
@@ -99,10 +109,10 @@ end
 -- the item's name and quality, from the record or the game
 function X.ItemName(key)
 	local it = X.Items()[key]
-	if it and it.n then return it.n, it.q end
+	if it and it.n and it.n ~= "" then return it.n, it.q end
 	local id = X.KeyID(key)
 	local name, _, q = X.Try(C_Item.GetItemInfo, id)
-	if name then
+	if name and name ~= "" then
 		if it then it.n, it.q = name, q end
 		return name, q
 	end
@@ -188,7 +198,7 @@ end
 -- auc (number of auctions). full = the whole auction house was seen, so an item that is missing is sold out.
 function X.Record(key, t, min, mkt, qty, auc, name, quality)
 	local it = X.Item(key, true)
-	if name then it.n = name end
+	if name and name ~= "" then it.n = name end
 	if quality then it.q = quality end
 	if it.cur and it.cur.t and it.cur.t > t then return it end -- an older observation never replaces a newer one
 	it.cur = {t = t, min = min, mkt = mkt, qty = qty, auc = auc}
@@ -448,12 +458,21 @@ function X.History(key, from)
 	return out
 end
 
--- [[ watch list ]]
+-- [[ watch list ]] XNAHDB.watch[key] = true, or {max = copper} with a highest price to buy at (sniper alerts)
 function X.Watched(key)
-	return X.db.watch[key] == true
+	return X.db.watch[key] ~= nil
 end
 function X.SetWatched(key, on)
-	X.db.watch[key] = on and true or nil
+	if on then X.db.watch[key] = X.db.watch[key] or true else X.db.watch[key] = nil end
+	X.Fire("XNAH_WATCH")
+end
+function X.WatchMax(key)
+	local w = X.db.watch[key]
+	return type(w) == "table" and w.max or nil
+end
+-- copper, or nil to remove the price (the item stays watched)
+function X.SetWatchMax(key, copper)
+	if copper and copper > 0 then X.db.watch[key] = {max = copper} else X.db.watch[key] = true end
 	X.Fire("XNAH_WATCH")
 end
 

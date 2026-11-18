@@ -12,11 +12,41 @@ X.scan = {state = "idle"} -- idle / waiting / reading / loading / saving / items
 local READ_SLICE, SAVE_SLICE = 800, 400
 
 -- unit price of an auction: the buyout is for the whole auction (all `count` of it)
--- UNVERIFIED on Forever: the full scan's buyout is taken as the price of the whole stack (as the old auction house
--- had it); `/xnah raw` prints raw rows to check this in the game.
 function X.UnitPrice(buyout, count)
 	if not buyout or buyout <= 0 then return nil end
 	return buyout / math.max(1, count or 1)
+end
+-- the full scan: whether its buyout is for the whole stack ("stack", the default) or for one ("unit") is not in
+-- Blizzard's documents. XNAH finds out by itself: a search of a stackable item gives a sure price of one
+-- (X.CheckUnits below), compared with the last full scan read both ways.
+function X.FullUnitPrice(buyout, count)
+	if not buyout or buyout <= 0 then return nil end
+	if X.Realm().unitMode == "unit" then return buyout end
+	return buyout / math.max(1, count or 1)
+end
+function X.CheckUnits(key, sureMin)
+	local c = X.unitCheck
+	if not c or not sureMin or sureMin <= 0 or X.Now() - c.t > 2 * 3600 then return end
+	local e = c.keys[key]
+	if not e or not e.a or not e.b then return end
+	local la, lb = math.abs(math.log(e.a / sureMin)), math.abs(math.log(e.b / sureMin))
+	-- clear answers only: one reading within 30% of the sure price, the other off by more than half
+	local mode
+	if la < 0.26 and lb > 0.4 then mode = "stack" elseif lb < 0.26 and la > 0.4 then mode = "unit" end
+	if not mode then return end
+	local r = X.Realm()
+	local before = r.unitMode or "stack"
+	r.unitMode = mode
+	r.unitCheck = {t = X.Now(), key = key, sure = sureMin, stack = e.a, unit = e.b, mode = mode}
+	c.keys[key] = nil
+	if mode ~= before then
+		X.Print("|cffffd100price check:|r the full scan gives the price of ONE item, not of the stack (checked with " ..
+			X.ItemName(key) .. "). Fixed from now on - run a new full scan; /xnah forget deletes the wrong prices of the last one.")
+	elseif not c.told then
+		c.told = true
+		X.Print("price check passed: full scan prices of stacks are right (checked with " .. X.ItemName(key) .. ")")
+	end
+	X.Fire("XNAH_SCAN")
 end
 
 local function keyOf(itemKey)
@@ -92,8 +122,13 @@ local function readRow(i, rows, seen, force)
 	local name, _, count, quality, _, _, _, _, _, buyout, _, _, _, owner, ownerFull, _, itemID, hasAll =
 		C_AuctionHouse.GetReplicateItemInfo(i)
 	if not itemID then return true end
-	if (hasAll == false or not name) and not force then return false end
-	local link = (hasAll ~= false) and C_AuctionHouse.GetReplicateItemLink(i) or nil
+	if name == "" then name = nil end
+	-- the link holds the random bonus ("of the Bear") and the name; asked for even when the item is not loaded
+	local link = X.Try(C_AuctionHouse.GetReplicateItemLink, i)
+	if type(link) ~= "string" then link = nil end
+	if not name and link then name = link:match("|h%[(.-)%]|h") end
+	if name == "" then name = nil end
+	if (hasAll == false or not name) and not force and not (link and name) then return false end
 	local key = X.KeyFromLink(link) or tostring(itemID)
 	local r = rows[key]
 	if not r then
@@ -103,9 +138,16 @@ local function readRow(i, rows, seen, force)
 	elseif name and not r.name then
 		r.name, r.q = name, quality
 	end
-	local unit = X.UnitPrice(buyout, count)
+	if buyout and buyout > 0 then
+		local a, b = buyout / math.max(1, count or 1), buyout -- the two readings, for the price check
+		if not r.ma or a < r.ma then r.ma = a end
+		if not r.mb or b < r.mb then r.mb = b end
+		if (count or 1) > 1 then r.stacks = true end
+	end
+	local unit = X.FullUnitPrice(buyout, count)
 	if unit then
-		r.list[#r.list + 1] = {unit, count or 1}
+		-- {price of one, count, time left band} (the band is for the sales speed estimate)
+		r.list[#r.list + 1] = {unit, count or 1, X.Try(C_AuctionHouse.GetReplicateItemTimeLeft, i)}
 	else
 		r.bidOnly = r.bidOnly + (count or 1)
 	end
@@ -222,6 +264,16 @@ function X.ScanSave(token)
 		return g >= #gone
 	end, function()
 		if X.scan.token ~= token then return end
+		-- for the price check: both readings of every item sold in stacks
+		local check = {t = t, keys = {}}
+		for key, row in pairs(s.rows) do
+			if row.stacks then check.keys[key] = {a = row.ma, b = row.mb} end
+		end
+		X.unitCheck = check
+		-- other parts (sales speed, market shape) look at every listing of this scan:
+		-- rows[key] = {list = {{price of one, count, time left band}, ...}, bidOnly, name, q}; seen = keys in order
+		X.Fire("XNAH_FULLSCAN", s.rows, t, s.seen)
+		X.FillNames()
 		local r = X.Realm()
 		table.insert(r.scans, {t = t, kind = "full", items = #s.seen, auctions = s.total, secs = X.Round(GetTime() - (s.startedAt or GetTime())),
 			skipped = s.skipped})
@@ -315,7 +367,8 @@ X.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
 		X.RecordGone(key, X.Now())
 	else
 		local name, q = X.ItemName(key)
-		recordList(key, list, name, q)
+		local it = recordList(key, list, name, q)
+		X.CheckUnits(key, it and it.cur and it.cur.min)
 	end
 	answered({[key] = true})
 end)
@@ -387,3 +440,39 @@ function X.RawDump(n)
 			tostring(name), tostring(itemID), tostring(count), tostring(buyout), tostring(minBid), tostring(bid), tostring(owner), tostring(hasAll)))
 	end
 end
+
+-- [[ item names ]] most items of a full scan are not loaded by the game yet (no name): asked for in the background,
+-- 40 a second, and filled in when the game has them
+local nameQueue, nameBusy = {}, false
+local function nameStep()
+	local n = 0
+	while n < 40 and #nameQueue > 0 do
+		local id = table.remove(nameQueue)
+		n = n + 1
+		local name = X.Try(C_Item.GetItemInfo, id)
+		if name then X.NameLoaded(id) elseif C_Item.RequestLoadItemDataByID then X.Try(C_Item.RequestLoadItemDataByID, id) end
+	end
+	if #nameQueue > 0 then X.After(1, nameStep) else nameBusy = false end
+end
+function X.FillNames()
+	local ids, set = {}, {}
+	for _, it in pairs(X.Items()) do
+		if (not it.n or it.n == "") and it.id and not set[it.id] then set[it.id] = true ids[#ids + 1] = it.id end
+	end
+	nameQueue = ids
+	if #ids > 0 and not nameBusy then nameBusy = true X.After(0.5, nameStep) end
+	return #ids
+end
+-- the game has an item now: its name and quality go to every key of that item (random bonus items keep the base name
+-- until a link with the full name is seen)
+function X.NameLoaded(id)
+	local name, link, q = X.Try(C_Item.GetItemInfo, id)
+	if not name or name == "" then return end
+	local items = X.Items()
+	local base = items[tostring(id)]
+	if base and (not base.n or base.n == "") then base.n, base.q = name, q end
+	X.Debounce("names", 2, function() X.Fire("XNAH_PRICES") end)
+end
+X.On("ITEM_DATA_LOAD_RESULT", function(id, ok) if ok and id then X.NameLoaded(id) end end)
+X.On("GET_ITEM_INFO_RECEIVED", function(id, ok) if ok and id then X.NameLoaded(id) end end)
+X.On("XNAH_LOGIN", function() X.After(5, X.FillNames) end)

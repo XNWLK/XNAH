@@ -1,7 +1,9 @@
 -- The Crafting tab: every recipe XNAH has seen, what it costs to make, what it sells for and the profit. Click a recipe
--- for its reagents (and a button that searches them all on the auction house).
--- Two choices are remembered in the settings: craftMine (only recipes your characters know; nil = on when any are
--- known) and craftProf (one profession; nil = all).
+-- for its reagents (and a button that searches them all on the auction house, and one that puts it in the queue).
+-- The second view, "Queue": the crafting queue (Queue.lua) - targets, crafts to do, profit, the materials to buy and a
+-- "Craft next" button for the open profession window.
+-- Choices remembered in the settings: craftMine (only recipes your characters know; nil = on when any are known),
+-- craftProf (one profession; nil = all), craftView ("recipes" / "queue").
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -10,6 +12,9 @@ local TOP = 78         -- where the recipe table starts (its column titles sit j
 local LIST_H = 268     -- recipe table height (14 rows)
 local DETAIL_H = H - TOP - LIST_H - 8
 local FROM = {vendor = "vendor", ah = "auction house", craft = "crafted"}
+local MODE = {restock = "Restock", craft = "Craft"}
+
+X.Default("craftView", "recipes")
 
 local function anyKnown()
 	for _, list in pairs(X.db.known or {}) do
@@ -38,11 +43,12 @@ end
 
 -- [[ cells ]]
 local function field(name) return function(r) return r[name] end end
--- the item made; the recipe name while the game has not loaded the item yet
+-- the item made; the recipe name while the game has not loaded the item yet; a green Q when it is in the queue
 local function recipeCell(r)
+	local q = X.QueueGet and X.QueueGet(r.rid) and "|cff4ade80Q|r " or ""
 	local name = X.ItemName(r.key)
-	if r.name and name:find("^item %-?%d") then return X.ItemIcon(X.KeyID(r.key), 14) .. " " .. r.name end
-	return UI.ItemCell(r.key)
+	if r.name and name:find("^item %-?%d") then return q .. X.ItemIcon(X.KeyID(r.key), 14) .. " " .. r.name end
+	return q .. UI.ItemCell(r.key)
 end
 local function knownText(r) return table.concat(r.known or {}, ", ") end
 local function costCell(r)
@@ -70,6 +76,31 @@ local PART_COLUMNS = {
 	{"Total", 140, "RIGHT", text = function(r) return UI.MoneyCell(r.total) end, sort = field("total")},
 }
 
+-- the queue's columns; the last one holds the - / + / x buttons of each row
+local QUEUE_COLUMNS = {
+	{"Recipe", 300, "LEFT", text = function(r) return UI.ItemCell(r.key) end, sort = function(r) return (X.ItemName(r.key)) end, desc = false},
+	{"Mode", 90, "LEFT", text = function(r) return MODE[r.mode] or "?" end, sort = field("mode"), desc = false},
+	{"Target", 70, "RIGHT", text = function(r) return X.Num(r.target) .. (r.mode == "craft" and "x" or "") end, sort = field("target")},
+	{"Have", 70, "RIGHT", text = function(r) return X.Num(r.have) end, sort = field("have")},
+	{"To craft", 70, "RIGHT", text = function(r)
+		return r.craft > 0 and X.Num(r.craft) or "|cff4ade80done|r" end, sort = field("craft")},
+	{"Profit", 140, "RIGHT", text = function(r)
+		if r.profit == nil then return "|cff888888?|r" end
+		return X.Money(r.profit, true) end, sort = field("profit")},
+	{"", 150, "LEFT", text = function() return "" end},
+}
+local MAT_COLUMNS = {
+	{"Reagent", 300, "LEFT", text = function(m) return UI.ItemCell(m.key) end, sort = function(m) return (X.ItemName(m.key)) end, desc = false},
+	{"Needed", 70, "RIGHT", text = function(m) return X.Num(m.need) end, sort = field("need")},
+	{"You own", 70, "RIGHT", text = function(m) return X.Num(m.have) end, sort = field("have")},
+	{"To buy", 70, "RIGHT", text = function(m) return m.buy > 0 and ("|cffffd100" .. X.Num(m.buy) .. "|r") or "|cff4ade800|r" end, sort = field("buy")},
+	{"Each", 120, "RIGHT", text = function(m) return UI.MoneyCell(m.unit) end, sort = field("unit")},
+	{"From", 170, "LEFT", text = function(m)
+		if m.how == "vendor" then return "    vendor: " .. (m.vendor or "?") end
+		return m.how and ("    " .. FROM[m.how]) or "    |cff888888no price yet|r" end, sort = function(m) return m.how or "" end, desc = false},
+	{"Cost", 130, "RIGHT", text = function(m) return m.buy > 0 and UI.MoneyCell(m.total) or "-" end, sort = field("total")},
+}
+
 local function emptyText()
 	if next(X.db.recipes) == nil then
 		return "No recipes yet. Open a profession window (yours, or a recipe list someone linked in chat): XNAH reads " ..
@@ -92,6 +123,7 @@ local function showDetail(p)
 		d.summary:SetText("")
 		d.shop:SetEnabled(false)
 		d.open:SetEnabled(false)
+		d.add:SetEnabled(false)
 		d.parts:SetRows({}, "")
 		return
 	end
@@ -119,10 +151,208 @@ local function showDetail(p)
 	d.open:SetEnabled(key ~= nil)
 	d.key = key
 	d.partKeys = parts
+	-- the queue controls show this recipe's target when it is queued
+	if d.shownRid ~= rid then
+		d.shownRid = rid
+		local q = X.QueueGet(rid)
+		d.mode = q and q.mode or "restock"
+		if not d.number:HasFocus() then d.number:SetText(tostring(q and q.n or 5)) end
+	end
+	d.modeButton:SetText(d.mode == "craft" and "Craft x times" or "Restock: keep")
+	d.add:SetEnabled(key ~= nil)
+	d.add:SetText(X.QueueGet(rid) and "Update queue" or "Add to queue")
+end
+
+-- [[ the queue view ]]
+local function vendorText(totals)
+	local names = {}
+	for name in pairs(totals.vendor) do names[#names + 1] = name end
+	table.sort(names)
+	if #names == 0 then return "|cff999999Nothing to buy from vendors.|r" end
+	local parts = {}
+	for _, name in ipairs(names) do
+		local list = {}
+		for _, m in ipairs(totals.vendor[name]) do
+			list[#list + 1] = X.ItemText(m.key) .. " x" .. X.Num(m.buy) .. " (" .. X.Money(m.total, true) .. ")"
+		end
+		parts[#parts + 1] = "|cffffd100" .. name .. ":|r " .. table.concat(list, ", ")
+	end
+	return "Buy these from vendors:  " .. table.concat(parts, "   ")
+end
+
+local function refreshQueue(p)
+	local q = p.queue
+	local list = X.QueueRows()
+	q.list:SetRows(list, "The queue is empty. Click a recipe in the Recipes view, then \"Add to queue\".")
+	local crafts, profit, anyProfit = 0, 0, false
+	for _, r in ipairs(list) do
+		crafts = crafts + r.craft
+		if r.profit then profit = profit + r.profit anyProfit = true end
+	end
+	local mats, totals = X.QueueMaterials(list)
+	q.mats:SetRows(mats, #list > 0 and "Nothing to craft right now: every target is reached." or "")
+	q.summary:SetText(X.Num(#list) .. (#list == 1 and " recipe" or " recipes") .. " in the queue   -   " .. X.Num(crafts) ..
+		(crafts == 1 and " craft" or " crafts") .. " to do   -   total profit " .. (anyProfit and X.Money(profit, true) or "|cff888888?|r") ..
+		"   -   materials to buy " .. X.Money(totals.cost, true) .. (totals.missing > 0 and " |cff888888(+ some without a price)|r" or ""))
+	q.vendors:SetText(vendorText(totals))
+	q.shop:SetShown(X.ShopAdd ~= nil)
+	q.shop:SetEnabled(#mats > 0)
+	-- the chosen row
+	local sel
+	for _, r in ipairs(list) do if r.rid == q.rid then sel = r end end
+	if not sel then q.rid = nil end
+	q.sel:SetText(sel and ("|cff999999Change:|r " .. UI.ItemCell(sel.key)) or "|cff999999Click a row to change its mode or number.|r")
+	q.mode:SetEnabled(sel ~= nil)
+	q.set:SetEnabled(sel ~= nil)
+	q.remove:SetEnabled(sel ~= nil)
+	if sel then
+		q.mode:SetText(MODE[sel.mode])
+		if not q.number:HasFocus() and q.numberFor ~= sel.rid then q.number:SetText(tostring(sel.target)) q.numberFor = sel.rid end
+	else
+		q.mode:SetText("Mode")
+		q.numberFor = nil
+	end
+	-- craft next
+	local row, count = X.CraftNextTarget()
+	q.craft:SetEnabled(row ~= nil)
+	if row then
+		q.craft:SetText("Craft next  (x" .. count .. ")")
+		q.craftText:SetText("Next: " .. UI.ItemCell(row.key) .. " x" .. count .. "  |cff999999- one click starts the crafts at the profession window.|r")
+	else
+		q.craft:SetText("Craft next")
+		q.craftText:SetText("|cff999999" .. tostring(count) .. "|r")
+	end
+end
+
+local function buildQueue(p)
+	local q = CreateFrame("Frame", nil, p)
+	q:SetPoint("TOPLEFT", 0, -28)
+	q:SetSize(W, H - 28)
+	p.queue = q
+	local QH = H - 28
+	q.summary = K.Label(q, "", "GameFontHighlight")
+	q.summary:SetPoint("TOPLEFT", 0, 0)
+	q.summary:SetWidth(W)
+	q.summary:SetWordWrap(false)
+	local help = K.Label(q, "|cff999999Restock = keep this many (bags, bank, mail, auction house, your other characters).  " ..
+		"Craft = craft it this many times.  - / + change the number (Shift: by 10), x takes it out.|r")
+	help:SetPoint("TOPLEFT", 0, -18)
+	help:SetWidth(W)
+	help:SetWordWrap(false)
+
+	local function change(row, delta)
+		if not row then return end
+		X.QueueSet(row.rid, row.mode, math.max(1, row.target + delta))
+	end
+	q.list = K.Table(q, W, 8 * 18 + 4, QUEUE_COLUMNS, function(row, button, rowFrame)
+		if button == "RightButton" then
+			UI.ItemMenu(rowFrame, row.key)
+		else
+			q.rid = row.rid
+			q.numberFor = nil
+			refreshQueue(p)
+		end
+	end)
+	q.list:SetPoint("TOPLEFT", 0, -54)
+	local x = 4
+	for i = 1, #QUEUE_COLUMNS - 1 do x = x + QUEUE_COLUMNS[i][2] end
+	for _, rowFrame in ipairs(q.list.rows) do
+		local minus = K.Button(rowFrame, "-", 24, 16, function() change(rowFrame.qrow, IsShiftKeyDown() and -10 or -1) end)
+		minus:SetPoint("LEFT", x + 4, 0)
+		local plus = K.Button(rowFrame, "+", 24, 16, function() change(rowFrame.qrow, IsShiftKeyDown() and 10 or 1) end)
+		plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+		local del = K.Button(rowFrame, "x", 24, 16, function() if rowFrame.qrow then X.QueueSet(rowFrame.qrow.rid, nil, 0) end end)
+		del:SetPoint("LEFT", plus, "RIGHT", 8, 0)
+		K.Tooltip(del, "Take out of the queue")
+	end
+	local baseRefresh = q.list.Refresh
+	function q.list:Refresh()
+		baseRefresh(self)
+		for i, rowFrame in ipairs(self.rows) do
+			local row = self.items[i + self.offset]
+			rowFrame.qrow = row
+			if row and q.rid and row.rid == q.rid then rowFrame:SetSelected(true) end
+		end
+	end
+
+	-- the chosen row: mode, number, remove; and the craft button
+	q.sel = K.Label(q, "")
+	q.sel:SetPoint("TOPLEFT", 0, -214)
+	q.sel:SetWidth(300)
+	q.sel:SetWordWrap(false)
+	q.mode = K.Button(q, "Mode", 90, 22, function()
+		local row
+		for _, r in ipairs(X.QueueRows()) do if r.rid == q.rid then row = r end end
+		if row then X.QueueSet(row.rid, row.mode == "craft" and "restock" or "craft", row.target) end
+	end)
+	q.mode:SetPoint("TOPLEFT", 306, -208)
+	K.Tooltip(q.mode, "Mode", "Restock: keep this many (crafts only what is missing).\nCraft: craft it this many times.")
+	q.number = K.Edit(q, 50)
+	q.number:SetPoint("TOPLEFT", 408, -209)
+	q.set = K.Button(q, "Set", 56, 22, function()
+		local n = tonumber(X.Trim(q.number:GetText()))
+		local row
+		for _, r in ipairs(X.QueueRows()) do if r.rid == q.rid then row = r end end
+		if row and n then X.QueueSet(row.rid, row.mode, n) end
+		q.numberFor = nil
+		q.number:ClearFocus()
+	end)
+	q.set:SetPoint("TOPLEFT", 466, -208)
+	q.number:SetScript("OnEnterPressed", function() q.set:Click() end)
+	q.remove = K.Button(q, "Remove", 80, 22, function() if q.rid then X.QueueSet(q.rid, nil, 0) end end)
+	q.remove:SetPoint("TOPLEFT", 528, -208)
+	q.craft = K.Button(q, "Craft next", 200, 22, function()
+		X.CraftNext() -- the game allows crafting only from a click: this is that click
+		refreshQueue(p)
+	end)
+	q.craft:SetPoint("TOPRIGHT", 0, -208)
+	K.Tooltip(q.craft, "Craft next", "Open your profession window; one click starts the next queued recipe you can make now " ..
+		"(as many as your bags allow, at most the number still to craft).")
+	q.craftText = K.Label(q, "")
+	q.craftText:SetPoint("TOPLEFT", 0, -236)
+	q.craftText:SetWidth(W)
+	q.craftText:SetWordWrap(false)
+
+	-- materials
+	local mt = K.Label(q, "Materials for the queue  |cff999999(what you own is taken off)|r", "GameFontNormal")
+	mt:SetPoint("TOPLEFT", 0, -258)
+	q.shop = K.Button(q, "Send to shopping list", 170, 22, function()
+		local n = X.QueueToShop()
+		if n then X.Print(n .. " reagent" .. (n == 1 and "" or "s") .. " put on the shopping list \"" .. X.QUEUE_LIST .. "\" (at most 120% of the current price)") end
+	end)
+	q.shop:SetPoint("TOPRIGHT", 0, -254)
+	K.Tooltip(q.shop, "Send to shopping list", "Puts every reagent still to buy (not the vendor ones) on the shopping list \"" ..
+		X.QUEUE_LIST .. "\", with a highest price of 120% of its current price.")
+	local matsH = QH - 290 - 40
+	q.mats = K.Table(q, W, matsH, MAT_COLUMNS, function(m, button, rowFrame)
+		if button == "RightButton" then UI.ItemMenu(rowFrame, m.key) else UI.ShowItem(m.key) end
+	end)
+	q.mats:SetPoint("TOPLEFT", 0, -290)
+	q.vendors = K.Label(q, "")
+	q.vendors:SetPoint("TOPLEFT", 0, -(290 + matsH + 6))
+	q.vendors:SetWidth(W)
+	q.vendors:SetWordWrap(true)
+	q:Hide()
 end
 
 -- [[ the tab ]]
+local function setView(p, view)
+	X.S().craftView = view
+	local queue = view == "queue"
+	for _, f in ipairs(p.recipeParts) do f:SetShown(not queue) end
+	p.queue:SetShown(queue)
+	p.viewRecipes:SetSelected(not queue)
+	p.viewQueue:SetSelected(queue)
+end
+
 local function refresh(p)
+	local queue = X.S().craftView == "queue"
+	if (p.queue:IsShown() and true or false) ~= queue then setView(p, queue and "queue" or "recipes") end
+	p.viewQueue:SetLabel("Queue (" .. X.QueueCount() .. ")")
+	if queue then
+		refreshQueue(p)
+		return
+	end
 	p.mine:SetChecked(mineOn())
 	p.prof:SetText(X.S().craftProf or "All professions")
 	local list = rows()
@@ -132,15 +362,17 @@ local function refresh(p)
 end
 
 local function build(p)
-	p.mine = K.Check(p, "Only recipes my characters know", function(on)
+	p.recipeParts = {}
+	local function part(f) p.recipeParts[#p.recipeParts + 1] = f return f end
+	p.mine = part(K.Check(p, "Only recipes my characters know", function(on)
 		X.S().craftMine = on
 		dirty = true
 		refresh(p)
-	end)
+	end))
 	p.mine:SetPoint("TOPLEFT", 0, 0)
-	local pl = K.Label(p, "Profession:")
+	local pl = part(K.Label(p, "Profession:"))
 	pl:SetPoint("TOPLEFT", 280, -5)
-	p.prof = K.Button(p, "All professions", 170, 22, function(self)
+	p.prof = part(K.Button(p, "All professions", 170, 22, function(self)
 		local items = {{text = "All professions", checked = X.S().craftProf == nil, func = function()
 			X.S().craftProf = nil
 			dirty = true
@@ -154,24 +386,37 @@ local function build(p)
 			end}
 		end
 		K.Menu(self, items)
-	end)
+	end))
 	p.prof:SetPoint("TOPLEFT", 345, 0)
-	p.count = K.Label(p, "", "GameFontDisableSmall", "RIGHT")
+	-- the two views
+	p.viewRecipes = K.Flat(p, 90, 22)
+	p.viewRecipes:SetPoint("TOPLEFT", 560, 0)
+	p.viewRecipes:SetLabel("Recipes")
+	p.viewRecipes.label:SetJustifyH("CENTER")
+	p.viewRecipes:SetScript("OnClick", function() setView(p, "recipes") refresh(p) end)
+	p.viewQueue = K.Flat(p, 110, 22)
+	p.viewQueue:SetPoint("TOPLEFT", 654, 0)
+	p.viewQueue:SetLabel("Queue")
+	p.viewQueue.label:SetJustifyH("CENTER")
+	p.viewQueue:SetScript("OnClick", function() setView(p, "queue") refresh(p) end)
+	K.Tooltip(p.viewQueue, "Crafting queue", "What to craft: restock targets, crafts to do, the profit, the materials to buy, " ..
+		"and a Craft next button.")
+	p.count = part(K.Label(p, "", "GameFontDisableSmall", "RIGHT"))
 	p.count:SetPoint("TOPRIGHT", 0, -5)
 	p.count:SetWidth(150)
 
-	local help = K.Label(p, "Cost to make = the reagents bought the cheapest way (vendor, auction house or crafted). " ..
-		"Profit = the sale after the cut, minus that cost.", "GameFontHighlight")
+	local help = part(K.Label(p, "Cost to make = the reagents bought the cheapest way (vendor, auction house or crafted). " ..
+		"Profit = the sale after the cut, minus that cost.", "GameFontHighlight"))
 	help:SetPoint("TOPLEFT", 0, -28)
 	help:SetWidth(W)
 	help:SetWordWrap(false)
-	local help2 = K.Label(p, "|cff999999Recipes are learned when you open a profession window (yours or a linked one).  " ..
-		"Grey ? = a reagent has no price yet (cost too low).  Right click: menu.|r")
+	local help2 = part(K.Label(p, "|cff999999Recipes are learned when you open a profession window (yours or a linked one).  " ..
+		"Grey ? = a reagent has no price yet (cost too low).  Green Q = in the queue.  Right click: menu.|r"))
 	help2:SetPoint("TOPLEFT", 0, -46)
 	help2:SetWidth(W)
 	help2:SetWordWrap(false)
 
-	p.list = K.Table(p, W, LIST_H, COLUMNS, function(row, button, rowFrame)
+	p.list = part(K.Table(p, W, LIST_H, COLUMNS, function(row, button, rowFrame)
 		if button == "RightButton" then
 			UI.ItemMenu(rowFrame, row.key)
 		else
@@ -179,7 +424,7 @@ local function build(p)
 			p.list:Refresh()
 			showDetail(p)
 		end
-	end)
+	end))
 	p.list:SetPoint("TOPLEFT", 0, -TOP)
 	-- the chosen recipe stays marked
 	local baseRefresh = p.list.Refresh
@@ -192,31 +437,62 @@ local function build(p)
 	end
 
 	-- the breakdown under the list
-	local d = K.Panel(p, W, DETAIL_H, {0, 0, 0, 0.25})
+	local d = part(K.Panel(p, W, DETAIL_H, {0, 0, 0, 0.25}))
 	d:SetPoint("TOPLEFT", 0, -(TOP + LIST_H + 8))
 	p.detail = d
 	d.title = K.Label(d, "", "GameFontHighlight")
 	d.title:SetPoint("TOPLEFT", 10, -9)
-	d.title:SetWidth(W - 280)
+	d.title:SetWidth(W - 540)
 	d.title:SetWordWrap(false)
 	d.summary = K.Label(d, "")
-	d.summary:SetPoint("TOPLEFT", 10, -28)
+	d.summary:SetPoint("TOPLEFT", 10, -32)
 	d.summary:SetWidth(W - 20)
 	d.summary:SetWordWrap(false)
 	d.open = K.Button(d, "Open item", 100, 22, function() if d.key then UI.ShowItem(d.key) end end)
 	d.open:SetPoint("TOPRIGHT", -8, -6)
-	d.shop = K.Button(d, "Shopping list", 130, 22, function()
+	d.shop = K.Button(d, "Search reagents", 130, 22, function()
 		local keys = {}
-		for _, part in ipairs(d.partKeys or {}) do keys[#keys + 1] = part.key end
+		for _, pt in ipairs(d.partKeys or {}) do keys[#keys + 1] = pt.key end
 		if #keys > 0 then X.ScanItems(keys, "reagents") end
 	end)
 	d.shop:SetPoint("RIGHT", d.open, "LEFT", -6, 0)
-	K.Tooltip(d.shop, "Shopping list", "Searches every reagent of this recipe on the auction house for its live price " ..
+	K.Tooltip(d.shop, "Search reagents", "Searches every reagent of this recipe on the auction house for its live price " ..
 		"(the auction house must be open).")
-	d.parts = K.Table(d, W - 16, DETAIL_H - 64, PART_COLUMNS, function(row, button, rowFrame)
+	-- the queue: mode, number, add
+	d.add = K.Button(d, "Add to queue", 104, 22, function()
+		local n = tonumber(X.Trim(d.number:GetText()))
+		if p.rid and n then
+			X.QueueSet(p.rid, d.mode, n)
+			d.number:ClearFocus()
+		end
+	end)
+	d.add:SetPoint("RIGHT", d.shop, "LEFT", -12, 0)
+	K.Tooltip(d.add, "Add to queue", "Puts this recipe in the crafting queue (the Queue view at the top) with the mode and " ..
+		"number on the left. Already queued: changes them.")
+	d.number = K.Edit(d, 44)
+	d.number:SetPoint("RIGHT", d.add, "LEFT", -6, 0)
+	d.number:SetScript("OnEnterPressed", function() d.add:Click() end)
+	d.modeButton = K.Button(d, "Restock: keep", 104, 22, function()
+		d.mode = d.mode == "craft" and "restock" or "craft"
+		showDetail(p)
+	end)
+	d.modeButton:SetPoint("RIGHT", d.number, "LEFT", -8, 0)
+	K.Tooltip(d.modeButton, "Queue mode", "Restock: keep this many of the item (in bags, bank, mail, on the auction house " ..
+		"and on your other characters); only what is missing gets crafted.\nCraft: craft it this many times.")
+	d.mode = "restock"
+	d.parts = K.Table(d, W - 16, DETAIL_H - 68, PART_COLUMNS, function(row, button, rowFrame)
 		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
 	end)
-	d.parts:SetPoint("TOPLEFT", 8, -58)
+	d.parts:SetPoint("TOPLEFT", 8, -62)
+
+	buildQueue(p)
+	setView(p, X.S().craftView == "queue" and "queue" or "recipes")
 end
 
 UI.AddTab("craft", "Crafting", build, refresh, 4)
+
+-- the queue changed (or bags, or the profession window): the tab follows while it is shown
+X.On("XNAH_QUEUE", function()
+	local tab = UI.tabs.craft
+	if tab and tab.panel and tab.panel:IsShown() then UI.Refresh() end
+end)

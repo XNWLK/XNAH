@@ -1,4 +1,5 @@
--- The Scan & settings tab: start and watch scans, the last scans, every setting, the size of the saved data.
+-- The Scan & settings tab: start and watch scans, the last scans, guild price sharing and the price export, every
+-- setting, the size of the saved data.
 -- Also here: the minimap button, and the small XNAH bar on top of the auction house window.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
@@ -224,24 +225,99 @@ local function buildSettings(p)
 	check(30, -440, "Stack size next to the XNAH line (prices are for the whole stack)", get, set)
 end
 
+-- [[ guild price sharing and the export ]] a box under the last scans
+local function updateShareBox(p)
+	local b = p.shareBox
+	if not b or not X.ShareState then return end
+	local st = X.ShareState()
+	b.check:SetChecked(st.on)
+	local who
+	if not st.on then
+		who = "|cff999999Sharing is off: nothing is sent or taken.|r"
+	elseif not st.inGuild then
+		who = "|cff999999You are not in a guild: sharing waits until you are.|r"
+	elseif st.peers == 0 then
+		who = "Guild members with XNAH: |cff999999none seen yet|r"
+	else
+		local names = table.concat(st.names, ", ")
+		if #names > 50 then names = names:sub(1, 47) .. "..." end
+		who = "Guild members with XNAH: " .. st.peers .. "  |cff999999(" .. names .. ")|r"
+	end
+	b.peers:SetText(who)
+	b.stats:SetText("Last sent: " .. X.Ago(st.lastSent) .. "     Last received: " .. X.Ago(st.lastGot) ..
+		"     Prices received: " .. X.Num(st.got))
+	local status
+	if st.on and st.held then status = "|cffffd100Messages held: the game blocks addon messages right now (they go out later).|r"
+	elseif st.on and st.asking then status = "Getting the newest prices from " .. st.asking .. " ..."
+	elseif st.on and (st.answering or st.queued > 0) then status = "Sending prices to the guild (" .. X.Num(st.queued) .. " messages left) ..."
+	else status = "|cff999999Prices newer than yours come from guild members by themselves; yours go to them.|r" end
+	b.status:SetText(status)
+end
+
+local function buildShareBox(p)
+	local b = K.Panel(p, LEFT_W, 86, {0, 0, 0, 0.25})
+	b:SetPoint("TOPLEFT", 0, -420)
+	p.shareBox = b
+	local title = K.Label(b, "Guild price sharing", "GameFontNormal")
+	title:SetPoint("TOPLEFT", 10, -8)
+	b.check = K.Check(b, "On", function(on)
+		if X.SetShare then X.SetShare(on) else X.S().share = on end
+		updateShareBox(p)
+	end)
+	b.check:SetPoint("TOPLEFT", 150, -3)
+	K.Tooltip(b.check, "Guild price sharing", "On: XNAH users of your guild (same realm and faction) hand each other the " ..
+		"prices of their newest full scan. Only prices are sent - nothing else.")
+	b.export = K.Button(b, "Export prices", 120, 22, function(self)
+		self:SetEnabled(false)
+		X.ExportPrices(function(text, shown, total)
+			self:SetEnabled(true)
+			local note = X.Num(shown) .. " items seen in the last 3 days"
+			if total > shown then note = "the first " .. X.Num(shown) .. " of " .. X.Num(total) .. " items (at most " .. X.Num(X.EXPORT_CAP) .. ")" end
+			K.ShowText("Prices: " .. note, text)
+		end)
+	end)
+	b.export:SetPoint("TOPRIGHT", -8, -5)
+	K.Tooltip(b.export, "Export prices", "Text to copy into a spreadsheet: item ID, suffix, name, lowest price, market value, " ..
+		"listed, 7-day and 30-day average, when seen (prices in copper) - every item seen in the last 3 days.")
+	b.peers = K.Label(b, "")
+	b.peers:SetPoint("TOPLEFT", 10, -32)
+	b.peers:SetWidth(LEFT_W - 20)
+	b.peers:SetWordWrap(false)
+	b.stats = K.Label(b, "")
+	b.stats:SetPoint("TOPLEFT", 10, -50)
+	b.stats:SetWidth(LEFT_W - 20)
+	b.stats:SetWordWrap(false)
+	b.status = K.Label(b, "")
+	b.status:SetPoint("TOPLEFT", 10, -68)
+	b.status:SetWidth(LEFT_W - 20)
+	b.status:SetWordWrap(false)
+end
+
+X.On("XNAH_SHARE", function()
+	local tab = UI.tabs.scan
+	if tab and tab.panel and tab.panel:IsShown() then updateShareBox(tab.panel) end
+end)
+
 -- [[ the tab ]]
 local function refresh(p)
 	updateScanBox(p)
 	for _, f in ipairs(p.binds) do f() end
 	local scans = X.Realm().scans
 	local rows = {}
-	for i = #scans, math.max(1, #scans - 14), -1 do rows[#rows + 1] = scans[i] end
+	for i = #scans, math.max(1, #scans - 9), -1 do rows[#rows + 1] = scans[i] end
 	p.scans:SetRows(rows, "No scans on this realm yet.")
 	local items, bytes = X.DataSize()
+	updateShareBox(p)
 	p.size:SetText("Saved price data: " .. X.Num(items) .. " items (all realms), about " ..
 		X.Num(math.max(1, bytes / 1024)) .. " KB")
 end
 
 local function build(p)
 	buildScanBox(p)
-	local st = K.Label(p, "Last 15 scans on this realm", "GameFontNormal")
+	local st = K.Label(p, "Last 10 scans on this realm", "GameFontNormal")
 	st:SetPoint("TOPLEFT", 0, -192)
-	p.scans = K.Table(p, LEFT_W, 15 * 18 + 4, SCAN_COLUMNS)
+	p.scans = K.Table(p, LEFT_W, 10 * 18 + 4, SCAN_COLUMNS)
+	buildShareBox(p)
 	p.scans:SetPoint("TOPLEFT", 0, -228)
 	p.size = K.Label(p, "")
 	p.size:SetPoint("TOPLEFT", 0, -516)
@@ -260,7 +336,7 @@ local function build(p)
 	buildSettings(p)
 end
 
-UI.AddTab("scan", "Scan & settings", build, refresh, 6)
+UI.AddTab("scan", "Scan", build, refresh, 10)
 
 -- the scan box follows every step of a scan (the window's own refresh waits until the scan is quiet)
 X.On("XNAH_SCAN", function()

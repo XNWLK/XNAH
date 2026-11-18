@@ -30,6 +30,7 @@ const GUARDED = {
   ItemRefTooltip: "the tooltip of a clicked item link (a frame); compared only", UIParent: "the UI root frame",
   TooltipDataProcessor: "the game's tooltip line hooks (Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua); tested before use",
   AuctionHouseFrame: "the auction house window (Blizzard_AuctionHouseUI, load on demand); tested before use",
+  SOUNDKIT: "the game's table of sound ids (a Lua table, not on the lists); tested before use, number fallback",
 };
 const strip = src => src.replace(/--\[(=*)\[[\s\S]*?\]\1\]/g, ' ').replace(/--[^\n]*/g, ' ')
   .replace(/\[(=*)\[[\s\S]*?\]\1\]/g, m => '"' + ' '.repeat(Math.max(0, m.length - 2)) + '"');
@@ -79,7 +80,8 @@ fs.readdirSync(ADDON).filter(f => f.endsWith('.lua') && true).forEach(file => {
     'SetSeries',                                                 // XNAH's price graph (Graph.lua)
     'Cancel',                                                    // the ticker object C_Timer.NewTicker returns
     'SetHyperlink',                                              // GameTooltip: a Lua accessor of the game (not on the C list); only called behind 'if GameTooltip.SetHyperlink'
-    'SetBackdrop', 'SetBackdropColor', 'SetBackdropBorderColor']);   // from BackdropTemplate (a Lua mixin, on the Mixins list); only called behind 'if frame.SetBackdrop'
+    'SetBackdrop', 'SetBackdropColor', 'SetBackdropBorderColor',  // from BackdropTemplate (a Lua mixin, on the Mixins list); only called behind 'if frame.SetBackdrop'
+    'SetBagAndSlot']);                                           // ItemLocationMixin (a Lua mixin, on the Mixins list), made with CreateFromMixins (Post.lua)
   const ms = new Set();
   (code.match(/:([A-Za-z_]\w*)\s*\(/g) || []).forEach(c => ms.add(c.slice(1).replace(/\s*\($/, '')));
   ms.forEach(n => { if (own.has(n)) return; checked.methods++; if (!widget.has(n)) say(file, 'method :' + n + '() is not in the Forever client'); });

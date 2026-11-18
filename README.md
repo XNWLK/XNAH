@@ -23,6 +23,16 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 - **Tooltips**: lowest price, market value, averages and trend, vendor prices and crafting cost on every item, times the
   stack size in your bags.
 
+- **Sales speed**: how many of an item sell per day (estimated from full scans and your own sales) and the best hours
+  to post.
+- **Sell**: suggested prices by your rules (undercut, floor, ceiling), one post per click, a cancel scan for your
+  undercut auctions.
+- **Buy**: shopping lists with max prices, and a sniper that tells you when a watched item is listed under your price.
+- **Ledger**: your sales, purchases, expired auctions and profit, read from the auction house mails.
+- **Wealth**: net worth of all your characters with a graph, and what in your bags to sell where.
+- **Disenchant value** of gear, **market shape** (walls, reset chances, sellers), a **crafting queue**, and **guild
+  price sharing**.
+
 ## Commands
 
 | | |

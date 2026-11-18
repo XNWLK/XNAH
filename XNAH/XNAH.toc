@@ -1,17 +1,30 @@
 ## Interface: 16001
 ## Title: XNAH
-## Notes: Auction house prices: full scans, price history with graphs, trends, deals, vendor flips, crafting costs and profits, prices on every tooltip. Type /xnah
+## Notes: Auction house prices and gold making: full scans, price history with graphs, trends, deals, sales speed, posting and buying helpers, sniper, shopping lists, crafting queue, sales ledger, net worth, disenchant values, guild price sharing. Type /xnah
 ## Author: Xn
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: XNAHDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 
 Init.lua
 Data.lua
+Serialize.lua
+Comm.lua
 Scan.lua
 Vendor.lua
 Craft.lua
 Market.lua
+Ledger.lua
+Inventory.lua
+Speed.lua
+Disenchant.lua
+Shape.lua
+Buy.lua
+Post.lua
+Snipe.lua
+Shop.lua
+Queue.lua
+Share.lua
 Tooltip.lua
 Core.lua
 UIKit.lua
@@ -22,4 +35,8 @@ UIItem.lua
 UIDeals.lua
 UICraft.lua
 UITrends.lua
+UISell.lua
+UIBuy.lua
+UILedger.lua
+UIWealth.lua
 UIScan.lua

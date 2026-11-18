@@ -53,7 +53,8 @@ function UI.Refresh(now)
 	end
 	if now then run() else X.Debounce("ui", 0.2, run) end
 end
-for _, e in ipairs({"XNAH_PRICES", "XNAH_SCAN", "XNAH_RECIPES", "XNAH_WATCH", "XNAH_AH"}) do
+for _, e in ipairs({"XNAH_PRICES", "XNAH_SCAN", "XNAH_RECIPES", "XNAH_WATCH", "XNAH_AH", "XNAH_ANALYSIS", "XNAH_LEDGER",
+	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHARE", "XNAH_SHOP"}) do
 	X.On(e, function() UI.Refresh() end)
 end
 
@@ -85,16 +86,18 @@ local function build()
 	local close = K.Button(frame, "X", 24, 20, function() frame:Hide() end)
 	close:SetPoint("TOPRIGHT", -6, -6)
 
-	local x = 10
+	-- tabs share the width of the window
+	local x, n = 10, #UI.order
+	local tw = math.floor((W - 20 - 3 * (n - 1)) / math.max(1, n))
 	for _, key in ipairs(UI.order) do
 		local tab = UI.tabs[key]
-		local b = K.Flat(frame, 120, 22)
+		local b = K.Flat(frame, tw, 22)
 		b:SetPoint("TOPLEFT", x, -32)
 		b:SetLabel(tab.title)
 		b.label:SetJustifyH("CENTER")
 		b:SetScript("OnClick", function() selectTab(key) end)
 		tab.button = b
-		x = x + 124
+		x = x + tw + 3
 	end
 	frame.content = CreateFrame("Frame", nil, frame)
 	frame.content:SetPoint("TOPLEFT", 10, -60)

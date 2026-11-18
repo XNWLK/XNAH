@@ -178,6 +178,9 @@ function W.defaultItems()
 end
 
 -- [[ the world for one scene ]] W.reset() = nothing loaded yet; W.login() loads the addon
+-- extension points for tools/world-*.lua: W.onReset fns run at the end of W.reset(); W.onEnv fns get the new
+-- addon environment (add game functions to it) at the end of every login
+W.onReset, W.onEnv = W.onReset or {}, W.onEnv or {}
 function W.reset()
 	W.NOW = 1000           -- GetTime()
 	W.timers, W.seq, W.gen = {}, 0, (W.gen or 0) + 1
@@ -210,6 +213,8 @@ function W.reset()
 	W.saved = nil
 	W.env = nil
 	W.X = nil
+	-- extensions (tools/world-*.lua) reset their own state here
+	for _, fn in ipairs(W.onReset) do fn() end
 	W.market = nil
 	W.loadRequests = 0
 end
@@ -923,6 +928,7 @@ local function makeEnv()
 		GetBaseProfessionInfo = function() return {professionName = W.prof and W.prof.name or "", professionID = 1} end,
 		GetChildProfessionInfo = function() return {professionName = W.prof and W.prof.name or ""} end,
 	}
+	for _, fn in ipairs(W.onEnv) do fn(env) end
 	return env
 end
 

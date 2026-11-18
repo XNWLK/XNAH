@@ -102,7 +102,7 @@ end
 -- [[ the tab ]]
 local function money(v, stale) return UI.MoneyCell(v, stale) end
 local COLUMNS = {
-	{"Item", 330, "LEFT", text = function(r) return UI.ItemCell(r.key) end, sort = function(r) return r.name end, desc = false},
+	{"Item", 290, "LEFT", text = function(r) return UI.ItemCell(r.key) end, sort = function(r) return r.name end, desc = false},
 	{"Lowest", 90, "RIGHT", text = function(r)
 		if r.qty == 0 then return GREY .. "none|r" end
 		return money(r.min, r.stale)
@@ -117,11 +117,19 @@ local COLUMNS = {
 		if r.qty == nil then return "|cff666666-|r" end
 		return (r.qty == 0 and GREY or "") .. X.Num(r.qty) .. (r.qty == 0 and "|r" or "")
 	end, sort = function(r) return r.qty end},
-	{"Vendor pays", 106, "RIGHT", text = function(r)
+	{"Vendor pays", 90, "RIGHT", text = function(r)
 		local v = r.vsell or X.VendorSell(r.id)
 		if v then r.vsell = v end
 		return v and X.Money(v, true) or "|cff666666-|r"
 	end, sort = function(r) return r.vsell end},
+	-- sells per day (estimate; filled in as rows are shown or sorted)
+	{"Sold/day", 64, "RIGHT", text = function(r)
+		if r.rate == nil then r.rate = X.SaleRate and X.SaleRate(r.key) or false end
+		return r.rate and X.Rate(r.rate) or "|cff666666-|r"
+	end, sort = function(r)
+		if r.rate == nil then r.rate = X.SaleRate and X.SaleRate(r.key) or false end
+		return r.rate or nil
+	end},
 	{"Seen", 80, "RIGHT", text = function(r)
 		if not r.t then return GREY .. "never|r" end
 		return (r.stale and "|cff777777" or "") .. X.Ago(r.t) .. (r.stale and "|r" or "")

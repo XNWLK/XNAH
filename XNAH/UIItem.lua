@@ -10,8 +10,8 @@ local NONE = "|cff666666-|r"
 local RANGES = {{"1 day", 86400}, {"7 days", 7 * 86400}, {"30 days", 30 * 86400}, {"90 days", 90 * 86400}, {"All", nil}}
 local rangeIdx = 3
 local HOW = {vendor = "Vendor", ah = "Auction", craft = "Craft"}
-local NUMBERS = 16  -- rows in the number grid
-local PROFITS = 4   -- slots in the profit box
+local NUMBERS = 18  -- rows in the number grid
+local PROFITS = 4   -- slots in the profit box (the best four ways)
 local PARTS = 8     -- reagent rows
 local USED = 8      -- "used in" rows
 
@@ -69,7 +69,7 @@ local function build(panel)
 	panel.name:SetWordWrap(false)
 	panel.sub = K.Label(panel, "", "GameFontDisableSmall")
 	panel.sub:SetPoint("TOPLEFT", 48, -27)
-	panel.sub:SetWidth(380)
+	panel.sub:SetWidth(300)
 	panel.sub:SetWordWrap(false)
 
 	local back = K.Button(panel, "Back", 60, 22, function()
@@ -124,6 +124,33 @@ local function build(panel)
 		if key then X.SetWatched(key, not X.Watched(key)) end
 	end)
 	panel.star:SetPoint("RIGHT", panel.ah, "LEFT", -6, 0)
+	-- highest price to buy at (the sniper on the Buy tab watches for it)
+	panel.max = K.Button(panel, "Max price", 96, 22, function()
+		local key = UI.itemKey
+		if not key then return end
+		local cur = X.WatchMax(key)
+		K.Ask("Highest price to buy " .. X.ItemName(key) .. " at (each; empty = none)", cur and X.MoneyPlain(cur) or "", false, function(text)
+			local c = X.ParseMoney(text)
+			if not X.Watched(key) then X.SetWatched(key, true) end
+			X.SetWatchMax(key, c)
+		end, "Set")
+	end)
+	panel.max:SetPoint("RIGHT", panel.star, "LEFT", -6, 0)
+	K.Tooltip(panel.max, "Max price", "Puts the item on the watch list with the highest price you would pay for one. " ..
+		"With the sniper on (Buy tab) XNAH tells you when one is listed at or under it.")
+	panel.shop = K.Button(panel, "Shopping list", 104, 22, function()
+		local key = UI.itemKey
+		if not key or not X.ShopAdd then return end
+		local price = X.Price(key)
+		K.Ask2("Add " .. X.ItemName(key) .. " to a shopping list", {"How many", "20"},
+			{"Max price each", price and X.MoneyPlain(math.floor(price * 1.1)) or "", "List: " .. ((X.ShopLists and X.ShopLists()[1]) or "Shopping")},
+			function(qty, max)
+				local list = (X.ShopLists and X.ShopLists()[1]) or "Shopping"
+				X.ShopAdd(list, key, tonumber(qty) or 1, X.ParseMoney(max))
+				X.Print("added to the shopping list \"" .. list .. "\"")
+			end, "Add")
+	end)
+	panel.shop:SetPoint("RIGHT", panel.max, "LEFT", -6, 0)
 
 	panel.hint = K.Label(panel, "Pick an item on the Market tab or type a name above.", "GameFontDisable", "CENTER")
 	panel.hint:SetPoint("CENTER", 0, 20)
@@ -145,11 +172,11 @@ local function build(panel)
 	panel.numL, panel.numR = {}, {}
 	for i = 1, NUMBERS do
 		local l = K.Label(nums, "", "GameFontHighlightSmall")
-		l:SetPoint("TOPLEFT", 8, -8 - (i - 1) * 16.5)
+		l:SetPoint("TOPLEFT", 8, -7 - (i - 1) * 15)
 		l:SetWidth(128)
 		l:SetWordWrap(false)
 		local r = K.Label(nums, "", "GameFontHighlightSmall")
-		r:SetPoint("TOPLEFT", 138, -8 - (i - 1) * 16.5)
+		r:SetPoint("TOPLEFT", 138, -7 - (i - 1) * 15)
 		r:SetWidth(156)
 		r:SetWordWrap(false)
 		panel.numL[i], panel.numR[i] = l, r
@@ -252,6 +279,16 @@ local function fillNumbers(panel, key, s)
 	local cur, st = s.cur, s.st or {}
 	local stale = not s.fresh
 	local info = s.vbuyInfo
+	-- "4 sellers, wall 200 at 1g 2s"
+	local shape = NONE
+	if s.shape then
+		local parts = {}
+		if s.shape.sellers then parts[#parts + 1] = X.Num(s.shape.sellers) .. GREY .. " sellers|r" end
+		if s.shape.wall then
+			parts[#parts + 1] = GREY .. "wall |r" .. X.Num(s.shape.wall.units or 0) .. GREY .. " at |r" .. M(s.shape.wall.price)
+		end
+		if #parts > 0 then shape = table.concat(parts, GREY .. ", |r") end
+	end
 	local rows = {
 		{"Lowest now", cur and ((cur.qty or 0) == 0 and GREY .. "none listed|r" or UI.MoneyCell(cur.min, stale)) or NONE},
 		{"Market value", cur and UI.MoneyCell(cur.mkt, stale) or NONE},
@@ -264,12 +301,17 @@ local function fillNumbers(panel, key, s)
 		{"Trend", st.trend and (X.Arrow(st.trend) .. " " .. X.Pct(st.trend) .. GREY .. " a week|r") or NONE},
 		{"Day-to-day spread", st.vol and string.format("%.0f%%", st.vol) or NONE},
 		{"Supply vs 7 days", st.supply and (X.Pct(st.supply, true) .. GREY .. " (usually " .. X.Num(st.qty7) .. ")|r") or NONE},
+		{"Sells per day", s.rate and (GREY .. "about |r" .. X.Rate(s.rate) .. (s.rateHours and (GREY .. "  (" .. X.Num(s.rateHours) .. " h seen)|r") or "")) or NONE},
 		{"Vendor pays", M(s.vsell)},
-		{"Vendor sells at", s.vbuy and (M(s.vbuy) .. (info and info.lim and (GREY .. "  limited|r") or "")) or NONE},
-		{"   sold by", info and info.from and (GREY .. info.from .. "|r") or NONE},
+		{"Vendor sells at", s.vbuy and (M(s.vbuy) .. (info and info.lim and (GREY .. " limited|r") or "") ..
+			(info and info.from and (GREY .. "  " .. info.from .. "|r") or "")) or NONE},
+		{"Disenchant value", s.de and M(s.de) or NONE},
 		{"After the " .. X.S().cut .. "% cut", M(s.sell)},
-		{"First seen", st.first and X.Date(st.first * 86400 + 43200, "%b %d %Y") or NONE},
-		{"Last seen", cur and cur.t and (X.Date(cur.t, "%b %d %H:%M") .. GREY .. "  " .. X.Ago(cur.t) .. "|r") or NONE},
+		{"Your trades", s.ledger and (((s.ledger.sold or 0) > 0 or (s.ledger.bought or 0) > 0) and
+			(GREY .. "sold |r" .. X.Num(s.ledger.sold or 0) .. GREY .. ", bought |r" .. X.Num(s.ledger.bought or 0) ..
+			(s.ledger.sellThrough and (GREY .. ", " .. string.format("%.0f%%", s.ledger.sellThrough * 100) .. " sell|r") or "")) or NONE) or NONE},
+		{"Market shape", shape},
+		{"Seen", cur and cur.t and (X.Ago(cur.t) .. GREY .. (st.first and ("  (first " .. X.Date(st.first * 86400 + 43200, "%b %d") .. ")") or "") .. "|r") or NONE},
 	}
 	for i = 1, NUMBERS do
 		local r = rows[i]
@@ -300,6 +342,17 @@ local function fillProfits(panel, s)
 		list[#list + 1] = {s.craftProfit, "Craft it and sell it", "The reagents for one cost " .. M(s.craft) .. GREY ..
 			" (see Crafting); it brings " .. M(s.sell) .. GREY .. " after the cut" .. old .. "."}
 	end
+	if s.de and cur and cur.min and (cur.qty or 0) > 0 and s.de > cur.min then
+		list[#list + 1] = {s.de - cur.min, "Buy it and disenchant it", "Listed for " .. M(cur.min) .. GREY ..
+			"; disenchanting gives materials worth " .. M(s.de) .. GREY .. " on average (needs an enchanter)" .. old .. "."}
+	end
+	if s.shape and s.shape.reset and (s.shape.reset.profit or 0) > 0 then
+		local r = s.shape.reset
+		list[#list + 1] = {r.profit / math.max(1, r.units or 1), "Buy the cheap ones, relist", "Buying all " .. X.Num(r.units or 0) ..
+			" listed under the usual price costs " .. M(r.cost) .. GREY .. "; sold again at the usual price they bring " ..
+			M(r.profit) .. GREY .. " profit in all (if they sell)" .. old .. "."}
+	end
+	table.sort(list, function(a, b) return a[1] > b[1] end)
 	local y = -24
 	for i = 1, PROFITS do
 		local slot, e = panel.prof[i], list[i]
@@ -431,10 +484,16 @@ refresh = function(panel)
 	panel.name:SetShown(has)
 	panel.sub:SetShown(has)
 	panel.star:SetShown(has)
+	panel.max:SetShown(has)
+	panel.shop:SetShown(has and X.ShopAdd ~= nil)
 	panel.ah:SetShown(has and X.ahOpen == true)
 	if not has then return end
 
 	local s = X.Summary(key)
+	if X.SaleRate then s.rate, s.rateHours = X.SaleRate(key) end
+	if X.DEValue then s.de = X.DEValue(key) end
+	if X.LedgerItem then s.ledger = X.LedgerItem(key) end
+	if X.Shape then s.shape = X.Shape(key) end
 	local id = s.id
 	local tex = id and X.Try(C_Item.GetItemIconByID, id)
 	panel.icon.tex:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -448,6 +507,8 @@ refresh = function(panel)
 	end
 	panel.sub:SetText(GREY .. sub .. "|r")
 	panel.star:SetText(X.Watched(key) and "Remove from watch list" or "Add to watch list")
+	local wmax = X.WatchMax(key)
+	panel.max:SetText(wmax and ("Max " .. X.MoneyPlain(wmax)) or "Max price")
 	panel.ah:SetEnabled(X.scan and X.scan.state == "idle")
 
 	fillNumbers(panel, key, s)

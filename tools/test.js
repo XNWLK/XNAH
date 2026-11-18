@@ -49,6 +49,8 @@ function HOSTUP.walk()
   for _, f in ipairs(W.frames or {}) do visit(f.scripts, 0) end
 end`, '=host');
 run(fs.readFileSync(path.join(__dirname, 'world.lua'), 'utf8'), '@world.lua');
+// extensions of the stand-in world, one per area (each adds game functions through W.onEnv / W.onReset)
+for (const f of fs.readdirSync(__dirname).filter(f => /^world-.*.lua$/.test(f)).sort()) run(fs.readFileSync(path.join(__dirname, f), 'utf8'), '@' + f);
 for (const f of files) {
   const p = path.join(ROOT, 'XNAH', f);
   setString('__src', fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');

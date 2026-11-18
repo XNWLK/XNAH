@@ -45,6 +45,21 @@ function X.TooltipLines(key, count)
 			end
 			add("  30-day average", s.st.avg30)
 		end
+		-- how many sell a day (an estimate from comparing full scans, or your own sales)
+		if S.tipSpeed and X.SaleRate then
+			local rate = X.SaleRate(key)
+			if rate then lines[#lines + 1] = {"  Sells per day", GREY .. "about|r " .. X.Rate(rate)} end
+		end
+	end
+	if S.tipLedger and X.LedgerItem then
+		local l = X.LedgerItem(key)
+		if l and ((l.sold or 0) > 0 or (l.bought or 0) > 0) then
+			if #lines == 0 then lines[#lines + 1] = {head, ""} end
+			local parts = {}
+			if (l.sold or 0) > 0 then parts[#parts + 1] = "sold " .. X.Num(l.sold) .. (l.avgSell and (" at " .. X.MoneyPlain(l.avgSell)) or "") end
+			if (l.bought or 0) > 0 then parts[#parts + 1] = "bought " .. X.Num(l.bought) .. (l.avgBuy and (" at " .. X.MoneyPlain(l.avgBuy)) or "") end
+			lines[#lines + 1] = {"  You", GREY .. table.concat(parts, ", ") .. "|r"}
+		end
 	end
 	if S.tipVendor then
 		if s.vsell then
@@ -61,7 +76,25 @@ function X.TooltipLines(key, count)
 		local profit = s.craftProfit and ("  " .. (s.craftProfit >= 0 and "|cff4ade80" or "|cfff87171") .. X.MoneyPlain(s.craftProfit * count) .. "|r") or ""
 		lines[#lines + 1] = {"  Crafting cost", X.Money(s.craft * count, true) .. profit}
 	end
+	if S.tipDE and X.DEValue then
+		local de = X.DEValue(key)
+		if de then
+			if #lines == 0 then lines[#lines + 1] = {head, ""} end
+			add("  Disenchant value", de)
+		end
+	end
 	return lines
+end
+X.Default("tipSpeed", true)
+X.Default("tipLedger", true)
+X.Default("tipDE", true)
+
+-- "3.5", "0.4", "12" (units per day)
+function X.Rate(r)
+	if not r then return "-" end
+	if r >= 10 then return X.Num(r) end
+	if r >= 1 then return string.format("%.1f", r) end
+	return string.format("%.2f", r)
 end
 
 local function onItem(tooltip, data)
