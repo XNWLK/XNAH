@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.2
+
+- Smoother game, especially with several game windows open: the listings of the last full scan (kept for sales speed
+  and strategies) are packed small a few seconds after the scan, and item names and rarity are checked with the game
+  once per item instead of at every login.
+- New /xnah perf: how much memory XNAH uses, what it is doing, and how much time it took in the last minute.
+
 ## v0.3.1
 
 - Fixed: on WoW Forever the game reports the server shard you landed on as the realm name, and it changes between

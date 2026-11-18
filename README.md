@@ -45,6 +45,7 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 | `/xnah <item name or link>` | show that item |
 | `/xnah raw 5` | print the first auctions of the last full scan as the game gives them |
 | `/xnah guide` | the guide to every page |
+| `/xnah perf` | how much memory and time XNAH uses |
 | `/xnah help` | all commands |
 
 ## Several WoW accounts
