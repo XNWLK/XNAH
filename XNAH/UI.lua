@@ -1,0 +1,263 @@
+-- The XNAH window: tabs (Market, Item, Deals, Crafting, Trends, Scan), shared pieces for them (a sortable table, item
+-- cells, a yes/no question), the key binding.
+-- Each tab lives in its own file and registers itself with UI.AddTab; this file is loaded before them.
+local ADDON, X = ...
+local K = X.K
+local UI = {tabs = {}, order = {}}
+X.UI = UI
+
+local W, H = 960, 620
+UI.W, UI.H = W - 20, H - 70 -- content area (940 x 550)
+
+-- a tab: build(panel) once, refresh(panel) whenever something changed while it is shown
+function UI.AddTab(key, title, build, refresh, order)
+	UI.tabs[key] = {key = key, title = title, build = build, refresh = refresh, n = order or (#UI.order + 1)}
+	UI.order[#UI.order + 1] = key
+	table.sort(UI.order, function(a, b) return UI.tabs[a].n < UI.tabs[b].n end)
+end
+
+local frame
+local function selectTab(key)
+	if not UI.tabs[key] then key = UI.order[1] end
+	UI.current = key
+	for _, k in ipairs(UI.order) do
+		local tab = UI.tabs[k]
+		local on = k == key
+		if tab.button then tab.button:SetSelected(on) end
+		if on and not tab.panel then
+			tab.panel = CreateFrame("Frame", nil, frame.content)
+			tab.panel:SetAllPoints(frame.content)
+			local ok, err = pcall(tab.build, tab.panel)
+			if not ok then X.OnError(err) end
+		end
+		if tab.panel then tab.panel:SetShown(on) end
+	end
+	X.S().tab = key
+	UI.Refresh(true)
+end
+UI.Select = selectTab
+
+function UI.Refresh(now)
+	if not frame or not frame:IsShown() then return end
+	local function run()
+		local items = 0
+		for _ in pairs(X.Items()) do items = items + 1 end
+		local last = X.Realm().lastFull
+		frame.title:SetText("|cffe6b422XNAH|r  |cff999999" .. (X.realmKey or X.RealmKey()) .. "  -  " .. X.Num(items) ..
+			" items  -  full scan " .. X.Ago(last) .. "|r")
+		local tab = UI.tabs[UI.current]
+		if tab and tab.panel and tab.refresh then
+			local ok, err = pcall(tab.refresh, tab.panel)
+			if not ok then X.OnError(err) end
+		end
+	end
+	if now then run() else X.Debounce("ui", 0.2, run) end
+end
+for _, e in ipairs({"XNAH_PRICES", "XNAH_SCAN", "XNAH_RECIPES", "XNAH_WATCH", "XNAH_AH"}) do
+	X.On(e, function() UI.Refresh() end)
+end
+
+local function build()
+	frame = CreateFrame("Frame", "XNAHFrame", UIParent, "BackdropTemplate")
+	frame:SetSize(W, H)
+	frame:SetPoint("CENTER")
+	frame:SetFrameStrata("HIGH")
+	frame:SetToplevel(true)
+	K.Backdrop(frame, K.colors.bg)
+	frame:EnableMouse(true)
+	frame:SetMovable(true)
+	frame:SetClampedToScreen(true)
+	frame:RegisterForDrag("LeftButton")
+	frame:SetScript("OnDragStart", frame.StartMoving)
+	frame:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local p, _, rp, x, y = self:GetPoint()
+		X.S().window = {p, rp, x, y}
+	end)
+	local pos = X.S().window
+	if pos and pos[1] then frame:ClearAllPoints() frame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4]) end
+	tinsert(UISpecialFrames, "XNAHFrame")
+	frame:SetScript("OnHide", function() K.CloseMenu() end)
+	frame:SetScript("OnShow", function() UI.Refresh(true) end)
+
+	frame.title = K.Label(frame, "", "GameFontNormal")
+	frame.title:SetPoint("TOPLEFT", 12, -10)
+	local close = K.Button(frame, "X", 24, 20, function() frame:Hide() end)
+	close:SetPoint("TOPRIGHT", -6, -6)
+
+	local x = 10
+	for _, key in ipairs(UI.order) do
+		local tab = UI.tabs[key]
+		local b = K.Flat(frame, 120, 22)
+		b:SetPoint("TOPLEFT", x, -32)
+		b:SetLabel(tab.title)
+		b.label:SetJustifyH("CENTER")
+		b:SetScript("OnClick", function() selectTab(key) end)
+		tab.button = b
+		x = x + 124
+	end
+	frame.content = CreateFrame("Frame", nil, frame)
+	frame.content:SetPoint("TOPLEFT", 10, -60)
+	frame.content:SetPoint("BOTTOMRIGHT", -10, 10)
+	frame:Hide()
+end
+UI.Frame = function() return frame end
+
+function UI.Toggle(tab)
+	if not frame then build() end
+	if frame:IsShown() and (not tab or tab == UI.current) then frame:Hide() return end
+	frame:Show()
+	selectTab(tab or UI.current or X.S().tab or "market")
+end
+function UI.Open(tab)
+	if not frame then build() end
+	frame:Show()
+	selectTab(tab or UI.current or X.S().tab or "market")
+end
+X.Toggle = function() UI.Toggle() end
+
+-- [[ shared bits for the tabs ]]
+-- open the item page for an item key ("2589" or "15210:-19")
+function UI.ShowItem(key)
+	if not key then return end
+	UI.itemKey = key
+	UI.history = UI.history or {}
+	if UI.history[#UI.history] ~= key then UI.history[#UI.history + 1] = key end
+	UI.Open("item")
+end
+X.ShowItem = UI.ShowItem
+
+-- "[icon] Name" in the item's quality colour; a star in front when watched
+function UI.ItemCell(key, size)
+	local star = X.Watched(key) and "|cffffd100*|r " or ""
+	return star .. X.ItemIcon(X.KeyID(key), size or 14) .. " " .. X.ItemText(key)
+end
+-- money cell; dimmed when the price is old
+function UI.MoneyCell(copper, stale)
+	if copper == nil then return "|cff666666-|r" end
+	local text = X.Money(copper, true)
+	if stale then text = "|cff777777" .. X.MoneyPlain(copper) .. "|r" end
+	return text
+end
+-- shows the game's tooltip for an item next to a frame (with XNAH's lines)
+function UI.ItemTooltip(owner, key)
+	local id = X.KeyID(key)
+	if not id then return end
+	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	local suffix = tostring(key):match(":(%-?%d+)$")
+	if GameTooltip.SetHyperlink then
+		GameTooltip:SetHyperlink("item:" .. id .. (suffix and ("::::::" .. suffix) or ""))
+	end
+	GameTooltip:Show()
+end
+-- right-click menu on an item row: open, watch / unwatch, search on the auction house
+function UI.ItemMenu(anchor, key)
+	local items = {
+		{text = X.ItemText(key), isTitle = true},
+		{text = "Open item page", func = function() UI.ShowItem(key) end},
+		{text = X.Watched(key) and "Remove from watch list" or "Add to watch list", func = function() X.SetWatched(key, not X.Watched(key)) end},
+	}
+	if X.ahOpen then
+		items[#items + 1] = {text = "Search on the auction house now", func = function() X.ScanItems({key}, "one item") end}
+	end
+	K.Menu(anchor, items)
+end
+
+-- [[ sortable table ]] K.Table(parent, w, h, columns, onClick)
+-- columns = {{title, width, justify, text = function(row) -> string, sort = function(row) -> number or string}, ...}
+-- tbl:SetRows(rows, emptyText); clicking a header sorts by it (again: the other way); clicking a row: onClick(row, button,
+-- rowFrame). Rows with row.key get the item tooltip on hover.
+function K.Table(parent, w, h, columns, onClick)
+	local cols = {}
+	for i, c in ipairs(columns) do cols[i] = {c[1], c[2], c[3]} end
+	local tbl
+	local list = K.List(parent, w, h, 18, function(rowFrame, row)
+		local texts = {}
+		for i, c in ipairs(columns) do
+			local ok, t = pcall(c.text, row)
+			texts[i] = ok and t or "?"
+		end
+		rowFrame:SetCols(unpack(texts))
+		rowFrame:SetScript("OnClick", function(self, button) if onClick then onClick(row, button, self) end end)
+		if row.key then
+			rowFrame:SetScript("OnEnter", function(self) UI.ItemTooltip(self, row.key) end)
+			rowFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		else
+			rowFrame:SetScript("OnEnter", nil)
+			rowFrame:SetScript("OnLeave", nil)
+		end
+	end, cols)
+	tbl = list
+	tbl.columns = columns
+	tbl.sortCol, tbl.sortDesc = nil, true
+	-- headers become buttons
+	for i, hdr in ipairs(list.headers or {}) do
+		local c = columns[i]
+		if c.sort then
+			local b = CreateFrame("Button", nil, list)
+			b:SetAllPoints(hdr)
+			b:SetScript("OnClick", function()
+				if tbl.sortCol == i then tbl.sortDesc = not tbl.sortDesc else tbl.sortCol, tbl.sortDesc = i, c.desc ~= false end
+				tbl:Sort()
+			end)
+		end
+	end
+	function tbl:Sort()
+		local c = self.sortCol and self.columns[self.sortCol]
+		for i, hdr in ipairs(self.headers or {}) do
+			local mark = (i == self.sortCol) and (self.sortDesc and " v" or " ^") or ""
+			hdr:SetText("|cff999999" .. self.columns[i][1] .. mark .. "|r")
+		end
+		if c and c.sort then
+			local desc = self.sortDesc
+			local vals = {}
+			for _, row in ipairs(self.items) do
+				local ok, v = pcall(c.sort, row)
+				vals[row] = ok and v or nil
+			end
+			table.sort(self.items, function(a, b)
+				local va, vb = vals[a], vals[b]
+				if va == nil and vb == nil then return false end
+				if va == nil then return false end
+				if vb == nil then return true end
+				if type(va) ~= type(vb) then va, vb = tostring(va), tostring(vb) end
+				if desc then return va > vb end
+				return va < vb
+			end)
+		end
+		self:Refresh()
+	end
+	function tbl:SetRows(rows, emptyText)
+		self.items = rows or {}
+		self.empty:SetText(emptyText or "")
+		self:Sort()
+	end
+	-- sort by column i at the start
+	function tbl:SortBy(i, desc)
+		self.sortCol, self.sortDesc = i, desc ~= false
+	end
+	return tbl
+end
+
+-- a yes / no question
+local confirm
+function X.Confirm(text, onYes)
+	if not confirm then
+		confirm = K.Panel(UIParent, 380, 96, K.colors.bg)
+		confirm:SetFrameStrata("DIALOG")
+		confirm:SetPoint("CENTER", 0, 140)
+		confirm:EnableMouse(true)
+		confirm.text = K.Label(confirm, "", "GameFontHighlight", "CENTER")
+		confirm.text:SetPoint("TOP", 0, -14)
+		confirm.text:SetWidth(350)
+		confirm.yes = K.Button(confirm, "Yes", 90, 22)
+		confirm.yes:SetPoint("BOTTOMRIGHT", confirm, "BOTTOM", -6, 12)
+		confirm.no = K.Button(confirm, "No", 90, 22, function() confirm:Hide() end)
+		confirm.no:SetPoint("BOTTOMLEFT", confirm, "BOTTOM", 6, 12)
+		tinsert(UISpecialFrames, "XNAHConfirm")
+		_G.XNAHConfirm = confirm
+	end
+	confirm.text:SetText(text)
+	confirm.yes:SetScript("OnClick", function() confirm:Hide() onYes() end)
+	confirm:Show()
+end

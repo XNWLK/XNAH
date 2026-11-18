@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="XNAH_TOGGLE" header="XNAH" category="ADDONS">
+		XNAH_Toggle()
+	</Binding>
+</Bindings>
