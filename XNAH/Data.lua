@@ -297,6 +297,28 @@ local function prune(s, limit)
 	return s
 end
 
+-- [[ crazy prices ]] (Xn, 2026-11-19: Solid Stone at 1s 75c had one scan at 1g, which made its usual price 11s 61c and
+-- every normal listing look like a bargain.) A price more than outlierFactor (4) times above or below the item's typical
+-- price - the middle value (median) of its recent prices - is left out of its history, its averages and its graph.
+X.Default("outlierFactor", 4)
+local function median(list)
+	local n = #list
+	if n == 0 then return nil end
+	local c = {}
+	for i = 1, n do c[i] = list[i] end
+	table.sort(c)
+	if n % 2 == 1 then return c[(n + 1) / 2] end
+	return (c[n / 2] + c[n / 2 + 1]) / 2
+end
+X.Median = median
+-- true when v is far off the typical price m
+local function crazy(v, m)
+	if not v or not m or m <= 0 or v <= 0 then return false end
+	local f = X.S().outlierFactor or 4
+	return v > m * f or v < m / f
+end
+X.CrazyPrice = crazy
+
 -- [[ recording prices ]]
 -- one observation of an item: min (lowest price of one), mkt (market value of one), qty (how many listed),
 -- auc (number of auctions). full = the whole auction house was seen, so an item that is missing is sold out.
@@ -307,6 +329,31 @@ function X.Record(key, t, min, mkt, qty, auc, name, quality)
 	if it.cur and it.cur.t and it.cur.t > t then return it end -- an older observation never replaces a newer one
 	it.cur = {t = t, min = min, mkt = mkt, qty = qty, auc = auc}
 	local S = X.S()
+	-- a crazy price (far off the middle of the last scans) stays out of the history - unless 3 scans in a row say so
+	local v = mkt or min
+	if v and it.h and it.h ~= "" then
+		-- only the end of the text: the last scans (a full scan records thousands of items - no full unpacking)
+		local tailText = it.h
+		if #tailText > 400 then
+			tailText = tailText:sub(-400)
+			local cut = tailText:find(";", 1, true)
+			tailText = cut and tailText:sub(cut + 1) or tailText
+		end
+		local recent = {}
+		local pts = unpackPoints(tailText)
+		for i = #pts, math.max(1, #pts - 8), -1 do
+			local pv = pts[i][3] or pts[i][2]
+			if pv then recent[#recent + 1] = pv end
+		end
+		if #recent >= 3 and crazy(v, median(recent)) then
+			it.ox = (it.ox or 0) + 1
+			if it.ox < 3 then
+				X.statsCache[it] = nil
+				return it
+			end
+		end
+	end
+	it.ox = nil
 	-- scan point
 	local point = packPoint(math.floor(t / 60), min, mkt, qty, auc)
 	local h = it.h
@@ -455,7 +502,25 @@ function X.Stats(key)
 	local cached = X.statsCache[it]
 	if cached and cached.today == today then return cached end
 	local days = unpackPoints(it.d)
-	local s = {days = #days, first = days[1] and days[1][1], today = today}
+	-- the typical price: the middle of the last 30 days and the price now; day prices far off it are left out
+	local vals = {}
+	for i = #days, 1, -1 do
+		local p = days[i]
+		if p[1] <= today - 30 then break end
+		local v = p[3] or p[2]
+		if v then vals[#vals + 1] = v end
+	end
+	if it.cur and (it.cur.mkt or it.cur.min) then vals[#vals + 1] = it.cur.mkt or it.cur.min end
+	local typical = #vals >= 3 and median(vals) or nil
+	local dropped = 0
+	if typical then
+		local kept = {}
+		for _, p in ipairs(days) do
+			if crazy(p[3] or p[2], typical) then dropped = dropped + 1 else kept[#kept + 1] = p end
+		end
+		days = kept
+	end
+	local s = {days = #days, first = days[1] and days[1][1], today = today, typical = typical, dropped = dropped}
 	local function avg(n)
 		local sum, c = 0, 0
 		for i = #days, 1, -1 do
@@ -545,9 +610,21 @@ end
 
 -- [[ history for graphs ]] points {t (seconds), min, mkt, qty} from `from` (seconds) on; scan points where they are
 -- kept, day points (at noon) before that
-function X.History(key, from)
+function X.History(key, from, raw)
 	local it = X.Items()[key]
 	if not it then return {} end
+	local out = X.HistoryRaw(it, from)
+	if raw or #out < 3 then return out end
+	-- crazy prices left out (the middle of these points and the price now)
+	local vals = {}
+	for _, p in ipairs(out) do if p[3] or p[2] then vals[#vals + 1] = p[3] or p[2] end end
+	if it.cur and (it.cur.mkt or it.cur.min) then vals[#vals + 1] = it.cur.mkt or it.cur.min end
+	local m = median(vals)
+	local kept = {}
+	for _, p in ipairs(out) do if not crazy(p[3] or p[2], m) then kept[#kept + 1] = p end end
+	return kept
+end
+function X.HistoryRaw(it, from)
 	local out = {}
 	local scans = unpackPoints(it.h)
 	local firstScan = scans[1] and scans[1][1] * 60 or math.huge
@@ -560,6 +637,32 @@ function X.History(key, from)
 		if t >= (from or 0) then out[#out + 1] = {t, p[2], p[3], p[4]} end
 	end
 	return out
+end
+
+-- [[ items never to suggest ]] XNAHDB.ignore[key] = true (right-click an item: Never suggest buying this). Xn: grey
+-- junk gets listed at silly prices and then looks like a bargain. Buy ideas (strategies, deals, the Buy page) leave
+-- these out, and grey items too (their only real value is what a vendor pays).
+function X.Ignored(key)
+	return X.db.ignore ~= nil and X.db.ignore[tostring(key)] == true
+end
+function X.SetIgnored(key, on)
+	X.db.ignore = X.db.ignore or {}
+	X.db.ignore[tostring(key)] = on and true or nil
+	X.Fire("XNAH_IGNORE")
+	if X.StrategyUpdate then X.StrategyUpdate() end
+end
+function X.IgnoredList()
+	local out = {}
+	for key in pairs(X.db.ignore or {}) do out[#out + 1] = key end
+	table.sort(out, function(a, b) return X.ItemName(a) < X.ItemName(b) end)
+	return out
+end
+-- may XNAH suggest buying this to sell again?
+function X.BuyIdea(key, it)
+	if X.Ignored(key) then return false end
+	it = it or X.Items()[tostring(key)]
+	if it and it.q == 0 then return false end
+	return true
 end
 
 -- [[ watch list ]] XNAHDB.watch[key] = true, or {max = copper} with a highest price to buy at (sniper alerts)

@@ -857,7 +857,16 @@ local function newCtx()
 	if type(tt) == "table" and tt.hour then off = (tt.hour * 3600 + tt.min * 60 + tt.sec) - now % 86400 end
 	return {now = now, today = X.Day(now), off = off, rates = {}, scan = lastScan}
 end
-local function finish(rows)
+-- s: the strategy - buy and make ideas leave out items you never want suggested, and buy ideas grey junk (its only
+-- real value is what a vendor pays; Vendor floor is about exactly that, so it keeps them)
+local function finish(rows, s)
+	if s and s.side ~= "sell" and X.BuyIdea then
+		local kept = {}
+		for _, r in ipairs(rows) do
+			if not X.Ignored(r.key) and (s.key == "vendorfloor" or s.side ~= "buy" or X.BuyIdea(r.key)) then kept[#kept + 1] = r end
+		end
+		rows = kept
+	end
 	for _, r in ipairs(rows) do r.total = (r.profit or 0) * (r.qty or 1) end
 	table.sort(rows, function(a, b)
 		if a.total ~= b.total then return a.total > b.total end
@@ -887,7 +896,7 @@ local function runNow(s, P, ctx)
 		local ok, r = pcall(s.list, P, ctx)
 		if ok and type(r) == "table" then rows = r end
 	end
-	return finish(rows)
+	return finish(rows, s)
 end
 for _, s in ipairs(LIST) do
 	s.run = function(P) return runNow(s, P or X.StrategyParams(s.key)) end
@@ -979,7 +988,7 @@ function X.StrategyUpdate(only)
 		return li >= #listers
 	end, function()
 		local at, t = GetTime(), X.Now()
-		for _, x in ipairs(todo) do cache[x.s.key] = {rows = finish(x.rows), at = at, t = t} end
+		for _, x in ipairs(todo) do cache[x.s.key] = {rows = finish(x.rows, x.s), at = at, t = t} end
 		if not only and gen == startGen then dirty = false end
 		running = false
 		X.StrategyMarksBuild()

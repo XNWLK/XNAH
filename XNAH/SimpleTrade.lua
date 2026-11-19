@@ -104,7 +104,7 @@ local function dealsPass()
 			local key = keys[k]
 			local it = items[key]
 			local cur = it and it.cur
-			if cur and cur.min and (cur.qty or 0) > 0 and X.Fresh(it) then
+			if cur and cur.min and (cur.qty or 0) > 0 and X.Fresh(it) and X.BuyIdea(key, it) then
 				local usual, st = X.Usual(key)
 				if usual and st and st.days >= Sx.minSamples and cur.min / usual * 100 <= Sx.dealPct and
 					X.AfterCut(usual) - cur.min >= Sx.dealMinProfit then
@@ -128,6 +128,7 @@ local function dealsCheck()
 	dealsPass()
 end
 X.On("XNAH_PRICES", function() dealsDirty = true version = version + 1 end)
+X.On("XNAH_IGNORE", function() dealsDirty = true version = version + 1 end)
 for _, ev in ipairs({"XNAH_STRATEGY", "XNAH_SHOP", "XNAH_WATCH", "XNAH_BOUGHT"}) do
 	X.On(ev, function() version = version + 1 end)
 end
@@ -249,7 +250,7 @@ function S.BuyEntries(limit)
 	wishEntries(out, seen)
 	local good = {}
 	for _, c in ipairs(buildCandidates()) do
-		if not seen[c.key] then
+		if not seen[c.key] and not X.Ignored(c.key) then
 			local price = priceNow(c.key)
 			local net = price and (c.action == "Buy and vendor" and c.target or X.AfterCut(c.target))
 			local each = net and net - price

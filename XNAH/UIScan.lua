@@ -234,6 +234,19 @@ local function buildSettings(p)
 	check(250, -392, "Your own sales and buys", get, set)
 	get, set = boolSetting("tipDE")
 	check(250, -416, "Disenchant value", get, set)
+	-- items you said never to suggest buying (right-click an item): click one to have it suggested again
+	local hidden = K.Button(s, "", 260, 22, function(self)
+		local items = {{text = "Never suggested as a buy (click to allow again)", isTitle = true}}
+		for _, key in ipairs(X.IgnoredList()) do
+			items[#items + 1] = {text = X.ItemText(key), func = function() X.SetIgnored(key, false) end}
+		end
+		if #items == 1 then items[2] = {text = "None - right-click an item: Never suggest buying this", disabled = true} end
+		K.Menu(self, items)
+	end)
+	hidden:SetPoint("TOPLEFT", 10, -470)
+	K.Tooltip(hidden, "Items never suggested", "Items you right-clicked and chose Never suggest buying this. Grey items are never " ..
+		"suggested as buys anyway (except to sell to a vendor).")
+	binds[#binds + 1] = function() hidden:SetText("Never suggested as a buy: " .. #X.IgnoredList()) end
 end
 
 -- [[ guild price sharing and the export ]] a box under the last scans

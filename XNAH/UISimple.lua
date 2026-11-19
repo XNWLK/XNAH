@@ -109,6 +109,16 @@ function S.ItemEntry(key)
 	return e
 end
 
+-- the item's name inside a line in its rarity colour (Xn: names should be coloured like in the game)
+function S.ColorName(text, key)
+	if not key or text:find("|c", 1, true) then return text end
+	local name, q = X.ItemName(key)
+	if not name or name == "" or name:find("^item %-?%d+$") then return text end
+	local a, b = text:find(name, 1, true)
+	if not a then return text end
+	return text:sub(1, a - 1) .. "|cff" .. (X.QUALITY_HEX[q or 1] or "ffffff") .. name .. "|r" .. text:sub(b + 1)
+end
+
 -- [[ the window ]]
 local list, detail
 local function showDetail(e)
@@ -159,7 +169,7 @@ end
 
 local function drawRow(row, e)
 	row.icon:SetTexture(e.icon or itemIcon(e.key))
-	row.title:SetText(e.title or "")
+	row.title:SetText(S.ColorName(e.title or "", e.key))
 	row.sub:SetText(e.sub or "")
 	row:SetSelected(current.selected == e.id and not current.item)
 	row:SetScript("OnClick", function(_, button)
@@ -209,7 +219,7 @@ end
 local function refreshSoon() X.Debounce("xnah-simple", 0.4, S.Refresh) end
 S.RefreshSoon = refreshSoon
 for _, ev in ipairs({"XNAH_PRICES", "XNAH_HOME", "XNAH_STRATEGY", "XNAH_INVENTORY", "XNAH_LEDGER", "XNAH_POSTED",
-	"XNAH_POST", "XNAH_BUY", "XNAH_ROUTINE", "XNAH_AH", "XNAH_WATCH", "XNAH_CANCEL", "XNAH_RECIPES", "XNAH_ANALYSIS", "XNAH_SHOP", "BAG_UPDATE_DELAYED"}) do
+	"XNAH_POST", "XNAH_BUY", "XNAH_ROUTINE", "XNAH_AH", "XNAH_WATCH", "XNAH_CANCEL", "XNAH_RECIPES", "XNAH_ANALYSIS", "XNAH_SHOP", "BAG_UPDATE_DELAYED", "XNAH_IGNORE"}) do
 	X.On(ev, refreshSoon)
 end
 

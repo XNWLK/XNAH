@@ -62,7 +62,7 @@ function UI.Refresh(now)
 	if now then run() else X.Debounce("ui", 0.2, run) end
 end
 for _, e in ipairs({"XNAH_PRICES", "XNAH_SCAN", "XNAH_RECIPES", "XNAH_WATCH", "XNAH_AH", "XNAH_ANALYSIS", "XNAH_LEDGER",
-	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHARE", "XNAH_SHOP", "XNAH_HOME"}) do
+	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHARE", "XNAH_SHOP", "XNAH_HOME", "XNAH_IGNORE"}) do
 	X.On(e, function() UI.Refresh() end)
 end
 
@@ -238,6 +238,14 @@ function UI.ItemMenu(anchor, key)
 		items[#items + 1] = {text = "Search on the auction house now", func = function()
 			X.ShowOnAuctionHouse(key)
 			X.ScanItems({key}, "one item")
+		end}
+	end
+	if X.Ignored(key) then
+		items[#items + 1] = {text = "Suggest buying it again", func = function() X.SetIgnored(key, false) end}
+	else
+		items[#items + 1] = {text = "Never suggest buying this", func = function()
+			X.SetIgnored(key, true)
+			X.Print(X.ItemText(key) .. " will not be suggested as a buy again (right-click it: Suggest buying it again).")
 		end}
 	end
 	local tbl = UI.menuTable

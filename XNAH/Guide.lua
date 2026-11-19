@@ -531,6 +531,16 @@ local PAGES = {
 		"- You can give \"Open / close XNAH\" a key in the game's key bindings.")},
 
 	{key = "good", title = "Good to know", text = lines(
+		h("Silly prices"),
+		"- Sometimes someone lists an item for a silly price, or a scan sees only a few silly listings. A price more " ..
+		"than 4 times above or below the item's typical price is left out of its history, averages and graph, so it " ..
+		"never makes a normal price look like a bargain. If three scans in a row show the new price, XNAH takes it as " ..
+		"a real change.",
+		"- Grey (junk) items are never suggested as buys to sell again - only to sell to a vendor when they are " ..
+		"listed under what a vendor pays.",
+		"- Right-click any item: Never suggest buying this. It no longer shows up on the Buy page, in deals or " ..
+		"strategies. The Scan page lists them (click one to allow it again).",
+		"",
 		h("What is only an estimate"),
 		"- Sales speed (Sold/day, Sells per day, Best time to post): worked out by comparing two full scans. An " ..
 		"auction that disappeared long before its time ran out counts as sold - but a cancelled one looks the same, " ..
