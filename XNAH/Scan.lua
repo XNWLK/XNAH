@@ -432,6 +432,38 @@ function X.ScanItemsNext()
 	send()
 end
 
+-- [[ the game's own auction house window ]] "Search on the auction house" also shows the item there: its listings
+-- page when the game knows the item (else after a moment, else a search by its name). Only while that window is open.
+function X.ShowOnAuctionHouse(key)
+	local f = AuctionHouseFrame
+	if not (X.ahOpen and f and f.IsShown and f:IsShown() and key) then return false end
+	local id = X.KeyID(key)
+	if not id then return false end
+	local suffix = tonumber((tostring(key):match(":(%-?%d+)$")))
+	local itemKey = X.Try(C_AuctionHouse.MakeItemKey, id, 0, suffix or 0)
+	local name = X.ItemName(key)
+	if name and name:find("^item %-?%d+$") then name = nil end -- not known yet (X.ItemName's stand-in)
+	-- the Buy tab first (the posting and "your auctions" tabs take no search)
+	local modes = AuctionHouseFrameDisplayMode
+	if modes and modes.Buy and f.SetDisplayMode then X.Try(f.SetDisplayMode, f, modes.Buy) end
+	if name and name ~= "" and f.SetSearchText then X.Try(f.SetSearchText, f, name) end
+	local tries = 0
+	local function open()
+		if not (X.ahOpen and f:IsShown()) then return end
+		local info = itemKey and X.Try(C_AuctionHouse.GetItemKeyInfo, itemKey)
+		if info and f.SelectBrowseResult then
+			local it = X.Item(key)
+			X.Try(f.SelectBrowseResult, f, {itemKey = itemKey, minPrice = it and it.cur and it.cur.min or 0})
+			return
+		end
+		tries = tries + 1
+		if tries < 4 then X.After(0.3, open) return end -- the game is still loading the item
+		if name and name ~= "" and f.SearchBar and f.SearchBar.StartSearch then X.Try(f.SearchBar.StartSearch, f.SearchBar) end
+	end
+	open()
+	return true
+end
+
 -- [[ checking the raw data in the game ]] /xnah raw: the first auctions of the last full scan as the game gives them
 function X.RawDump(n)
 	if not X.ahOpen then X.Print("open the auction house first (after a full scan)") return end

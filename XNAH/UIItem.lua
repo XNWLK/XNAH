@@ -115,10 +115,14 @@ local function build(panel)
 	end)
 
 	panel.ah = K.Button(panel, "Search on the auction house", 200, 22, function()
-		if UI.itemKey then X.ScanItems({UI.itemKey}, "one item") end
+		if UI.itemKey then
+			X.ShowOnAuctionHouse(UI.itemKey)
+			X.ScanItems({UI.itemKey}, "one item")
+		end
 	end)
 	panel.ah:SetPoint("TOPRIGHT", 0, -25)
-	K.Tooltip(panel.ah, "Search on the auction house", "Looks this item up now and records its prices.")
+	K.Tooltip(panel.ah, "Search on the auction house", "Looks this item up now and records its prices. " ..
+		"The game's auction house window shows its listings too, ready to buy.")
 	panel.star = K.Button(panel, "Add to watch list", 150, 22, function()
 		local key = UI.itemKey
 		if key then X.SetWatched(key, not X.Watched(key)) end

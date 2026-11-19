@@ -165,7 +165,10 @@ function UI.ItemMenu(anchor, key)
 		{text = X.Watched(key) and "Remove from watch list" or "Add to watch list", func = function() X.SetWatched(key, not X.Watched(key)) end},
 	}
 	if X.ahOpen then
-		items[#items + 1] = {text = "Search on the auction house now", func = function() X.ScanItems({key}, "one item") end}
+		items[#items + 1] = {text = "Search on the auction house now", func = function()
+			X.ShowOnAuctionHouse(key)
+			X.ScanItems({key}, "one item")
+		end}
 	end
 	K.Menu(anchor, items)
 end

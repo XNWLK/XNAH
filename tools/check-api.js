@@ -30,7 +30,8 @@ const GUARDED = {
   ItemRefTooltip: "the tooltip of a clicked item link (a frame); compared only", UIParent: "the UI root frame",
   TooltipDataProcessor: "the game's tooltip line hooks (Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua); tested before use",
   AuctionHouseFrame: "the auction house window (Blizzard_AuctionHouseUI, load on demand); tested before use",
-  SOUNDKIT: "the game's table of sound ids (a Lua table, not on the lists); tested before use, number fallback",
+  AuctionHouseFrameDisplayMode: "the auction house window's table of views (Blizzard_AuctionHouseFrame.lua, a Lua table); tested before use",
+  SOUNDKIT:"the game's table of sound ids (a Lua table, not on the lists); tested before use, number fallback",
 };
 const strip = src => src.replace(/--\[(=*)\[[\s\S]*?\]\1\]/g, ' ').replace(/--[^\n]*/g, ' ')
   .replace(/\[(=*)\[[\s\S]*?\]\1\]/g, m => '"' + ' '.repeat(Math.max(0, m.length - 2)) + '"');
