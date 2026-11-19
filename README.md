@@ -7,12 +7,17 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 
 ## What it does
 
+- **Home**: what to do today - your gold and sales today and this week, and a to-do list (expired and undercut
+  auctions, deals, strategy finds, watched items under your price, crafting queue) with one button per job.
 - **Full scan** of the whole auction house in seconds (the server allows one about every 15 minutes), plus everything
   you look at while using the auction house normally, plus a quick **watch list scan** of starred items any time.
 - **Price history** for every item: lowest price, market value (the average of the cheapest part of the market, so one
   silly listing does not move it), how many are listed and by how many sellers. Every scan is kept for 7 days, a summary
   per day for 60 days, then one per week for a year.
-- **Graphs** of price and supply over 1 day, 7, 30, 90 days or all time, with the values under the mouse.
+- **Graphs** of price and supply over 1 day, 7, 30, 90 days or all time, with the values under the mouse, your own
+  sales and buys as dots, a second item to compare, and the best weekday and hour to sell.
+- **In the game's auction house window**: a panel beside it with XNAH's numbers and graph for the item you pick, and
+  extra columns (% of the usual price, sells a day) in its lists.
 - **Trends**: 3 / 7 / 30-day averages, trend in % per week, day-to-day spread, supply against its 7-day average.
 - **Deals**: items listed far under their usual price, items listed under what a vendor pays for them, and vendor items
   that sell for more on the auction house.
@@ -26,12 +31,16 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 - **Sales speed**: how many of an item sell per day (estimated from full scans and your own sales) and the best hours
   to post.
 - **Sell**: suggested prices by your rules (undercut, floor, ceiling), one post per click, a cancel scan for your
-  undercut auctions.
+  undercut auctions, and a **one-key routine**: each press of one key cancels an undercut auction or posts the next
+  item of your sell list.
 - **Buy**: shopping lists with max prices, and a sniper that tells you when a watched item is listed under your price.
 - **Ledger**: your sales, purchases, expired auctions and profit, read from the auction house mails.
 - **Wealth**: net worth of all your characters with a graph, and what in your bags to sell where.
 - **Strategies**: ready-made ways to make gold (vendor floor, buy the dip, undercut gaps, resets, momentum, scarcity,
-  crafting, disenchanting, time-of-day and weekday cycles and more) with the items each one finds right now.
+  crafting, disenchanting, time-of-day and weekday cycles, recipes worth learning, cooldown crafts, what to farm,
+  stocking up at a low and more) with the items each one finds right now.
+- **Quick search**: a Find box for any item or recipe, and Alt-click on any item (bags, chat, loot) opens its page.
+  Lists remember their sorting and can be copied as text.
 - **Disenchant value** of gear, **market shape** (walls, reset chances, sellers), a **crafting queue**, and **guild
   price sharing**.
 
@@ -46,6 +55,7 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 | `/xnah raw 5` | print the first auctions of the last full scan as the game gives them |
 | `/xnah guide` | the guide to every page |
 | `/xnah perf` | how much memory and time XNAH uses |
+| `/xnah size 120` | window size in % (or drag its bottom right corner) |
 | `/xnah help` | all commands |
 
 ## Several WoW accounts

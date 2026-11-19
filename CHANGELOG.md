@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.5.0
+
+- New Home page (the first tab): your gold and sales today and this week, net worth, the last scan, and what to do
+  today - expired and undercut auctions, deals, strategy finds, watched items under your price, the crafting queue -
+  with one button per job. Opens first each session (can be turned off).
+- In the game's auction house window: a panel beside it with XNAH's numbers and a 30-day graph for the item you pick
+  (or pick to post), with watch list and max price buttons; extra columns "% usual" and "a day" in its lists.
+- One-key routine (Sell page): each press of one key (or of Next step) does the next step - cancel an undercut
+  auction, then post the items of your sell list at the suggested price. Set the key under AddOns, XNAH.
+- Item graph: your own sales and buys as dots, Compare (a second item on the same graph), and Best time (price by
+  weekday and hour of the day, and when your sales did best).
+- Quick search: a Find box in the title bar for any item or recipe; Alt-click an item in your bags, chat or loot to
+  open its page.
+- Window: drag the corner (or /xnah size 120) to make it bigger or smaller; lists remember their sorting, the Market
+  page its search and filters; right-click a column title to copy the list as text.
+- Four new strategies: Recipes worth learning, Cooldown crafts, What to farm, Stock up at a low.
+
 ## v0.4.0
 
 - Every crafting recipe of WoW Forever is built in (2,245 recipes, 13 professions with Rogue poisons), also ones none
