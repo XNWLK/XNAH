@@ -16,8 +16,8 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 - **Trends**: 3 / 7 / 30-day averages, trend in % per week, day-to-day spread, supply against its 7-day average.
 - **Deals**: items listed far under their usual price, items listed under what a vendor pays for them, and vendor items
   that sell for more on the auction house.
-- **Crafting**: recipes are learned when you open a profession window (yours or a linked one); the cost to make every
-  item (each reagent at its cheapest: vendor, auction house or crafted), what it sells for after the auction house cut,
+- **Crafting**: every recipe of the game is built in (open your profession windows so XNAH knows which ones your
+  characters have); the cost to make every item (each reagent at its cheapest: vendor, auction house or crafted), what it sells for after the auction house cut,
   profit and margin, and which of your characters know the recipe.
 - **Vendor prices**: what a vendor pays for an item, and what vendors sell (recorded when you visit them).
 - **Tooltips**: lowest price, market value, averages and trend, vendor prices and crafting cost on every item, times the

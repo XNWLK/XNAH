@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0
+
+- Every crafting recipe of WoW Forever is built in (2,245 recipes, 13 professions with Rogue poisons), also ones none
+  of your characters has. Crafting costs, the Crafting page, the queue and the "Can be crafted" filter use them all;
+  "Only recipes my characters know" narrows the lists to yours. The posting floor still uses only recipes from your
+  profession windows.
+- Item page, Used in: every recipe the item goes into, in a list that scrolls. Hover one to see the whole recipe:
+  profession and skill-up levels, who knows it, each reagent with its price, the cost, what it sells for and the profit.
+  Click it to open what it makes.
+- Item names show even for items the game has not loaded yet.
+
 ## v0.3.3
 
 - "Search on the auction house" (item page and the right-click menu) also shows the item in the game's own auction
