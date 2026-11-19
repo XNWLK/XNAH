@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.1
+
+- Fixed: crafts with a waiting time (transmutes, Mooncloth) counted as a way to get their materials. The elemental
+  transmutes go round in a circle, so every essence looked as cheap as the cheapest one and Cooldown crafts showed
+  false profits (Water to Undeath). Materials are now never counted as made by such a craft.
+- Fixed: in the game's list of stackable goods, "% usual" covered the quantity; it now sits right after the price.
+
 ## v0.5.0
 
 - New Home page (the first tab): your gold and sales today and this week, net worth, the last scan, and what to do
