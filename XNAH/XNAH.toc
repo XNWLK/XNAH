@@ -2,7 +2,7 @@
 ## Title: XNAH
 ## Notes: Auction house prices and gold making: full scans, price history with graphs, trends, deals, sales speed, posting and buying helpers, sniper, shopping lists, crafting queue, sales ledger, net worth, disenchant values, guild price sharing, gold-making strategies. Type /xnah
 ## Author: Xn
-## Version: 0.3.2
+## Version: 0.3.3
 ## SavedVariables: XNAHDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.3
+
+- "Search on the auction house" (item page and the right-click menu) also shows the item in the game's own auction
+  house window: the Buy tab, the item's name in its search box and the item's listings, ready to buy.
+- The message about joined server shards now comes a few seconds after login, so it is not lost among the others.
+
 ## v0.3.2
 
 - Smoother game, especially with several game windows open: the listings of the last full scan (kept for sales speed
