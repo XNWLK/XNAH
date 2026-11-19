@@ -215,6 +215,11 @@ function X.ItemName(key)
 		if it then it.n, it.q = name, q end
 		return name, q
 	end
+	local known = X.RECIPE_ITEMS and id and X.RECIPE_ITEMS[id]
+	if known then
+		local lq, lname = known:match("^(%d+);(.+)$")
+		if lname then return lname, tonumber(lq) or 1 end
+	end
 	return "item " .. tostring(id), 1
 end
 function X.ItemText(key)

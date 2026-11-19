@@ -141,8 +141,13 @@ local PAGES = {
 		"",
 		h("Crafting (bottom right)"),
 		"The recipe that makes the item (the cheapest one), which of your characters know it, each reagent with " ..
-		"its price and where to get it cheapest (Vendor, Auction, Craft), the cost to make one, and under " ..
-		"Used in the recipes that need this item. Click a reagent to open its page.")},
+		"its price and where to get it cheapest (Vendor, Auction, Craft), and the cost to make one. Click a reagent " ..
+		"to open its page. XNAH knows every recipe of the game, also ones none of your characters has.",
+		"",
+		h("Used in"),
+		"Every recipe that needs this item (scroll for more). Hover one to see the whole recipe: profession and " ..
+		"skill, who knows it, each reagent with its price, the cost, what it sells for and the profit. Click it to " ..
+		"open what it makes.")},
 
 	{key = "tooltips", title = "Tooltips", text = lines(
 		"Every item tooltip in the game (bags, bank, chat links, the auction house) gets a few XNAH lines:",

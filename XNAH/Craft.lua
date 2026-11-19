@@ -4,6 +4,9 @@
 --   XNAHDB.recipes[recipeID] = {name, out = itemID or nil (enchants make no item), n = how many one craft makes,
 --     r = {{itemID, count}, ...}, prof = "Alchemy", at = t}
 --   XNAHDB.known[character] = {[recipeID] = true}  recipes your characters know
+-- Besides those, RecipeDB.lua lists every recipe of the game: X.Recipe(rid) gives either kind in the same
+-- shape (list ones carry db = true, la = skill needed, colors). Crafting costs only use recipes read in the game
+-- (X.RecipesFor); "used in" and the item page's recipe also use the list (X.RecipesUsing, X.AllRecipesFor).
 local ADDON, X = ...
 
 local byOutput -- [itemID] = {recipeID, ...}
@@ -21,16 +24,80 @@ function X.RecipesFor(itemID)
 	if not byOutput then index() end
 	return byOutput[itemID] or {}
 end
--- recipes that use an item: {recipeID, ...}
-function X.RecipesUsing(itemID)
-	local out = {}
-	for rid, r in pairs(X.db.recipes) do
-		for _, re in ipairs(r.r or {}) do
-			if re[1] == itemID then out[#out + 1] = rid break end
+
+-- [[ the recipe list ]] one text per recipe, unpacked when asked (kept while something holds it)
+local unpacked = setmetatable({}, {__mode = "v"})
+local function fromList(rid)
+	local s = X.RECIPE_DB and X.RECIPE_DB[rid]
+	if not s then return nil end
+	local r = unpacked[rid]
+	if r then return r end
+	local sk, la, out, n, rg, colors, name = s:match("^([^;]*);([^;]*);([^;]*);([^;]*);([^;]*);([^;]*);(.*)$")
+	if not sk then return nil end
+	r = {name = name, out = tonumber(out), n = tonumber(n) or 1, r = {}, prof = X.RECIPE_PROFS and X.RECIPE_PROFS[tonumber(sk)],
+		la = tonumber(la), db = true}
+	if r.out == 0 then r.out = nil end
+	if r.la == 0 then r.la = nil end
+	for id, c in rg:gmatch("(%d+)%*(%d+)") do r.r[#r.r + 1] = {tonumber(id), tonumber(c)} end
+	local c = {}
+	for v in colors:gmatch("%d+") do c[#c + 1] = tonumber(v) end
+	if #c == 4 then r.colors = c end
+	unpacked[rid] = r
+	return r
+end
+-- a recipe read in the game, else the one in the list
+function X.Recipe(rid)
+	return X.db.recipes[rid] or fromList(rid)
+end
+-- [itemID] = {recipeID, ...}: made by / used in, over both kinds (built once, again after a profession window is read)
+local allByOutput, allUsing
+local function indexAll()
+	allByOutput, allUsing = {}, {}
+	local function add(rid, out, ids)
+		if out then
+			allByOutput[out] = allByOutput[out] or {}
+			table.insert(allByOutput[out], rid)
+		end
+		for _, id in ipairs(ids) do
+			local l = allUsing[id]
+			if not l then l = {} allUsing[id] = l end
+			if l[#l] ~= rid then l[#l + 1] = rid end
 		end
 	end
-	table.sort(out)
+	for rid, r in pairs(X.db.recipes) do
+		local ids = {}
+		for _, re in ipairs(r.r or {}) do ids[#ids + 1] = re[1] end
+		add(rid, r.out, ids)
+	end
+	for rid, s in pairs(X.RECIPE_DB or {}) do
+		if not X.db.recipes[rid] then
+			local out, rg = s:match("^[^;]*;[^;]*;([^;]*);[^;]*;([^;]*);")
+			local ids = {}
+			for id in (rg or ""):gmatch("(%d+)%*") do ids[#ids + 1] = tonumber(id) end
+			out = tonumber(out)
+			add(rid, out ~= 0 and out or nil, ids)
+		end
+	end
+	for _, l in pairs(allByOutput) do table.sort(l) end
+	for _, l in pairs(allUsing) do table.sort(l) end
+end
+-- every recipe that makes an item (read in the game or in the list)
+function X.AllRecipesFor(itemID)
+	if not allByOutput then indexAll() end
+	return allByOutput[itemID] or {}
+end
+-- recipes that use an item: {recipeID, ...}
+function X.RecipesUsing(itemID)
+	if not allUsing then indexAll() end
+	local out = {}
+	for i, rid in ipairs(allUsing[itemID] or {}) do out[i] = rid end
 	return out
+end
+-- the made item's name, or the recipe's name for one that makes no item (an enchant)
+function X.RecipeTitle(rid)
+	local r = X.Recipe(rid)
+	if not r then return "?" end
+	return r.name or (r.out and X.ItemName(tostring(r.out))) or "?"
 end
 
 function X.CharKey()
@@ -101,7 +168,7 @@ local function readRecipes()
 		return i >= #ids
 	end, function()
 		reading = false
-		byOutput = nil
+		byOutput, allByOutput, allUsing = nil, nil, nil
 		X.Debug("recipes read: " .. #ids .. " (" .. added .. " new)" .. (profName and (" - " .. profName) or ""))
 		X.Fire("XNAH_RECIPES")
 	end)
@@ -135,7 +202,7 @@ X.ReagentCost = function(id) return reagentCost(id, 0, {}) end
 
 -- cost of ONE item made by a recipe; second value = how many reagents had no price (cost is then too low)
 function X.RecipeCost(rid, depth, visiting)
-	local r = X.db.recipes[rid]
+	local r = X.Recipe(rid)
 	if not r then return nil end
 	local total, missing = 0, 0
 	for _, re in ipairs(r.r) do
@@ -156,7 +223,7 @@ function X.CraftCost(itemID)
 end
 -- the reagents of a recipe with their prices, for the detail page: {{id, count, unit, how, total}}
 function X.RecipeParts(rid)
-	local r = X.db.recipes[rid]
+	local r = X.Recipe(rid)
 	if not r then return {} end
 	local out = {}
 	for _, re in ipairs(r.r) do

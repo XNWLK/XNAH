@@ -13,7 +13,6 @@ local HOW = {vendor = "Vendor", ah = "Auction", craft = "Craft"}
 local NUMBERS = 19  -- rows in the number grid
 local PROFITS = 4   -- slots in the profit box (the best four ways)
 local PARTS = 8     -- reagent rows
-local USED = 8      -- "used in" rows
 
 local function M(v) return X.Money(v, true) end
 local function signed(v)
@@ -265,17 +264,68 @@ local function build(panel)
 	panel.uTitle = K.Label(craft, "", "GameFontNormalSmall")
 	panel.uTitle:SetPoint("TOPLEFT", 410, -7)
 	panel.uTitle:SetWidth(210)
-	panel.used = {}
-	for i = 1, USED do
-		local b = K.Flat(craft, 210, 16)
-		b:SetPoint("TOPLEFT", 410, -25 - (i - 1) * 17)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		b:Hide()
-		panel.used[i] = b
+	-- every recipe the item goes into (scrolls); hovering one shows the whole recipe, a click opens what it makes
+	panel.used = K.List(craft, 214, 180, 17, function(row, e)
+		local okey = e.key
+		row:SetLabel(okey and UI.ItemCell(okey, 12) or ("|cffffd100" .. X.RecipeTitle(e.rid) .. "|r"))
+		row:SetScript("OnClick", function(self, button)
+			if not okey then return end
+			if button == "RightButton" then UI.ItemMenu(self, okey) else UI.ShowItem(okey) end
+		end)
+		row:SetScript("OnEnter", function(self) UI.RecipeTooltip(self, e.rid, panel.usedFor) end)
+		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	end)
+	panel.used:SetPoint("TOPLEFT", 410, -22)
+end
+
+-- [[ a recipe as a tooltip ]] profession and skill, who knows it, what it makes, every reagent with its price, the cost,
+-- the price it sells for and the profit. mark = an item ID shown in green (the item whose page this is).
+local SKILL_COLORS = {"ff8040", "ffff00", "40c040", "808080"}
+function UI.RecipeTooltip(owner, rid, mark)
+	local r = X.Recipe(rid)
+	if not r then return end
+	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	GameTooltip:AddLine(r.name or "?", 1, 0.82, 0)
+	local sub = (r.prof or "Recipe") .. (r.la and (" " .. r.la) or "")
+	if r.colors then
+		local c = {}
+		for i = 1, 4 do
+			if (r.colors[i] or 0) > 0 then c[#c + 1] = "|cff" .. SKILL_COLORS[i] .. r.colors[i] .. "|r" end
+		end
+		sub = sub .. GREY .. "   skill-ups: |r" .. table.concat(c, " ")
 	end
-	panel.uMore = K.Label(craft, "", "GameFontDisableSmall")
-	panel.uMore:SetPoint("TOPLEFT", 414, -27 - USED * 17)
-	panel.uMore:SetWidth(206)
+	GameTooltip:AddLine(sub, 0.8, 0.8, 0.8)
+	local who = X.KnownBy(rid)
+	if #who > 0 then
+		GameTooltip:AddLine("Known by: " .. table.concat(who, ", "), 0.29, 0.87, 0.5)
+	else
+		GameTooltip:AddLine("None of your characters knows it (that XNAH has seen in a profession window).", 0.6, 0.6, 0.6, true)
+	end
+	GameTooltip:AddLine(" ")
+	if r.out then
+		GameTooltip:AddDoubleLine("Makes", ((r.n or 1) ~= 1 and (count(r.n) .. " x ") or "") .. X.ItemText(tostring(r.out)), 0.6, 0.6, 0.6, 1, 1, 1)
+	end
+	local parts, total, missing = X.RecipeParts(rid), 0, 0
+	for _, p in ipairs(parts) do
+		local name = X.ItemText(tostring(p.id))
+		if p.id == mark then name = "|cff4ade80> |r" .. name end
+		local cost = p.unit and (M(p.unit * p.count) .. GREY .. " " .. (HOW[p.how] or "") .. "|r") or (RED .. "no price|r")
+		GameTooltip:AddDoubleLine(count(p.count) .. " x " .. name, cost, 1, 1, 1, 1, 1, 1)
+		if p.unit then total = total + p.unit * p.count else missing = missing + 1 end
+	end
+	GameTooltip:AddLine(" ")
+	local each = r.out and (r.n or 1) ~= 1 and (GREY .. " (" .. M(total / (r.n or 1)) .. GREY .. " each)|r") or ""
+	GameTooltip:AddDoubleLine("Cost of one craft", M(total) .. each, 0.6, 0.6, 0.6, 1, 1, 1)
+	if missing > 0 then
+		GameTooltip:AddLine(missing .. " reagent" .. (missing > 1 and "s have" or " has") .. " no price yet: the cost is too low.", 0.97, 0.44, 0.44, true)
+	end
+	if r.out then
+		local sell = X.AfterCut(X.Price(tostring(r.out)))
+		GameTooltip:AddDoubleLine("Sells for (after the cut)", sell and M(sell * (r.n or 1)) or NONE, 0.6, 0.6, 0.6, 1, 1, 1)
+		if sell and missing == 0 then GameTooltip:AddDoubleLine("Profit per craft", signed(sell * (r.n or 1) - total), 0.6, 0.6, 0.6, 1, 1, 1) end
+		GameTooltip:AddLine("Click: open " .. X.ItemName(tostring(r.out)) .. "   Right-click: menu", 0.6, 0.6, 0.6)
+	end
+	GameTooltip:Show()
 end
 
 -- [[ filling it in ]]
@@ -387,8 +437,10 @@ local function fillCrafting(panel, s)
 	local id = s.id
 	local rid = s.craftRid
 	local all = X.RecipesFor(id)
+	-- no recipe read in the game: the one from the recipe list
+	if #all == 0 then all = X.AllRecipesFor(id) end
 	if not rid then rid = all[1] end -- a recipe with a reagent that has no price yet
-	local r = rid and X.db.recipes[rid]
+	local r = rid and X.Recipe(rid)
 	for i = 1, PARTS do panel.parts[i]:Hide() end
 	for _, h in ipairs(panel.cHead) do h:SetShown(r ~= nil) end
 	if not r then
@@ -400,8 +452,14 @@ local function fillCrafting(panel, s)
 			((r.n or 1) ~= 1 and (GREY .. "  makes " .. count(r.n) .. "|r") or "") ..
 			(#all > 1 and (GREY .. "  cheapest of " .. #all .. " recipes|r") or ""))
 		local who = X.KnownBy(rid)
-		panel.cKnown:SetText(#who > 0 and (GREY .. "Known by: |r" .. table.concat(who, ", ")) or
-			(GREY .. "None of your characters knows this recipe (yet).|r"))
+		if #who > 0 then
+			panel.cKnown:SetText(GREY .. "Known by: |r" .. table.concat(who, ", "))
+		elseif r.db then
+			panel.cKnown:SetText(GREY .. "From the recipe list" .. (r.la and (", needs " .. (r.prof or "skill") .. " " .. r.la) or "") ..
+				". None of your characters knows it (yet).|r")
+		else
+			panel.cKnown:SetText(GREY .. "None of your characters knows this recipe (yet).|r")
+		end
 		local parts = X.RecipeParts(rid)
 		for i = 1, math.min(PARTS, #parts) do
 			local p, b = parts[i], panel.parts[i]
@@ -428,7 +486,7 @@ local function fillCrafting(panel, s)
 	local using = X.RecipesUsing(id)
 	local list = {}
 	for _, urid in ipairs(using) do
-		local ur = X.db.recipes[urid]
+		local ur = X.Recipe(urid)
 		if ur then
 			local okey = ur.out and tostring(ur.out)
 			list[#list + 1] = {rid = urid, r = ur, key = okey, price = okey and X.Price(okey) or nil}
@@ -439,27 +497,11 @@ local function fillCrafting(panel, s)
 		if a.price and b.price and a.price ~= b.price then return a.price > b.price end
 		return (a.r.name or "") < (b.r.name or "")
 	end)
-	panel.uTitle:SetText("Used in" .. (#list > 0 and (GREY .. " (" .. #list .. " recipes)|r") or ""))
-	for i = 1, USED do
-		local b, e = panel.used[i], list[i]
-		if e then
-			local okey = e.key
-			b:SetLabel(okey and UI.ItemCell(okey, 12) or (GREY .. (e.r.name or "?") .. "|r"))
-			b:SetScript("OnClick", function() if okey then UI.ShowItem(okey) end end)
-			b:SetScript("OnEnter", function(self) if okey then UI.ItemTooltip(self, okey) end end)
-			b:SetSelected(false)
-			b:Show()
-		else
-			b:Hide()
-		end
-	end
-	if #list == 0 then
-		panel.uMore:SetText(GREY .. "Not used in any known recipe.|r")
-	elseif #list > USED then
-		panel.uMore:SetText(GREY .. "and " .. (#list - USED) .. " more|r")
-	else
-		panel.uMore:SetText("")
-	end
+	panel.uTitle:SetText("Used in" .. (#list > 0 and (GREY .. " (" .. #list .. " recipe" .. (#list > 1 and "s" or "") .. ", hover one)|r") or ""))
+	panel.usedFor = id
+	if panel.usedShown ~= id then panel.used.offset = 0 end
+	panel.usedShown = id
+	panel.used:SetItems(list, GREY .. "Not used in any recipe.|r")
 end
 
 local function fillGraph(panel, key)

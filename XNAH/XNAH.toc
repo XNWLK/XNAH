@@ -12,6 +12,7 @@ Serialize.lua
 Comm.lua
 Scan.lua
 Vendor.lua
+RecipeDB.lua
 Craft.lua
 Market.lua
 Ledger.lua
