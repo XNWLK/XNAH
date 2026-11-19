@@ -211,6 +211,10 @@ local function buildSettings(p)
 	end)
 	get, set = boolSetting("debug")
 	check(10, -290, "Debug messages in chat", get, set)
+	get, set = boolSetting("simpleUI")
+	check(250, -290, "Open the simple window", get, set,
+		"On: /xnah, the key binding and the minimap button open the simple window (To do, Buy, Sell, Trends, Wealth). " ..
+		"Off: they open this full window.")
 
 	title("Item tooltips", -322)
 	get, set = boolSetting("tooltip")
@@ -385,7 +389,7 @@ function UI.UpdateMinimap()
 		border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 		border:SetPoint("TOPLEFT")
 		mm:SetScript("OnClick", function(_, button)
-			if button == "RightButton" then UI.Toggle("scan") else UI.Toggle() end
+			if button == "RightButton" then UI.Toggle("scan") else X.Toggle() end
 		end)
 		mm:SetScript("OnDragStart", function(self)
 			self:SetScript("OnUpdate", function()
@@ -432,7 +436,7 @@ local function buildBar()
 	bar.watch = K.Button(bar, "Watch list", 90, 22, function() X.ScanItems() updateBar() end)
 	bar.watch:SetPoint("LEFT", bar.full, "RIGHT", 4, 0)
 	K.Tooltip(bar.watch, "Scan the watch list", "Searches your starred items one by one (any time).")
-	bar.open = K.Button(bar, "XNAH", 60, 22, function() UI.Toggle() end)
+	bar.open = K.Button(bar, "XNAH", 60, 22, function() X.Toggle() end)
 	bar.open:SetPoint("LEFT", bar.watch, "RIGHT", 4, 0)
 	bar.next = K.Button(bar, "Next step", 90, 22, function() if X.RoutineNext then X.RoutineNext("button") end updateBar() end)
 	bar.next:SetPoint("LEFT", bar.open, "RIGHT", 4, 0)

@@ -171,7 +171,7 @@ local function buildPanel()
 	-- buttons
 	local bw = (PW - 24) / 2
 	panel.open = K.Button(body, "Open in XNAH", bw, 22, function()
-		if A.key then UI.ShowItem(A.key) end
+		if A.key then X.ShowItem(A.key) end
 	end)
 	panel.open:SetPoint("BOTTOMLEFT", 8, 56)
 	K.Tooltip(panel.open, "Open in XNAH", "Opens this item's page in XNAH's window (all numbers, the full graph, recipes).")

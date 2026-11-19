@@ -322,7 +322,7 @@ end)
 T.scene("strategies: the tab and its buttons", function()
 	local X = W.start()
 	market(X)
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one)
 	X.UI.Open("strategies")
 	W.advance(3)
 	local p = X.UI.tabs.strategies.panel
@@ -394,7 +394,7 @@ T.scene("strategies: the tab and its buttons", function()
 	W.advance(3)
 	-- an empty start: says what is needed
 	X = W.start()
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one)
 	X.UI.Open("strategies")
 	W.advance(3)
 	p = X.UI.tabs.strategies.panel

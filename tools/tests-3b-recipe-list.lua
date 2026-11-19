@@ -32,7 +32,7 @@ T.scene("recipe list: every recipe, used in, and the recipe tooltip", function()
 	-- the item page: a scrolling "used in" list; hover = the recipe
 	W.list(2589, 50, 20, 3)
 	X.Record("2589", X.Now(), 50, 50, 60, 3, "Linen Cloth", 1)
-	X.ShowItem("2589")
+	X.UI.ShowItem("2589")
 	W.advance(0.3)
 	local panel = X.UI.tabs.item.panel
 	local used = panel.used
@@ -51,7 +51,7 @@ T.scene("recipe list: every recipe, used in, and the recipe tooltip", function()
 	T.ok("tooltip: the cost", text:find("Cost of one craft", 1, true) ~= nil, text)
 	T.ok("tooltip: the profession", text:find(first.prof, 1, true) ~= nil, text)
 	-- an item made by a list recipe shows it in the crafting box
-	X.ShowItem("2840")
+	X.UI.ShowItem("2840")
 	W.advance(0.3)
 	T.ok("crafting box: the list recipe", panel.cTitle:GetText():find("Smelt Copper", 1, true) ~= nil, panel.cTitle:GetText())
 	T.ok("crafting box: from the recipe list", panel.cKnown:GetText():find("recipe list", 1, true) ~= nil, panel.cKnown:GetText())

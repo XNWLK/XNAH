@@ -158,7 +158,7 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	tenDays(X)
 	T.ok("tabs registered", #X.UI.order > 0, #X.UI.order)
 	-- with the auction house open
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one: tests-17)
 	local frame = X.UI.Frame()
 	T.ok("window open", frame and frame:IsShown())
 	X.UI.ShowItem("2589")
@@ -191,7 +191,7 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	T.ok("the window closes with Escape", X.Contains(W.env.UISpecialFrames, "XNAHFrame") ~= nil)
 	-- a reload with the window state saved
 	X = W.reload()
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one: tests-17)
 	W.advance(1)
 	T.ok("window opens after a reload", X.UI.Frame() and X.UI.Frame():IsShown())
 	for _, l in ipairs(stats) do T.note("ui " .. l) end
@@ -199,7 +199,7 @@ end)
 
 T.scene("ui: an empty start (no data at all)", function()
 	local X = W.start()
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one: tests-17)
 	for _, key in ipairs(X.UI.order) do
 		X.UI.Select(key)
 		W.advance(0.5)

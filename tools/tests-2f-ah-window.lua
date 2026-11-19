@@ -36,7 +36,7 @@ T.scene("search: the game's auction house window shows the item too", function()
 	W.items[2589].uncached, W.items[2589].never = nil, nil
 	-- the item page's button: the window and XNAH's own search
 	for i = #calls, 1, -1 do calls[i] = nil end
-	X.ShowItem("2589")
+	X.UI.ShowItem("2589")
 	X.UI.tabs.item.panel.ah:Click()
 	T.check("button opens the listings", calls[#calls], "open 2589:0")
 	T.ok("and XNAH searches it", X.scan.state == "items" or #W.said("scan done") > 0, X.scan.state)

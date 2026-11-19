@@ -62,7 +62,7 @@ T.scene("guide: every part, Previous / Next, Open this page", function()
 	local X = W.start()
 	W.advance(5)
 	local pages = X.GuidePages()
-	T.check("16 parts", #pages, 16)
+	T.check("17 parts", #pages, 17)
 	local keys = {}
 	for i, p in ipairs(pages) do
 		keys[p.key] = i

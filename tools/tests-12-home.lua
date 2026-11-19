@@ -200,7 +200,7 @@ T.scene("home: the tab - first tab, opens on Home each session, buttons", functi
 	W.advance(5)
 	T.check("Home is the first tab", X.UI.order[1], "home")
 	T.ok("12 tabs or fewer", #X.UI.order <= 12, #X.UI.order)
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one)
 	W.advance(1)
 	T.check("the window opens on Home", X.UI.current, "home")
 	local frame = X.UI.Frame()
@@ -218,7 +218,7 @@ T.scene("home: the tab - first tab, opens on Home each session, buttons", functi
 	W.advance(0.5)
 	X = W.reload()
 	W.advance(5)
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one)
 	W.advance(1)
 	T.check("after a reload: Home again", X.UI.current, "home")
 	-- the setting off: the page used last
@@ -227,7 +227,7 @@ T.scene("home: the tab - first tab, opens on Home each session, buttons", functi
 	W.advance(0.5)
 	X = W.reload()
 	W.advance(5)
-	W.env.SlashCmdList.XNAH("")
+	X.UI.Toggle() -- the full window (/xnah opens the simple one)
 	W.advance(1)
 	T.check("setting off: the page used last", X.UI.current, "deals")
 	-- with the auction house open: Scan now starts a scan from the home page
