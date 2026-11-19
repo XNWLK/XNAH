@@ -134,7 +134,7 @@ end
 T.scene("strategies: each one finds its item over a 10-day market", function()
 	local X = W.start()
 	market(X)
-	T.check("16 strategies", #X.Strategies(), 16)
+	T.check("20 strategies", #X.Strategies(), 20)
 	for _, s in ipairs(X.Strategies()) do
 		T.ok(s.key .. ": described", s.name and s.short and #s.how >= 3 and #s.how <= 6 and s.needs, s.key)
 		T.ok(s.key .. ": side", s.side == "buy" or s.side == "sell" or s.side == "make", s.side)
@@ -442,7 +442,26 @@ T.scene("strategies: scale - 2,000 items, 10 days, in slices", function()
 	local found = 0
 	for _, s in ipairs(X.Strategies()) do found = found + #((X.StrategyRows(s.key)) or {}) end
 	T.ok("finished", not X.StrategyBusy())
-	T.note(string.format("strategies scale: %d items, 16 strategies, %d rows found; %.1f s here, slowest step %.0f ms here (fengari)",
+	T.note(string.format("strategies scale: %d items, 20 strategies, %d rows found; %.1f s here, slowest step %.0f ms here (fengari)",
 		n, found, os.clock() - c0, W.maxStepTime * 1000))
 	T.ok("no step slower than 400 ms here", W.maxStepTime < 0.4, W.maxStepTime)
+end)
+
+T.scene("strategies: the gold list (learn, cooldown crafts, what to farm, stock up at a low)", function()
+	local X = W.start()
+	for _, k in ipairs({"learn", "cooldown", "farm", "seasonal"}) do T.ok("strategy " .. k, X.Strategy(k) ~= nil) end
+	-- Transmute: Arcanite: Thorium Bar + Arcane Crystal -> Arcanite Bar
+	X.Record("12359", X.Now(), 20000, 20000, 50, 3, "Thorium Bar", 1)
+	X.Record("12363", X.Now(), 100000, 100000, 10, 3, "Arcane Crystal", 2)
+	X.Record("12360", X.Now(), 300000, 300000, 10, 3, "Arcanite Bar", 2)
+	X.StrategyUpdate("cooldown")
+	W.waitFor(function() return not X.JobRunning("strategies") end, 60)
+	local rows = X.RunStrategy("cooldown") or {}
+	local arcanite
+	for _, r in ipairs(rows) do if r.key == "12360" then arcanite = r end end
+	T.ok("Arcanite found", arcanite ~= nil, #rows)
+	T.check("profit: sells for 300g less the cut, minus 12g of reagents", arcanite and X.Round(arcanite.profit), X.Round(300000 * (1 - X.S().cut / 100) - 120000))
+	T.ok("action says how often", arcanite and arcanite.action:find("every 2 days", 1, true) ~= nil, arcanite and arcanite.action)
+	-- the others run without errors on an empty market
+	for _, k in ipairs({"learn", "farm", "seasonal"}) do T.ok(k .. " runs", type(X.RunStrategy(k)) == "table") end
 end)

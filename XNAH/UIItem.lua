@@ -1,7 +1,8 @@
 -- Item tab: everything about one item - prices now and over time (graph), ways to make gold with it, its recipe and
 -- what it is used in. UI.ShowItem(key) opens it; "Back" goes to the item before.
--- Layout (940 x 550): header 48 high; below it numbers (left, 300 wide) and the graph (right, 630 x 256); under
--- those the profit box (left) and the crafting box (right), 208 high.
+-- Layout (940 x 550): header 48 high; below it numbers (left, 300 wide) and the graph area (right, 630 wide: a row of
+-- buttons, the graph 238 high, a row of names under it - or the best-time charts); under those the profit box (left)
+-- and the crafting box (right), 208 high.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -49,6 +50,146 @@ local function findItems(text, limit)
 end
 
 local refresh -- below
+
+-- [[ the graph area ]] top row: range buttons, Compare, "Price | Best time"; below it the graph (630 x 238) with a row of
+-- names under it (click one to hide / show its line, dots or bars), or the best-time charts (630 x 258) instead
+local GX, GW = 310, 630 -- where the graph area starts, its width
+local SALE, BUY, CMP = {1, 0.55, 0.2}, {0.75, 0.5, 1}, {0.3, 0.85, 0.95}
+local LEGEND = {
+	{"mkt", "Market value", {1, 0.82, 0}, "The market value at each scan: the average of the cheaper listings (price of one)."},
+	{"low", "Lowest price", {0.29, 0.87, 0.5}, "The cheapest listing at each scan (price of one)."},
+	{"bars", "Listed", {0.54, 0.64, 1}, "The faint bars: how many were listed at each scan."},
+	{"sales", "Your sales", SALE, "Your own sales of this item (from the ledger): a dot at the price of one. Hover it for the details."},
+	{"buys", "Your buys", BUY, "Your own purchases of this item (from the ledger): a dot at the price of one. Hover it for the details."},
+	{"cmp", "", CMP, nil},
+}
+local compareKey -- the second item on the graph (kept while you look at other items, until you clear it)
+local showBest   -- true: the best-time charts instead of the graph
+X.Default("graphHide", {}) -- names under the graph clicked off: {mkt, low, bars, sales, buys = true}
+
+local function setCompare(panel, key)
+	K.CloseMenu()
+	panel.cmpEdit:SetText("")
+	panel.cmpEdit:ClearFocus()
+	panel.cmpEdit:Hide()
+	if key and key ~= UI.itemKey then compareKey = key end
+	refresh(panel)
+end
+
+local function buildGraph(panel, body)
+	panel.ranges = {}
+	for i, r in ipairs(RANGES) do
+		local b = K.Flat(body, 50, 20)
+		b:SetPoint("TOPLEFT", GX + (i - 1) * 54, 0)
+		b:SetLabel(r[1])
+		b.label:SetJustifyH("CENTER")
+		b:SetScript("OnClick", function() rangeIdx = i refresh(panel) end)
+		panel.ranges[i] = b
+	end
+	-- Price | Best time
+	local best = K.Flat(body, 72, 20)
+	best:SetPoint("TOPRIGHT", 0, 0)
+	best:SetLabel("Best time")
+	best.label:SetJustifyH("CENTER")
+	best:SetScript("OnClick", function() showBest = true refresh(panel) end)
+	K.Tooltip(best, "Best time to sell", "The price by weekday and by hour of the day (server time), from the price " ..
+		"history and your own sales. Green bars: higher than usual, red: lower.")
+	panel.viewBest = best
+	local price = K.Flat(body, 50, 20)
+	price:SetPoint("RIGHT", best, "LEFT", -4, 0)
+	price:SetLabel("Price")
+	price.label:SetJustifyH("CENTER")
+	price:SetScript("OnClick", function() showBest = false refresh(panel) end)
+	K.Tooltip(price, "Price graph", "The price over time, with your own sales and buys as dots.")
+	panel.viewPrice = price
+	-- Compare: a search box with the matches in a menu
+	local cmp = K.Flat(body, 66, 20)
+	cmp:SetPoint("RIGHT", price, "LEFT", -12, 0)
+	cmp:SetLabel("Compare")
+	cmp.label:SetJustifyH("CENTER")
+	K.Tooltip(cmp, "Compare", "Draws a second item's market value on the same graph. Type its name in the box, pick it. " ..
+		"Click its name under the graph to take it off again.")
+	panel.cmpBtn = cmp
+	local edit = K.Edit(body, 130, function(text)
+		local hits = findItems(text, 1)
+		if hits[1] then setCompare(panel, hits[1]) else K.CloseMenu() end
+	end)
+	edit:SetPoint("RIGHT", cmp, "LEFT", -8, 0)
+	edit:SetScript("OnEscapePressed", function(self) K.CloseMenu() self:SetText("") self:ClearFocus() self:Hide() end)
+	edit:SetScript("OnTextChanged", function(self, user)
+		if not user then return end
+		X.Debounce("xnah-item-compare", 0.25, function()
+			local text = self:GetText() or ""
+			if not self:HasFocus() or #X.Trim(text) < 2 then K.CloseMenu() return end
+			local items = {}
+			for _, key in ipairs(findItems(text, 15)) do
+				if key ~= UI.itemKey then
+					items[#items + 1] = {text = UI.ItemCell(key), func = function() setCompare(panel, key) end}
+				end
+			end
+			if #items == 0 then items[1] = {text = "No item found", disabled = true} end
+			K.Menu(self, items)
+		end)
+	end)
+	edit:Hide()
+	panel.cmpEdit = edit
+	cmp:SetScript("OnClick", function()
+		if edit:IsShown() then
+			K.CloseMenu()
+			edit:ClearFocus()
+			edit:Hide()
+		else
+			edit:SetText("")
+			edit:Show()
+			edit:SetFocus()
+		end
+	end)
+
+	panel.graph = K.Graph(body, GW, 238)
+	panel.graph:SetPoint("TOPLEFT", GX, -24)
+	panel.best = K.TimeBars(body, GW, 258)
+	panel.best:SetPoint("TOPLEFT", GX, -24)
+	panel.best:Hide()
+
+	-- the names under the graph
+	panel.legend = {}
+	for i, e in ipairs(LEGEND) do
+		local b = CreateFrame("Button", nil, body)
+		b:SetSize(80, 16)
+		b.sw = b:CreateTexture(nil, "ARTWORK")
+		b.sw:SetSize(8, 8)
+		b.sw:SetPoint("LEFT", 0, 0)
+		b.sw:SetColorTexture(e[3][1], e[3][2], e[3][3], 1)
+		b.label = K.Label(b, e[2], "GameFontHighlightSmall")
+		b.label:SetPoint("LEFT", 12, 0)
+		b.label:SetWordWrap(false)
+		b.key, b.base = e[1], e[2]
+		b:SetScript("OnClick", function()
+			if e[1] == "cmp" then
+				compareKey = nil
+			else
+				local hide = X.S().graphHide
+				hide[e[1]] = (not hide[e[1]]) or nil
+			end
+			refresh(panel)
+		end)
+		b:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			if e[1] == "cmp" then
+				GameTooltip:AddLine(compareKey and X.ItemName(compareKey) or "Compare")
+				GameTooltip:AddLine("The market value of a second item, to compare. Click to take it off the graph.", 1, 1, 1, true)
+			else
+				GameTooltip:AddLine(e[2])
+				GameTooltip:AddLine(e[4], 1, 1, 1, true)
+				GameTooltip:AddLine(X.S().graphHide[e[1]] and "Hidden - click to show it." or "Click to hide it.", 0.6, 0.6, 0.6)
+			end
+			GameTooltip:Show()
+		end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		b:Hide()
+		panel.legend[i] = b
+	end
+end
 
 local function build(panel)
 	local W = UI.W
@@ -185,21 +326,7 @@ local function build(panel)
 		panel.numL[i], panel.numR[i] = l, r
 	end
 
-	-- [[ graph ]] with range buttons and a legend
-	panel.ranges = {}
-	for i, r in ipairs(RANGES) do
-		local b = K.Flat(body, 66, 20)
-		b:SetPoint("TOPLEFT", 310 + (i - 1) * 70, 0)
-		b:SetLabel(r[1])
-		b.label:SetJustifyH("CENTER")
-		b:SetScript("OnClick", function() rangeIdx = i refresh(panel) end)
-		panel.ranges[i] = b
-	end
-	local legend = K.Label(body, "|cffffd100Market value|r   |cff4ade80Lowest price|r   |cff8aa4ffBars: listed|r", "GameFontHighlightSmall", "RIGHT")
-	legend:SetPoint("TOPRIGHT", -2, -4)
-	legend:SetWidth(260)
-	panel.graph = K.Graph(body, W - 310, 256)
-	panel.graph:SetPoint("TOPLEFT", 310, -24)
+	buildGraph(panel, body)
 
 	-- [[ ways to make gold ]]
 	local prof = K.Panel(body, 300, 208, {0, 0, 0, 0.25})
@@ -502,22 +629,117 @@ local function fillCrafting(panel, s)
 	panel.used:SetItems(list, GREY .. "Not used in any recipe.|r")
 end
 
+-- your sales or buys of the item from `from` on, as dots: {t, v = price of one, color, text}; also how many in all
+local function tradeMarks(key, which, from, color, verb)
+	local list = X.GraphTrades and X.GraphTrades(key, which) or {}
+	local marks = {}
+	for _, e in ipairs(list) do
+		if e.t >= from then
+			local c = math.max(1, e.count or 1)
+			marks[#marks + 1] = {t = e.t, v = e.money / c, color = color,
+				text = verb .. " " .. X.Num(c) .. " at " .. M(e.money / c) .. " each" .. GREY .. "  " .. X.Date(e.t, "%b %d %H:%M") .. "|r"}
+		end
+	end
+	return marks, #list
+end
+
+local function average(points)
+	local s, n = 0, 0
+	for _, p in ipairs(points) do if p[2] then s, n = s + p[2], n + 1 end end
+	return n > 0 and s / n or nil
+end
+
+-- the names under the graph, left to right; info = {sales, buys (in all), inSales, inBuys (in the range), cmpName, right}
+local function layoutLegend(panel, info)
+	local hide = X.S().graphHide
+	local x = 0
+	for _, b in ipairs(panel.legend) do
+		local k = b.key
+		local show, text = true, b.base
+		if k == "sales" then
+			show, text = info.sales > 0, "Your sales (" .. info.inSales .. ")"
+		elseif k == "buys" then
+			show, text = info.buys > 0, "Your buys (" .. info.inBuys .. ")"
+		elseif k == "cmp" then
+			show = info.cmpName ~= nil
+			text = "vs " .. (info.cmpName or "") .. (info.right and GREY .. " (scale on the right)|r" or "") .. RED .. "  x|r"
+		end
+		local w = 0
+		if show then
+			b.label:SetText(hide[k] and (GREY .. text .. "|r") or text)
+			b.sw:SetAlpha(hide[k] and 0.25 or 1)
+			w = math.min(GW - x, (b.label:GetUnboundedStringWidth() or 60) + 14)
+			b.label:SetWidth(math.max(1, w - 12))
+			b:SetWidth(math.max(1, w))
+			b:ClearAllPoints()
+			b:SetPoint("TOPLEFT", panel.body, "TOPLEFT", GX + x, -266)
+			x = x + w + 12
+		end
+		b:SetShown(show and w >= 30)
+	end
+end
+
 local function fillGraph(panel, key)
+	local hide = X.S().graphHide
 	for i, b in ipairs(panel.ranges) do b:SetSelected(i == rangeIdx) end
 	local range = RANGES[rangeIdx][2]
-	local hist = X.History(key, range and (X.Now() - range) or 0)
+	local from = range and (X.Now() - range) or 0
+	local hist = X.History(key, from)
 	local mkt, low, qty = {}, {}, {}
 	for i, p in ipairs(hist) do
 		mkt[i] = {p[1], p[3]}
 		low[i] = {p[1], p[2]}
 		qty[i] = {p[1], p[4]}
 	end
+	local series = {}
+	if not hide.mkt then series[#series + 1] = {points = mkt, color = LEGEND[1][3], width = 2, label = "Market value"} end
+	if not hide.low then series[#series + 1] = {points = low, color = LEGEND[2][3], width = 1.5, label = "Lowest price"} end
+	-- your trades as dots
+	local sales, nSales = tradeMarks(key, "sales", from, SALE, "You sold")
+	local buys, nBuys = tradeMarks(key, "buys", from, BUY, "You bought")
+	local marks = {}
+	if not hide.sales then for _, m in ipairs(sales) do marks[#marks + 1] = m end end
+	if not hide.buys then for _, m in ipairs(buys) do marks[#marks + 1] = m end end
+	-- a second item: on its own scale (numbers on the right) when its price is far from this one's
+	local cmpName, right
+	local ck = compareKey ~= key and compareKey or nil -- on the compared item's own page: not drawn twice
+	if ck then
+		local pts = {}
+		for i, p in ipairs(X.History(ck, from)) do pts[i] = {p[1], p[3]} end
+		local a, b = average(mkt), average(pts)
+		right = (a and b and (b > a * 2.5 or b < a / 2.5)) and true or false
+		cmpName = X.ItemName(ck) or ck
+		local short = #cmpName > 22 and (cmpName:sub(1, 20) .. "..") or cmpName
+		series[#series + 1] = {points = pts, color = CMP, width = 2, label = short, right = right}
+	end
+	panel.cmpBtn:SetSelected(ck ~= nil)
 	local empty
 	if #hist == 0 and range and #X.History(key, 0) > 0 then empty = "No prices in this time - pick a longer range" end
-	panel.graph:SetSeries({
-		{points = mkt, color = {1, 0.82, 0}, width = 2, label = "Market value"},
-		{points = low, color = {0.29, 0.87, 0.5}, width = 1.5, label = "Lowest price"},
-	}, {bars = qty, barsLabel = "Listed", empty = empty})
+	if #series == 0 and #marks == 0 and #hist > 0 then empty = "Everything is hidden - click the names under the graph to show them" end
+	panel.graph:SetSeries(series, {bars = (not hide.bars) and qty or nil, barsLabel = "Listed", empty = empty, marks = marks})
+	layoutLegend(panel, {sales = nSales, buys = nBuys, inSales = #sales, inBuys = #buys, cmpName = cmpName, right = right})
+end
+
+-- the graph or the best-time charts
+local function fillView(panel, key)
+	local best = showBest and true or false
+	panel.viewBest:SetSelected(best)
+	panel.viewPrice:SetSelected(not best)
+	for _, b in ipairs(panel.ranges) do b:SetShown(not best) end
+	panel.cmpBtn:SetShown(not best)
+	if best and panel.cmpEdit:IsShown() then
+		K.CloseMenu()
+		panel.cmpEdit:ClearFocus()
+		panel.cmpEdit:Hide()
+	end
+	panel.graph:SetShown(not best)
+	panel.best:SetShown(best)
+	if best then
+		for _, b in ipairs(panel.legend) do b:Hide() end
+		panel.best:SetData(X.BestTimes(key))
+	else
+		fillGraph(panel, key)
+	end
 end
 
 refresh = function(panel)
@@ -558,7 +780,7 @@ refresh = function(panel)
 	panel.ah:SetEnabled(X.scan and X.scan.state == "idle")
 
 	fillNumbers(panel, key, s)
-	fillGraph(panel, key)
+	fillView(panel, key)
 	fillProfits(panel, s)
 	fillCrafting(panel, s)
 end

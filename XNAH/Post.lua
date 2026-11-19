@@ -43,6 +43,26 @@ function X.ResetPostRule(key)
 	X.Fire("XNAH_POST")
 end
 
+-- [[ the sell list ]] the items the one-key routine posts (Routine.lua): XNAHDB.sellList[key] = true
+local function sellList()
+	X.db.sellList = X.db.sellList or {}
+	return X.db.sellList
+end
+function X.OnSellList(key)
+	return key ~= nil and sellList()[key] == true
+end
+function X.SetSellList(key, on)
+	if not key then return end
+	sellList()[key] = on and true or nil
+	X.Fire("XNAH_POST")
+end
+function X.SellListKeys()
+	local out = {}
+	for key in pairs(sellList()) do out[#out + 1] = key end
+	table.sort(out)
+	return out
+end
+
 -- prices in whole silver when the auction house has no copper
 function X.CopperOK()
 	local ok = X.Try(C_AuctionHouse.SupportsCopperValues)
@@ -218,6 +238,11 @@ end
 function X.PostCancelWarning()
 	X.post.pending = nil
 	postState("idle", "Not posted.")
+end
+-- gives up waiting for an answer (the one-key routine, after no answer for a long time)
+function X.PostForget(text)
+	X.post = {state = "idle"}
+	postState("idle", text)
 end
 X.On("AUCTION_HOUSE_POST_WARNING", function()
 	if X.post.state == "sent" and X.post.pending then

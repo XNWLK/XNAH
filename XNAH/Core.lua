@@ -22,6 +22,7 @@ local HELP = {
 	"/xnah raw [n] - print the first n auctions of the last full scan as the game gives them (to check prices)",
 	"/xnah guide - the guide to every page",
 	"/xnah perf - what XNAH is doing and how much memory it uses",
+	"/xnah size 120 - window size in % (60 to 160; 100 = normal)",
 	"/xnah debug - more messages",
 	"/xnah forget - delete this realm's price data (asks first)",
 }
@@ -38,6 +39,11 @@ SlashCmdList.XNAH = function(msg)
 		X.ScanItems()
 	elseif cmd == "raw" then
 		X.RawDump(tonumber(rest) or 5)
+	elseif cmd == "size" then
+		local n = tonumber(rest)
+		if not n then X.Print("window size: " .. math.floor(X.S().uiScale * 100 + 0.5) .. "% (type /xnah size 120 to change it)") return end
+		X.UI.SetScale(n / 100)
+		X.Print("window size: " .. math.floor(X.S().uiScale * 100 + 0.5) .. "%")
 	elseif cmd == "perf" then
 		X.Perf()
 	elseif cmd == "guide" then

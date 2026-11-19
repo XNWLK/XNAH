@@ -176,7 +176,7 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	X.UI.ShowItem("424242")
 	W.advance(0.5)
 	-- the bar on the auction house window, the minimap button
-	for _, root in ipairs({W.env.AuctionHouseFrame, W.env.Minimap}) do
+	for _, root in ipairs({W.env.AuctionHouseFrame, W.env.Minimap, W.env.XNAHAuctionPanel}) do
 		for _, f in ipairs(under(root, isClickable)) do
 			if f:IsVisible() then f:Click("LeftButton") W.advance(0.3) closePopups(X) end
 			if X.scan.state ~= "idle" then W.waitFor(function() return X.scan.state == "idle" end, 120) end

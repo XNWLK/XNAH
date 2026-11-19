@@ -656,6 +656,158 @@ add({key = "spike", name = "Price spike", side = "sell",
 		return sellRow(key, it, st, rate, "Sell now", cur.min, avg, n, pct((cur.min / avg - 1) * 100) .. " over 30d avg")
 	end})
 
+-- 17 recipes worth learning (Xn's gold list, 2026-11-19)
+add({key = "learn", name = "Recipes worth learning", side = "make",
+	short = "Recipes none of your characters knows yet whose item sells well over its cost.",
+	how = {
+		"Lists recipes of the game that none of your characters knows (as far as XNAH has seen your profession windows), whose item sells after the cut for well over what the reagents cost, and sells often.",
+		"Learn the recipe (trainer, vendor or a recipe item) and craft it. Sorted by profit a day: profit each x how many sell a day.",
+		"When it fails: some recipes are rare drops or need a high skill; the price can drop once more crafters make it.",
+		"Real-life idea: invest in a new product line.",
+	},
+	needs = "fresh prices of the reagents and the items, and the sales speed",
+	params = {
+		minProfitParam(5000),
+		{key = "margin", label = "Margin at least %", default = 25, kind = "pct", tip = "Profit as % of the cost."},
+		{key = "rate", label = "Sells a day at least", default = 1, kind = "number",
+			tip = "Only items known to sell at least this many a day."},
+	},
+	list = function(P, ctx)
+		local out, best = {}, {}
+		if not X.CraftList then return out end
+		for _, r in ipairs(X.Try(X.CraftList, {mine = false}) or {}) do
+			if (not r.known or #r.known == 0) and r.profit and r.profit >= P.minProfit and (r.pct or 0) >= P.margin and not r.stale then
+				local rate = rateOf(ctx, r.key)
+				if rate and rate >= P.rate and (not best[r.key] or best[r.key].profit < r.profit) then
+					local it = X.Items()[r.key]
+					local st = it and X.Stats(it)
+					local rec = X.Recipe and X.Recipe(r.rid)
+					local need = rec and rec.prof and (rec.prof .. (rec.la and (" " .. rec.la) or "")) or (r.prof or "?")
+					best[r.key] = {key = r.key, action = "Learn and craft", now = r.cost, target = r.sell and r.sell / (1 - X.S().cut / 100),
+						profit = r.profit, qty = max(1, floor(rate + 0.5)), risk = riskOf(it, st, rate),
+						why = need .. ", cost " .. sm(r.cost) .. ", sells " .. X.Num(rate) .. " a day"}
+				end
+			end
+		end
+		for _, row in pairs(best) do out[#out + 1] = row end
+		return out
+	end})
+
+-- 18 daily cooldown crafts: crafts the game lets a character make only once in a while, so supply stays low
+local COOLDOWNS = { -- recipe (spell) -> hours between crafts on WoW Forever
+	[17187] = 47,                    -- Transmute: Arcanite
+	[17559] = 23, [17560] = 23, [17561] = 23, [17562] = 23, -- elemental transmutes
+	[17563] = 23, [17564] = 23, [17565] = 23, [17566] = 23,
+	[18560] = 95,                    -- Mooncloth
+	[11479] = 1, [11480] = 1,        -- Iron to Gold, Mithril to Truesilver
+	[25146] = 0.2,                   -- Elemental Fire
+}
+X.CRAFT_COOLDOWNS = COOLDOWNS
+add({key = "cooldown", name = "Cooldown crafts", side = "make",
+	short = "Crafts the game allows only once a day or so: do them every day for steady gold.",
+	how = {
+		"Lists the crafts with a waiting time (transmutes, Mooncloth and the like) and what one brings after the cut over its reagents.",
+		"Their supply stays low because nobody can make many, so the price stays high. Do them every time the wait is over, on every character that knows them.",
+		"When it fails: when the reagents get dearer than the result - check the profit before you craft.",
+		"Real-life idea: a scarce licence - a small, sure income every day.",
+	},
+	needs = "prices of the reagents and the results",
+	params = {
+		minProfitParam(1000),
+		{key = "mine", label = "Only recipes I know", default = false, kind = "check"},
+	},
+	list = function(P, ctx)
+		local out = {}
+		if not (X.Recipe and X.RecipeCost) then return out end
+		for rid, hours in pairs(COOLDOWNS) do
+			local r = X.Recipe(rid)
+			local who = X.KnownBy and X.KnownBy(rid) or {}
+			if r and r.out and (not P.mine or #who > 0) then
+				local key = tostring(r.out)
+				local cost, missing = X.RecipeCost(rid)
+				local price = X.Price(key)
+				local sell = cut(price)
+				if cost and sell and (missing or 0) == 0 and sell - cost >= P.minProfit then
+					local it = X.Items()[key]
+					local st = it and X.Stats(it)
+					local rate = rateOf(ctx, key)
+					local per = hours >= 20 and ("every " .. (hours >= 30 and (floor(hours / 24 + 0.5) .. " days") or "day")) or
+						(hours >= 1 and ("every " .. floor(hours + 0.5) .. " h") or "every few minutes")
+					out[#out + 1] = {key = key, action = "Craft " .. per, now = cost, target = price, profit = (sell - cost) * (r.n or 1),
+						qty = #who > 0 and #who or 1, risk = riskOf(it, st, rate),
+						why = (r.name or "?") .. (#who > 0 and ("; " .. table.concat(who, ", ")) or "; nobody knows it yet")}
+				end
+			end
+		end
+		return out
+	end})
+
+-- 19 what to farm: raw materials that sell fast
+add({key = "farm", name = "What to farm", side = "make",
+	short = "Raw materials (herbs, ore, cloth, leather...) ranked by the gold they bring a day.",
+	how = {
+		"Lists materials that go into recipes but are not crafted and not sold by vendors - things you gather or loot - by price after the cut x how many sell a day.",
+		"Farm the ones at the top: a cheap herb that sells 200 a day can beat a rare drop that sells once a week.",
+		"When it fails: when many players farm the same thing the price falls - watch the trend arrow.",
+		"Real-life idea: produce what the market buys every day.",
+	},
+	needs = "the sales speed (two full scans up to 4 hours apart)",
+	params = {
+		{key = "rate", label = "Sells a day at least", default = 5, kind = "number"},
+		minProfitParam(10),
+	},
+	each = function(key, it, st, P, ctx)
+		local cur = it.cur
+		local id = it.id or X.KeyID(key)
+		if not id or tostring(key):find(":", 1, true) then return nil end
+		local price = cur.mkt or cur.min
+		if not price then return nil end
+		local each = cut(price)
+		if each < P.minProfit then return nil end
+		if not (X.RecipesUsing and X.AllRecipesFor) then return nil end
+		if X.VendorBuy(id) then return nil end
+		if #X.AllRecipesFor(id) > 0 then return nil end
+		local uses = #X.RecipesUsing(id)
+		if uses == 0 then return nil end
+		local rate = rateOf(ctx, key)
+		if not rate or rate < P.rate then return nil end
+		return {key = key, action = "Farm and sell", now = price, target = price, profit = each, qty = max(1, floor(rate + 0.5)),
+			risk = riskOf(it, st, rate), why = "sells " .. X.Num(rate) .. " a day; in " .. uses .. " recipe" .. (uses > 1 and "s" or "")}
+	end})
+
+-- 20 stock up at a low: buy near the month's low, sell when it climbs back
+add({key = "seasonal", name = "Stock up at a low", side = "buy",
+	short = "Sells steadily and sits near its lowest price of the month: buy now, sell when it climbs back.",
+	how = {
+		"Lists items that sell steadily, whose price now is close to their lowest of the last 30 days while the month's high was well above it.",
+		"Buy some and keep them until the price climbs back towards its average - for example before raid nights, new content or holidays.",
+		"When it fails: when the low is a new normal (a new source of the item, fewer buyers). Spread your buys and do not tie up too much gold.",
+		"Real-life idea: buy out of season - winter coats in summer.",
+	},
+	needs = "at least 2 weeks of price history and the sales speed",
+	params = {
+		{key = "near", label = "Within % of the 30-day low", default = 10, kind = "pct"},
+		{key = "swing", label = "30-day high over the low by %", default = 40, kind = "pct"},
+		{key = "rate", label = "Sells a day at least", default = 1, kind = "number"},
+		minProfitParam(1000),
+	},
+	each = function(key, it, st, P, ctx)
+		local cur = it.cur
+		local now = cur.min
+		if not now or not st.low30 or not st.high30 or (st.days or 0) < 14 then return nil end
+		if now > st.low30 * (1 + P.near / 100) then return nil end
+		if st.high30 < st.low30 * (1 + P.swing / 100) then return nil end
+		local target = usualOf(st)
+		if not target or target <= now then return nil end
+		local each = cut(target) - now
+		if each < P.minProfit then return nil end
+		local rate = rateOf(ctx, key)
+		if not rate or rate < P.rate then return nil end
+		local units = unitsUnder(listOf(ctx, key, it), st.low30 * (1 + P.near / 100))
+		return {key = key, action = "Buy and hold", now = now, target = target, profit = each, qty = sensible(units, rate, 5),
+			risk = riskOf(it, st, rate, 1), why = "30-day low " .. sm(st.low30) .. ", high " .. sm(st.high30)}
+	end})
+
 -- [[ saved numbers ]]
 local function saved(key)
 	X.db.strategies = X.db.strategies or {}

@@ -14,6 +14,14 @@ local progress = ""
 local refilter = true -- the search or a filter changed
 local shown = {}      -- the rows that pass the search and filters, sorted (the table gets the first CAP)
 local filter = {text = "", watch = false, listed = false, craft = false, q = nil}
+X.Default("marketFilter", {}) -- the search and quick filters, kept for next time
+local function saveFilter()
+	X.S().marketFilter = {text = filter.text, watch = filter.watch, listed = filter.listed, craft = filter.craft, q = filter.q}
+end
+local function loadFilter()
+	local f = X.S().marketFilter or {}
+	filter.text, filter.watch, filter.listed, filter.craft, filter.q = f.text or "", f.watch == true, f.listed == true, f.craft == true, f.q
+end
 
 X.On("XNAH_PRICES", function() dirty = true end)
 X.On("XNAH_WATCH", function() if filter.watch then refilter = true end end)
@@ -144,6 +152,8 @@ local function build(panel)
 	local search = K.Edit(panel, 200)
 	search:SetPoint("TOPLEFT", 52, -2)
 	panel.search = search
+	loadFilter()
+	search:SetText(filter.text or "")
 
 	-- quick filters
 	local buttons = {}
@@ -158,6 +168,7 @@ local function build(panel)
 	end
 	local function changed()
 		refilter = true
+		saveFilter()
 		mark()
 		if rows then applyFilter(panel.tbl) end
 		panel.footerUpdate()

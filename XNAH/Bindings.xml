@@ -2,4 +2,7 @@
 	<Binding name="XNAH_TOGGLE" header="XNAH" category="ADDONS">
 		XNAH_Toggle()
 	</Binding>
+	<Binding name="XNAH_NEXT" category="ADDONS">
+		XNAH_Next()
+	</Binding>
 </Bindings>

@@ -32,6 +32,7 @@ const GUARDED = {
   AuctionHouseFrame: "the auction house window (Blizzard_AuctionHouseUI, load on demand); tested before use",
   AuctionHouseFrameDisplayMode: "the auction house window's table of views (Blizzard_AuctionHouseFrame.lua, a Lua table); tested before use",
   SOUNDKIT:"the game's table of sound ids (a Lua table, not on the lists); tested before use, number fallback",
+  XNAH_Next: "key binding function of the one-key routine (Bindings.xml)", BINDING_NAME_XNAH_NEXT: "key binding label",
 };
 const strip = src => src.replace(/--\[(=*)\[[\s\S]*?\]\1\]/g, ' ').replace(/--[^\n]*/g, ' ')
   .replace(/\[(=*)\[[\s\S]*?\]\1\]/g, m => '"' + ' '.repeat(Math.max(0, m.length - 2)) + '"');
@@ -75,10 +76,11 @@ fs.readdirSync(ADDON).filter(f => f.endsWith('.lua') && true).forEach(file => {
     say(file, 'global "' + name + '" is not in the Forever client (line ' + code.slice(0, m.index).split('\n').length + ')');
   }
   // methods called on frames, font strings and textures
-  const own = new Set(['Refresh', 'sync', 'gsub', 'find', 'match', 'sub', 'lower', 'gmatch', 'format', 'rep', 'byte', 'AddMessage',
+  const own = new Set(['Refresh', 'AsText', 'ShowAsText', 'sync', 'gsub', 'find', 'match', 'sub', 'lower', 'gmatch', 'format', 'rep', 'byte', 'AddMessage',
     'upper', 'reverse',                                          // Lua string methods
     'SetLabel', 'SetSelected', 'SetItems', 'SetCols', 'SetRows', 'Sort', 'SortBy', // XNAH's own frame functions (UIKit.lua, UI.lua)
     'SetSeries',                                                 // XNAH's price graph (Graph.lua)
+    'SetData',                                                   // XNAH's best-time bar charts (Graph.lua, K.TimeBars)
     'Cancel',                                                    // the ticker object C_Timer.NewTicker returns
     'SetHyperlink',                                              // GameTooltip: a Lua accessor of the game (not on the C list); only called behind 'if GameTooltip.SetHyperlink'
     'SetBackdrop', 'SetBackdropColor', 'SetBackdropBorderColor',  // from BackdropTemplate (a Lua mixin, on the Mixins list); only called behind 'if frame.SetBackdrop'

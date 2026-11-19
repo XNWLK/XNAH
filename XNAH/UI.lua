@@ -9,6 +9,11 @@ X.UI = UI
 local W, H = 960, 620
 UI.W, UI.H = W - 20, H - 70 -- content area (940 x 550)
 
+-- window size: the whole window (text included) is drawn bigger or smaller; drag the corner, or /xnah size 120
+X.Default("uiScale", 1)
+X.Default("sorts", {}) -- each table's sort column, per page ("market:1" = {column, descending})
+local MIN_SCALE, MAX_SCALE = 0.6, 1.6
+
 -- a tab: build(panel) once, refresh(panel) whenever something changed while it is shown
 function UI.AddTab(key, title, build, refresh, order)
 	UI.tabs[key] = {key = key, title = title, build = build, refresh = refresh, n = order or (#UI.order + 1)}
@@ -27,7 +32,9 @@ local function selectTab(key)
 		if on and not tab.panel then
 			tab.panel = CreateFrame("Frame", nil, frame.content)
 			tab.panel:SetAllPoints(frame.content)
+			UI.building, UI.tableCount = k, 0 -- tables made while building remember their sorting under this page
 			local ok, err = pcall(tab.build, tab.panel)
+			UI.building = nil
 			if not ok then X.OnError(err) end
 		end
 		if tab.panel then tab.panel:SetShown(on) end
@@ -45,6 +52,7 @@ function UI.Refresh(now)
 		local last = X.Realm().lastFull
 		frame.title:SetText("|cffe6b422XNAH|r  |cff999999" .. (X.realmKey or X.RealmKey()) .. "  -  " .. X.Num(items) ..
 			" items  -  full scan " .. X.Ago(last) .. "|r")
+		frame.title:SetWidth(W - 360)
 		local tab = UI.tabs[UI.current]
 		if tab and tab.panel and tab.refresh then
 			local ok, err = pcall(tab.refresh, tab.panel)
@@ -54,7 +62,7 @@ function UI.Refresh(now)
 	if now then run() else X.Debounce("ui", 0.2, run) end
 end
 for _, e in ipairs({"XNAH_PRICES", "XNAH_SCAN", "XNAH_RECIPES", "XNAH_WATCH", "XNAH_AH", "XNAH_ANALYSIS", "XNAH_LEDGER",
-	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHARE", "XNAH_SHOP"}) do
+	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHARE", "XNAH_SHOP", "XNAH_HOME"}) do
 	X.On(e, function() UI.Refresh() end)
 end
 
@@ -75,6 +83,7 @@ local function build()
 		local p, _, rp, x, y = self:GetPoint()
 		X.S().window = {p, rp, x, y}
 	end)
+	frame:SetScale(UI.ClampScale(X.S().uiScale))
 	local pos = X.S().window
 	if pos and pos[1] then frame:ClearAllPoints() frame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4]) end
 	tinsert(UISpecialFrames, "XNAHFrame")
@@ -89,6 +98,38 @@ local function build()
 	local guide = K.Button(frame, "Guide", 64, 20, function() if X.ShowGuide then X.ShowGuide() end end)
 	guide:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	K.Tooltip(guide, "Guide", "How every page of XNAH works and how to use it to make gold.")
+	-- quick search (Quick.lua): any item or recipe by name
+	if UI.QuickSearchBox then
+		local box = UI.QuickSearchBox(frame)
+		box:SetPoint("RIGHT", guide, "LEFT", -10, 0)
+		local findLabel = K.Label(frame, "Find", "GameFontNormalSmall", "RIGHT")
+		findLabel:SetPoint("RIGHT", box, "LEFT", -8, 0)
+	end
+	-- the size grip in the bottom right corner: drag = bigger / smaller, right-click = normal size
+	local grip = CreateFrame("Button", nil, frame)
+	grip:SetSize(16, 16)
+	grip:SetPoint("BOTTOMRIGHT", -2, 2)
+	grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+	grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+	grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+	grip:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	grip:SetScript("OnMouseDown", function(self, button)
+		if button ~= "LeftButton" then return end
+		local s = frame:GetScale()
+		local left, top = frame:GetLeft() * s, frame:GetTop() * s
+		local cx = GetCursorPosition() / UIParent:GetEffectiveScale()
+		local width = frame:GetWidth() * s
+		self:SetScript("OnUpdate", function()
+			local x = GetCursorPosition() / UIParent:GetEffectiveScale()
+			UI.SetScale((width + x - cx) / frame:GetWidth(), left, top)
+		end)
+	end)
+	grip:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+	grip:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+	grip:SetScript("OnClick", function(_, button) if button == "RightButton" then UI.SetScale(1) end end)
+	K.Tooltip(grip, "Window size", "Drag to make the window (and its text) bigger or smaller. Right-click: normal size. " ..
+		"Also: /xnah size 120")
+	frame.grip = grip
 
 	-- tabs share the width of the window
 	local x, n = 10, #UI.order
@@ -109,6 +150,26 @@ local function build()
 	frame:Hide()
 end
 UI.Frame = function() return frame end
+
+function UI.ClampScale(s)
+	s = tonumber(s) or 1
+	return math.max(MIN_SCALE, math.min(MAX_SCALE, s))
+end
+-- sets the window size (1 = normal); the top left corner stays where it is (left / top in the screen's units)
+function UI.SetScale(s, left, top)
+	s = UI.ClampScale(s)
+	X.S().uiScale = math.floor(s * 100 + 0.5) / 100
+	if not frame then return end
+	local old = frame:GetScale()
+	left = left or (frame:GetLeft() and frame:GetLeft() * old)
+	top = top or (frame:GetTop() and frame:GetTop() * old)
+	frame:SetScale(X.S().uiScale)
+	if left and top then
+		frame:ClearAllPoints()
+		frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left / X.S().uiScale, top / X.S().uiScale)
+		X.S().window = {"TOPLEFT", "BOTTOMLEFT", left / X.S().uiScale, top / X.S().uiScale}
+	end
+end
 
 function UI.Toggle(tab)
 	if not frame then build() end
@@ -170,6 +231,10 @@ function UI.ItemMenu(anchor, key)
 			X.ScanItems({key}, "one item")
 		end}
 	end
+	local tbl = UI.menuTable
+	if tbl and tbl.ShowAsText then
+		items[#items + 1] = {text = "Copy this list as text", func = function() tbl:ShowAsText() end}
+	end
 	K.Menu(anchor, items)
 end
 
@@ -188,7 +253,15 @@ function K.Table(parent, w, h, columns, onClick)
 			texts[i] = ok and t or "?"
 		end
 		rowFrame:SetCols(unpack(texts))
-		rowFrame:SetScript("OnClick", function(self, button) if onClick then onClick(row, button, self) end end)
+		rowFrame:SetScript("OnClick", function(self, button)
+			-- a right-click menu opened from here offers "copy this list"
+			UI.menuTable = tbl
+			if onClick then
+				local ok, err = pcall(onClick, row, button, self)
+				if not ok then X.OnError(err) end
+			end
+			UI.menuTable = nil
+		end)
 		if row.key then
 			rowFrame:SetScript("OnEnter", function(self) UI.ItemTooltip(self, row.key) end)
 			rowFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -200,17 +273,57 @@ function K.Table(parent, w, h, columns, onClick)
 	tbl = list
 	tbl.columns = columns
 	tbl.sortCol, tbl.sortDesc = nil, true
-	-- headers become buttons
+	-- the sorting you pick is remembered per page (tables made while a page is built: "market:1", "market:2", ...)
+	if UI.building then
+		UI.tableCount = (UI.tableCount or 0) + 1
+		tbl.saveKey = UI.building .. ":" .. UI.tableCount
+		local saved = X.S().sorts[tbl.saveKey]
+		if saved and columns[saved[1]] and columns[saved[1]].sort then
+			tbl.sortCol, tbl.sortDesc, tbl.savedSort = saved[1], saved[2] and true or false, true
+		end
+	end
+	-- headers become buttons: click = sort, right-click = copy this list
 	for i, hdr in ipairs(list.headers or {}) do
 		local c = columns[i]
-		if c.sort then
-			local b = CreateFrame("Button", nil, list)
-			b:SetAllPoints(hdr)
-			b:SetScript("OnClick", function()
-				if tbl.sortCol == i then tbl.sortDesc = not tbl.sortDesc else tbl.sortCol, tbl.sortDesc = i, c.desc ~= false end
-				tbl:Sort()
-			end)
+		local b = CreateFrame("Button", nil, list)
+		b:SetAllPoints(hdr)
+		b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		b:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				K.Menu(self, {{text = "This list", isTitle = true}, {text = "Copy this list as text", func = function() tbl:ShowAsText() end}})
+				return
+			end
+			if not c.sort then return end
+			if tbl.sortCol == i then tbl.sortDesc = not tbl.sortDesc else tbl.sortCol, tbl.sortDesc = i, c.desc ~= false end
+			if tbl.saveKey then X.S().sorts[tbl.saveKey] = {tbl.sortCol, tbl.sortDesc} end
+			tbl:Sort()
+		end)
+	end
+	-- the list as plain text, one row a line, columns split by tabs (pastes into a spreadsheet)
+	local function plain(t)
+		t = tostring(t or "")
+		t = t:gsub("|T.-|t", ""):gsub("|H.-|h(.-)|h", "%1"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+		return X.Trim(t)
+	end
+	function tbl:AsText(maxRows)
+		maxRows = maxRows or 2000
+		local lines, head = {}, {}
+		for i, c in ipairs(self.columns) do head[i] = c[1] end
+		lines[1] = table.concat(head, "\t")
+		for r = 1, math.min(#self.items, maxRows) do
+			local row, cells = self.items[r], {}
+			for i, c in ipairs(self.columns) do
+				local ok, v = pcall(c.text, row)
+				cells[i] = plain(ok and v or "")
+			end
+			lines[#lines + 1] = table.concat(cells, "\t")
 		end
+		if #self.items > maxRows then lines[#lines + 1] = "(first " .. maxRows .. " of " .. #self.items .. " rows)" end
+		return table.concat(lines, "\n"), math.min(#self.items, maxRows)
+	end
+	function tbl:ShowAsText()
+		local text, n = self:AsText()
+		K.ShowText("This list (" .. n .. " rows, columns split by tabs)", text)
 	end
 	function tbl:Sort()
 		local c = self.sortCol and self.columns[self.sortCol]
@@ -244,6 +357,7 @@ function K.Table(parent, w, h, columns, onClick)
 	end
 	-- sort by column i at the start
 	function tbl:SortBy(i, desc)
+		if self.savedSort then return end -- the sorting you picked last time wins
 		self.sortCol, self.sortDesc = i, desc ~= false
 	end
 	return tbl

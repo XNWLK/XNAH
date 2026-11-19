@@ -413,10 +413,15 @@ local function updateBar()
 	bar.full:SetEnabled(fullScanAllowed())
 	bar.watch:SetEnabled(X.ahOpen == true and X.scan.state == "idle")
 	bar.text:SetText(X.scan.text or "|cff999999Full scan: every auction at once.  Watch list: your starred items.|r")
+	-- the one-key routine (Routine.lua): what the next press does
+	if X.routine and X.routine.state ~= "off" and X.RoutinePeek and X.scan.state == "idle" then
+		local peek = X.Try(X.RoutinePeek)
+		if peek and peek.text then bar.text:SetText(peek.text) end
+	end
 end
 local function buildBar()
 	bar = CreateFrame("Frame", "XNAHAuctionBar", UIParent, "BackdropTemplate")
-	bar:SetSize(600, 28)
+	bar:SetSize(700, 28)
 	bar:SetFrameStrata("HIGH")
 	bar:SetClampedToScreen(true)
 	K.Backdrop(bar, K.colors.bg)
@@ -429,8 +434,12 @@ local function buildBar()
 	K.Tooltip(bar.watch, "Scan the watch list", "Searches your starred items one by one (any time).")
 	bar.open = K.Button(bar, "XNAH", 60, 22, function() UI.Toggle() end)
 	bar.open:SetPoint("LEFT", bar.watch, "RIGHT", 4, 0)
+	bar.next = K.Button(bar, "Next step", 90, 22, function() if X.RoutineNext then X.RoutineNext("button") end updateBar() end)
+	bar.next:SetPoint("LEFT", bar.open, "RIGHT", 4, 0)
+	K.Tooltip(bar.next, "One-key routine", "Each click does the next step: cancel an undercut auction, or post the next item of " ..
+		"your sell list. Your key for it (key bindings, AddOns, XNAH) does the same.")
 	bar.text = K.Label(bar, "")
-	bar.text:SetPoint("LEFT", bar.open, "RIGHT", 8, 0)
+	bar.text:SetPoint("LEFT", bar.next, "RIGHT", 8, 0)
 	bar.text:SetPoint("RIGHT", -8, 0)
 	bar.text:SetWordWrap(false)
 	local acc = 0
@@ -463,3 +472,4 @@ function UI.UpdateAHBar(open, try)
 end
 X.On("XNAH_AH", function(open) UI.UpdateAHBar(open == true) end)
 X.On("XNAH_SCAN", updateBar)
+X.On("XNAH_ROUTINE", updateBar)

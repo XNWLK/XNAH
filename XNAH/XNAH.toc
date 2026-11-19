@@ -25,12 +25,15 @@ Buy.lua
 Post.lua
 Snipe.lua
 Shop.lua
+Routine.lua
 Queue.lua
 Share.lua
+Home.lua
 Tooltip.lua
 Core.lua
 UIKit.lua
 UI.lua
+UIHome.lua
 Graph.lua
 UIMarket.lua
 UIItem.lua
@@ -43,4 +46,6 @@ UIBuy.lua
 UILedger.lua
 UIWealth.lua
 UIScan.lua
+AHPanel.lua
 Guide.lua
+Quick.lua
