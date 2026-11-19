@@ -29,7 +29,7 @@ function X.QueueGet(rid)
 end
 -- sets a recipe's target (mode "restock" or "craft"); n of 0 or less (or nil) takes it out of the queue
 function X.QueueSet(rid, mode, n)
-	if not rid or not X.db.recipes[rid] then return false end
+	if not rid or not X.Recipe(rid) then return false end
 	n = tonumber(n)
 	if not n or n <= 0 then
 		db()[rid] = nil
@@ -56,7 +56,7 @@ end
 function X.QueueRows()
 	local out = {}
 	for rid, q in pairs(db()) do
-		local r = X.db.recipes[rid]
+		local r = X.Recipe(rid)
 		if r and r.out then
 			local makes = r.n or 1
 			local key = tostring(r.out)
@@ -89,7 +89,7 @@ function X.QueueMaterials(rows)
 	rows = rows or X.QueueRows()
 	local need, order = {}, {}
 	for _, row in ipairs(rows) do
-		local r = X.db.recipes[row.rid]
+		local r = X.Recipe(row.rid)
 		if r and row.craft > 0 then
 			for _, re in ipairs(r.r or {}) do
 				if not need[re[1]] then need[re[1]] = 0 order[#order + 1] = re[1] end

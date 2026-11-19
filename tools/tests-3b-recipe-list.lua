@@ -24,7 +24,8 @@ T.scene("recipe list: every recipe, used in, and the recipe tooltip", function()
 	T.ok("Copper Ore: Smelt Copper", X.Contains(X.RecipesUsing(2770), 2657) ~= nil)
 	T.ok("Linen Cloth: many recipes", #X.RecipesUsing(2589) >= 10, #X.RecipesUsing(2589))
 	T.ok("made by: Copper Bar", X.Contains(X.AllRecipesFor(2840), 2657) ~= nil)
-	T.check("crafting cost still only from recipes read in the game", #X.RecipesFor(2840), 0)
+	T.ok("crafting costs use the list too", X.Contains(X.RecipesFor(2840), 2657) ~= nil)
+	T.check("posting floor: only recipes read in the game", #X.RecipesFor(2840, true), 0)
 	-- names of items the game has not loaded come from the list
 	T.check("name from the list", (X.ItemName("2454")), "Elixir of Minor Strength")
 
@@ -54,4 +55,32 @@ T.scene("recipe list: every recipe, used in, and the recipe tooltip", function()
 	W.advance(0.3)
 	T.ok("crafting box: the list recipe", panel.cTitle:GetText():find("Smelt Copper", 1, true) ~= nil, panel.cTitle:GetText())
 	T.ok("crafting box: from the recipe list", panel.cKnown:GetText():find("recipe list", 1, true) ~= nil, panel.cKnown:GetText())
+end)
+
+T.scene("recipe list: the crafting list uses every recipe, quickly", function()
+	local X = W.start()
+	-- prices of some reagents and products (most items have none: like a fresh install)
+	for _, p in ipairs({{"2589", 50, "Linen Cloth"}, {"2996", 400, "Bolt of Linen Cloth"}, {"2770", 10, "Copper Ore"}, {"2840", 60, "Copper Bar"}}) do
+		X.Record(p[1], X.Now(), p[2], p[2], 50, 3, p[3], 1)
+	end
+	local t0 = os.clock()
+	local list = X.CraftList({})
+	local first = os.clock() - t0
+	T.ok("every recipe that makes an item is listed", #list > 1800, #list)
+	local priced = 0
+	for _, r in ipairs(list) do if r.cost then priced = priced + 1 end end
+	T.ok("costs worked out", priced > 0, priced)
+	T.check("Bolt of Linen Cloth costs 2 Linen", X.RecipeCost(2963), 100)
+	t0 = os.clock()
+	X.CraftList({})
+	local again = os.clock() - t0
+	if os.getenv and os.getenv("SHOWTIME") then print(string.format("craft list: %.3f s, again %.3f s (%d rows, %d priced)", first, again, #list, priced)) end
+	T.ok("the second time is quicker (costs remembered)", again <= first + 0.05, first .. " / " .. again)
+	-- the Craft tab: unknown recipes listed when "only mine" is off
+	X.S().craftMine = false
+	X.UI.Open("craft")
+	W.advance(0.5)
+	T.ok("Professions include the list's", X.Contains(X.Professions(), "Tailoring") ~= nil)
+	-- posting floor ignores recipes nobody has read in the game
+	T.check("no posting floor from list recipes", (X.CraftCost(2840, true)), nil)
 end)

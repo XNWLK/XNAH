@@ -65,7 +65,7 @@ function X.PostPrice(key)
 	if not key then return nil end
 	local rule = X.PostRule(key)
 	local usual = X.PostUsual(key)
-	local craft = X.CraftCost and X.CraftCost(X.KeyID(key)) or nil
+	local craft = X.CraftCost and X.CraftCost(X.KeyID(key), true) or nil -- recipes read in the game only (ones you can craft)
 	local info = {usual = usual, craft = craft}
 	local floor, floorWhy
 	if usual then floor, floorWhy = usual * rule.floor / 100, rule.floor .. "% of usual" end

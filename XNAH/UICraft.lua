@@ -102,7 +102,7 @@ local MAT_COLUMNS = {
 }
 
 local function emptyText()
-	if next(X.db.recipes) == nil then
+	if next(X.db.recipes) == nil and not X.RECIPE_DB then
 		return "No recipes yet. Open a profession window (yours, or a recipe list someone linked in chat): XNAH reads " ..
 			"every recipe in it."
 	end
@@ -117,7 +117,7 @@ end
 local function showDetail(p)
 	local d = p.detail
 	local rid = p.rid
-	local r = rid and X.db.recipes[rid]
+	local r = rid and X.Recipe(rid)
 	if not r then
 		d.title:SetText("|cff999999Click a recipe above to see what goes into it.|r")
 		d.summary:SetText("")
@@ -410,7 +410,7 @@ local function build(p)
 	help:SetPoint("TOPLEFT", 0, -28)
 	help:SetWidth(W)
 	help:SetWordWrap(false)
-	local help2 = part(K.Label(p, "|cff999999Recipes are learned when you open a profession window (yours or a linked one).  " ..
+	local help2 = part(K.Label(p, "|cff999999Every recipe of the game; open your profession windows so XNAH knows yours.  " ..
 		"Grey ? = a reagent has no price yet (cost too low).  Green Q = in the queue.  Right click: menu.|r"))
 	help2:SetPoint("TOPLEFT", 0, -46)
 	help2:SetWidth(W)

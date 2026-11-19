@@ -183,7 +183,7 @@ local function build(panel)
 	add("listed", "Listed now", 84, function() filter.listed = not filter.listed changed() end)
 	K.Tooltip(buttons.listed, "Listed now", "Only items that were on the auction house at the last scan.")
 	add("craft", "Can be crafted", 104, function() filter.craft = not filter.craft changed() end)
-	K.Tooltip(buttons.craft, "Can be crafted", "Only items a known recipe makes (recipes are read from profession windows).")
+	K.Tooltip(buttons.craft, "Can be crafted", "Only items a recipe makes (any recipe of the game, also ones your characters do not know).")
 	add("q", "Quality: any", 130, function(self)
 		local items = {{text = "Lowest quality to show", isTitle = true},
 			{text = "Any quality", checked = filter.q == nil, func = function() filter.q = nil changed() end}}

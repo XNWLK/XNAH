@@ -249,8 +249,8 @@ local PAGES = {
 
 	{key = "craft", title = "Crafting and the queue", tab = "craft", text = lines(
 		h("Recipes"),
-		"XNAH learns recipes when you open a profession window - yours on each character, or one someone linked in " ..
-		"chat. Then the Crafting page lists every recipe with:",
+		"XNAH knows every recipe of the game. Open your profession windows on each character so it knows which ones " ..
+		"your characters have (tick " .. g("Only recipes my characters know") .. " to see just those). The Crafting page lists every recipe with:",
 		"- Cost to make: every reagent bought the cheapest way (vendor, auction house, or crafted). A grey " ..
 		g("?") .. " = a reagent has no price yet, so the cost is too low.",
 		"- Sells for (after cut), Profit, Margin %, how many are listed, and which characters know it.",

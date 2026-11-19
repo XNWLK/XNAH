@@ -437,15 +437,13 @@ local function fillCrafting(panel, s)
 	local id = s.id
 	local rid = s.craftRid
 	local all = X.RecipesFor(id)
-	-- no recipe read in the game: the one from the recipe list
-	if #all == 0 then all = X.AllRecipesFor(id) end
 	if not rid then rid = all[1] end -- a recipe with a reagent that has no price yet
 	local r = rid and X.Recipe(rid)
 	for i = 1, PARTS do panel.parts[i]:Hide() end
 	for _, h in ipairs(panel.cHead) do h:SetShown(r ~= nil) end
 	if not r then
 		panel.cTitle:SetText("Crafting")
-		panel.cKnown:SetText(GREY .. "No known recipe makes this item. Recipes are read when a profession window is opened.|r")
+		panel.cKnown:SetText(GREY .. "No recipe makes this item.|r")
 		panel.cFoot:SetText("")
 	else
 		panel.cTitle:SetText("Crafting" .. (r.prof and (" (" .. r.prof .. ")") or "") .. ": " .. (r.name or "?") ..

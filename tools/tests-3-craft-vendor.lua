@@ -97,6 +97,7 @@ end
 
 T.scene("craft: recipes from profession windows, costs, intermediate reagents, cycles", function()
 	local X = W.start()
+	X.RECIPE_DB, X.RECIPE_PROFS = nil, nil -- the game's profession windows alone here (the recipe list: tests-3b)
 	recipes()
 	W.openProfession("Mining")
 	W.advance(3)
@@ -123,8 +124,7 @@ T.scene("craft: recipes from profession windows, costs, intermediate reagents, c
 	T.check("linked: not known by me", #X.KnownBy(5), 0)
 	T.check("professions", table.concat(X.Professions(), ","), "Alchemy,Mining,Tailoring")
 	T.check("recipes for Copper Bar", table.concat(X.RecipesFor(2840), ","), "1")
-	T.check("recipes using Copper Ore: the one read first", X.RecipesUsing(2770)[1], 1)
-	T.ok("and Smelt Copper from the recipe list", X.Contains(X.RecipesUsing(2770), 2657) ~= nil)
+	T.check("recipes using Copper Ore", table.concat(X.RecipesUsing(2770), ","), "1")
 	-- prices
 	W.openMerchant("Supplies")
 	W.advance(1)

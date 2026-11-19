@@ -5,8 +5,9 @@
 --     r = {{itemID, count}, ...}, prof = "Alchemy", at = t}
 --   XNAHDB.known[character] = {[recipeID] = true}  recipes your characters know
 -- Besides those, RecipeDB.lua lists every recipe of the game: X.Recipe(rid) gives either kind in the same
--- shape (list ones carry db = true, la = skill needed, colors). Crafting costs only use recipes read in the game
--- (X.RecipesFor); "used in" and the item page's recipe also use the list (X.RecipesUsing, X.AllRecipesFor).
+-- shape (list ones carry db = true, la = skill needed, colors). Crafting costs, the crafting list and "used in" use
+-- both (Xn, 2026-11-19: "use all recipes"); "Only recipes my characters know" narrows the lists to known ones, and the
+-- posting floor uses recipes read in the game only (X.CraftCost(id, true)).
 local ADDON, X = ...
 
 local byOutput -- [itemID] = {recipeID, ...}
@@ -20,7 +21,9 @@ local function index()
 	end
 	for _, list in pairs(byOutput) do table.sort(list) end
 end
-function X.RecipesFor(itemID)
+-- every recipe that makes an item; gameOnly: only those read from a profession window
+function X.RecipesFor(itemID, gameOnly)
+	if not gameOnly then return X.AllRecipesFor(itemID) end
 	if not byOutput then index() end
 	return byOutput[itemID] or {}
 end
@@ -180,7 +183,15 @@ X.On("NEW_RECIPE_LEARNED", function() X.Debounce("tradeskill", 1, readRecipes) e
 
 -- [[ costs ]]
 -- the cheapest way to get one of an item: returns copper, how ("vendor" / "ah" / "craft"), and for "craft" the recipe
+local costCache, costAt = {}, -100
+local function clearCosts() costCache = {} end
+X.On("XNAH_PRICES", clearCosts)
+X.On("XNAH_RECIPES", clearCosts)
 local function reagentCost(id, depth, visiting)
+	local now = GetTime()
+	if now - costAt > 5 then costCache, costAt = {}, now end
+	local hit = costCache[id]
+	if hit then return hit[1], hit[2], hit[3] end
 	local best, how, via
 	local vb = X.VendorBuy(id)
 	if vb and X.S().vendorBuyFirst then best, how = vb, "vendor" end
@@ -196,6 +207,8 @@ local function reagentCost(id, depth, visiting)
 		end
 		visiting[id] = nil
 	end
+	-- only a full answer is kept (one worked out inside another item's recipe may stop early)
+	if depth == 0 and next(visiting) == nil then costCache[id] = {best, how, via} end
 	return best, how, via
 end
 X.ReagentCost = function(id) return reagentCost(id, 0, {}) end
@@ -213,9 +226,9 @@ function X.RecipeCost(rid, depth, visiting)
 	return total / (r.n or 1), missing
 end
 -- cheapest crafting cost of an item (any recipe that makes it)
-function X.CraftCost(itemID)
+function X.CraftCost(itemID, gameOnly)
 	local best, bestRid, bestMissing
-	for _, rid in ipairs(X.RecipesFor(itemID)) do
+	for _, rid in ipairs(X.RecipesFor(itemID, gameOnly)) do
 		local c, missing = X.RecipeCost(rid)
 		if c and missing == 0 and (not best or c < best) then best, bestRid, bestMissing = c, rid, missing end
 	end
@@ -235,11 +248,22 @@ end
 
 -- [[ crafting list ]] every recipe that makes an item: {rid, key, cost, sell, profit, pct, missing, qty, known, prof}
 -- opts.mine: only recipes your characters know; opts.prof: one profession
+-- every recipe id: read in the game, then the list's others
+local function allRecipeIDs()
+	local ids = {}
+	for rid in pairs(X.db.recipes) do ids[#ids + 1] = rid end
+	for rid in pairs(X.RECIPE_DB or {}) do
+		if not X.db.recipes[rid] then ids[#ids + 1] = rid end
+	end
+	return ids
+end
+X.AllRecipeIDs = allRecipeIDs
 function X.CraftList(opts)
 	opts = opts or {}
 	local out = {}
-	for rid, r in pairs(X.db.recipes) do
-		if r.out and (not opts.prof or r.prof == opts.prof) then
+	for _, rid in ipairs(allRecipeIDs()) do
+		local r = X.Recipe(rid)
+		if r and r.out and (not opts.prof or r.prof == opts.prof) then
 			local known = X.KnownBy(rid)
 			if not opts.mine or #known > 0 then
 				local cost, missing = X.RecipeCost(rid)
@@ -268,6 +292,7 @@ end
 function X.Professions()
 	local set, out = {}, {}
 	for _, r in pairs(X.db.recipes) do if r.prof and not set[r.prof] then set[r.prof] = true out[#out + 1] = r.prof end end
+	for _, name in pairs(X.RECIPE_PROFS or {}) do if not set[name] then set[name] = true out[#out + 1] = name end end
 	table.sort(out)
 	return out
 end

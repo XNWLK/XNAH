@@ -369,7 +369,7 @@ add({key = "craft", name = "Crafting margin", side = "make",
 		"When it fails: when the item sells slowly (only items known to sell are listed when the speed is known), or reagent prices jump.",
 		"Real-life idea: manufacturing margin - buy parts, sell the product.",
 	},
-	needs = "recipes (open your profession windows) and fresh prices of the reagents and the items",
+	needs = "fresh prices of the reagents and the items",
 	params = {
 		minProfitParam(10000),
 		{key = "margin", label = "Margin at least %", default = 20, kind = "pct", tip = "Profit as % of the cost."},
