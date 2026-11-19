@@ -7,10 +7,16 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 
 ## What it does
 
+- **The simple window** (`/xnah`): your gold on top, a list on the left, and on the right the item's price graph, one
+  sentence what to do, one sentence why, and one big button that does it. Five pages: **To do** (the best things to do
+  now), **Buy**, **Sell**, **Trends** and **Wealth**. XNAH's strategies run by themselves and fill the lists. **More**
+  opens the full window with every page below.
 - **Home**: what to do today - your gold and sales today and this week, and a to-do list (expired and undercut
   auctions, deals, strategy finds, watched items under your price, crafting queue) with one button per job.
 - **Full scan** of the whole auction house in seconds (the server allows one about every 15 minutes), plus everything
   you look at while using the auction house normally, plus a quick **watch list scan** of starred items any time.
+- **Silly prices left out**: a price far off the item's typical price (a few silly listings, a scan that saw only
+  those) never makes a normal price look like a bargain. Right-click any item: Never suggest buying this.
 - **Price history** for every item: lowest price, market value (the average of the cheapest part of the market, so one
   silly listing does not move it), how many are listed and by how many sellers. Every scan is kept for 7 days, a summary
   per day for 60 days, then one per week for a year.

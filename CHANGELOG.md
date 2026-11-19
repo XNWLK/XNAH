@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.6.0
+
+- New simple window (what /xnah opens now): your gold on top, a list on the left, the picked line on the right with
+  the item's price graph, one sentence what to do, one sentence why and one big button that does it (+ Skip).
+  Pages: To do (the best things to do now: buys, sells, mail, expired items, cooldown crafts, the crafting queue, a
+  scan), Buy (check the price, buy, confirm), Sell (cancel undercut auctions, post, vendor, junk), Trends (prices going
+  up or down) and Wealth (all your gold over time, each character, best sellers). More opens the full window, which
+  has a Simple view button back; a tick box on its Scan page chooses which window /xnah opens.
+- Silly prices are left out: a price more than 4 times above or below an item's typical price no longer goes into
+  its history, averages and graph (three scans in a row: a real change). This also cleans prices saved before.
+- Right-click any item: Never suggest buying this (the Scan page lists them to allow them again). Grey items are never
+  suggested as buys to sell again.
+- Item names in the simple window's lists are in their rarity colour.
+
 ## v0.5.1
 
 - Fixed: crafts with a waiting time (transmutes, Mooncloth) counted as a way to get their materials. The elemental
