@@ -382,7 +382,7 @@ add({key = "craft", name = "Crafting margin", side = "make",
 		if not X.CraftList then return out end
 		local list = X.Try(X.CraftList, {mine = P.mine}) or {}
 		for _, r in ipairs(list) do
-			if r.profit and r.profit >= P.minProfit and (r.pct or 0) >= P.margin and not r.stale then
+			if r.profit and r.profit >= P.minProfit and (r.pct or 0) >= P.margin and not r.stale and not (X.CRAFT_COOLDOWNS or {})[r.rid] then
 				local rate = rateOf(ctx, r.key)
 				if not (rate and rate < P.rate) and (not best[r.key] or best[r.key].profit < r.profit) then
 					local it = X.Items()[r.key]
@@ -676,7 +676,7 @@ add({key = "learn", name = "Recipes worth learning", side = "make",
 		local out, best = {}, {}
 		if not X.CraftList then return out end
 		for _, r in ipairs(X.Try(X.CraftList, {mine = false}) or {}) do
-			if (not r.known or #r.known == 0) and r.profit and r.profit >= P.minProfit and (r.pct or 0) >= P.margin and not r.stale then
+			if (not r.known or #r.known == 0) and not (X.CRAFT_COOLDOWNS or {})[r.rid] and r.profit and r.profit >= P.minProfit and (r.pct or 0) >= P.margin and not r.stale then
 				local rate = rateOf(ctx, r.key)
 				if rate and rate >= P.rate and (not best[r.key] or best[r.key].profit < r.profit) then
 					local it = X.Items()[r.key]
@@ -694,15 +694,7 @@ add({key = "learn", name = "Recipes worth learning", side = "make",
 	end})
 
 -- 18 daily cooldown crafts: crafts the game lets a character make only once in a while, so supply stays low
-local COOLDOWNS = { -- recipe (spell) -> hours between crafts on WoW Forever
-	[17187] = 47,                    -- Transmute: Arcanite
-	[17559] = 23, [17560] = 23, [17561] = 23, [17562] = 23, -- elemental transmutes
-	[17563] = 23, [17564] = 23, [17565] = 23, [17566] = 23,
-	[18560] = 95,                    -- Mooncloth
-	[11479] = 1, [11480] = 1,        -- Iron to Gold, Mithril to Truesilver
-	[25146] = 0.2,                   -- Elemental Fire
-}
-X.CRAFT_COOLDOWNS = COOLDOWNS
+local COOLDOWNS = X.CRAFT_COOLDOWNS or {} -- Craft.lua
 add({key = "cooldown", name = "Cooldown crafts", side = "make",
 	short = "Crafts the game allows only once a day or so: do them every day for steady gold.",
 	how = {

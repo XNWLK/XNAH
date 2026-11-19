@@ -465,3 +465,24 @@ T.scene("strategies: the gold list (learn, cooldown crafts, what to farm, stock 
 	-- the others run without errors on an empty market
 	for _, k in ipairs({"learn", "farm", "seasonal"}) do T.ok(k .. " runs", type(X.RunStrategy(k)) == "table") end
 end)
+
+T.scene("strategies: transmutes are never a way to get a reagent (Water -> Undeath -> Water)", function()
+	local X = W.start()
+	-- Xn's prices: Essence of Water 4g, Essence of Undeath 46s, Living Essence 26s, Essence of Earth 3.9g
+	X.Record("7080", X.Now(), 40000, 40000, 50, 3, "Essence of Water", 2)
+	X.Record("12808", X.Now(), 4600, 4623, 315, 3, "Essence of Undeath", 2)
+	X.Record("12803", X.Now(), 2654, 2654, 80, 3, "Living Essence", 2)
+	X.Record("7076", X.Now(), 39000, 39000, 40, 3, "Essence of Earth", 2)
+	local cost, how = X.ReagentCost(7080)
+	T.check("Essence of Water costs what the auction house asks", cost, 40000)
+	T.check("bought, not transmuted", how, "ah")
+	X.StrategyUpdate("cooldown")
+	W.waitFor(function() return not X.JobRunning("strategies") end, 60)
+	local byRecipe = {}
+	for _, r in ipairs(X.RunStrategy("cooldown") or {}) do byRecipe[r.why:match("^([^;]+)")] = r end
+	T.ok("Water to Undeath is not a profit (4g in, 46s out)", byRecipe["Transmute: Water to Undeath"] == nil)
+	local u2w = byRecipe["Transmute: Undeath to Water"]
+	T.ok("Undeath to Water is", u2w ~= nil)
+	T.check("its cost is one Essence of Undeath (market value)", u2w and u2w.now, 4623)
+	T.ok("Life to Earth is", byRecipe["Transmute: Life to Earth"] ~= nil)
+end)

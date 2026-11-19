@@ -182,6 +182,17 @@ X.On("TRADE_SKILL_DATA_SOURCE_CHANGED", function() X.Debounce("tradeskill", 1, r
 X.On("NEW_RECIPE_LEARNED", function() X.Debounce("tradeskill", 1, readRecipes) end)
 
 -- [[ costs ]]
+-- crafts with a waiting time (transmutes, Mooncloth...): a character can make one only now and then, so they are never
+-- counted as a way to get a reagent (the elemental transmutes go round in a circle: Water -> Undeath -> Water, and
+-- would make every essence look as cheap as the cheapest one). The Cooldown crafts strategy lists them.
+X.CRAFT_COOLDOWNS = { -- recipe (spell) -> hours between crafts on WoW Forever
+	[17187] = 47,                    -- Transmute: Arcanite
+	[17559] = 23, [17560] = 23, [17561] = 23, [17562] = 23, -- elemental transmutes
+	[17563] = 23, [17564] = 23, [17565] = 23, [17566] = 23,
+	[18560] = 95,                    -- Mooncloth
+	[11479] = 1, [11480] = 1,        -- Iron to Gold, Mithril to Truesilver
+	[25146] = 0.2,                   -- Elemental Fire
+}
 -- the cheapest way to get one of an item: returns copper, how ("vendor" / "ah" / "craft"), and for "craft" the recipe
 local costCache, costAt = {}, -100
 local function clearCosts() costCache = {} end
@@ -201,9 +212,11 @@ local function reagentCost(id, depth, visiting)
 	if depth < 3 and not visiting[id] then
 		visiting[id] = true
 		for _, rid in ipairs(X.RecipesFor(id)) do
-			local c, miss = X.RecipeCost(rid, depth + 1, visiting)
-			-- a recipe with a reagent of unknown price would look too cheap: not used
-			if c and miss == 0 and (not best or c < best) then best, how, via = c, "craft", rid end
+			if not X.CRAFT_COOLDOWNS[rid] then
+				local c, miss = X.RecipeCost(rid, depth + 1, visiting)
+				-- a recipe with a reagent of unknown price would look too cheap: not used
+				if c and miss == 0 and (not best or c < best) then best, how, via = c, "craft", rid end
+			end
 		end
 		visiting[id] = nil
 	end

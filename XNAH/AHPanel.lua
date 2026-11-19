@@ -366,6 +366,9 @@ local function measure(spec, row, index)
 end
 -- a fallback when nothing can be measured: the fixed columns right of the wide one
 local RIGHT_OF_FILL = {browse = 124, item = 176, commodity = 8}
+-- the stackable goods list: price, then the quantity right-aligned in the wide column - so the numbers go just right
+-- of the price (where the wide column is empty), not at its right end (over the quantity; Xn saw that in the game)
+local AFTER_PRICE = 6
 
 local function header(spec, on)
 	local hc = spec.list.HeaderContainer
@@ -401,17 +404,20 @@ local function fillList(spec)
 	local on = X.S().ahColumns and window() and true or false
 	local frames = type(spec.sb.GetFrames) == "function" and X.Try(spec.sb.GetFrames, spec.sb)
 	if not isTable(frames) then frames = {} end
-	local index = on and fillColumn(spec)
+	local index = on and (spec.kind == "commodity" and 1 or fillColumn(spec))
 	for _, row in ipairs(frames) do
 		local o = overlays[row]
 		if on and isTable(row) then
 			o = o or makeOverlay(row, spec.cols)
 			local x, cell = measure(spec, row, index)
+			if x and spec.kind == "commodity" then x = x + AFTER_PRICE + spec.cols * COLW end
 			if x then spec.x = x end
 			x = spec.x
 			if not x then
 				local w = X.Try(row.GetWidth, row)
-				if type(w) == "number" and w > 100 then x = w - RIGHT_OF_FILL[spec.kind] end
+				if type(w) == "number" and w > 100 then
+					if spec.kind == "commodity" then x = math.floor(w * 0.45) + spec.cols * COLW else x = w - RIGHT_OF_FILL[spec.kind] end
+				end
 			end
 			local key, price = rowItem(spec.kind, row.rowData)
 			if x and key then
