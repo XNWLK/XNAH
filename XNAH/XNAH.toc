@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: XNAH
-## Notes: Auction house prices and gold making: full scans, price history with graphs, trends, deals, sales speed, posting and buying helpers, sniper, shopping lists, crafting queue, sales ledger, net worth, disenchant values, gold-making strategies. Type /xnah
+## Notes: Auction house prices and gold making: full scans, price history with graphs, trends, deals with one-click buying, posting at the right price with one key, fair prices, profit and gold per hour, crafting costs for every recipe. Type /xnah
 ## Author: Xn
-## Version: 0.6.0
+## Version: 0.7.0
 ## SavedVariables: XNAHDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 

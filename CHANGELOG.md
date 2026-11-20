@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.0
+
+- The simple window is gone again: the full window is the one window, made simpler. 12 tabs became 8 - Home, Market,
+  Item, Deals, Buy, Sell, Crafting, Gold - and Settings opens from a button in the title bar.
+- Market takes in Trends: Rising / Falling filters, a small 7-day price line in each row, Sells a day.
+- Deals takes in Strategies: one list of everything worth buying, best first, with the idea that found it, why, and a
+  Buy button in each row; Sell ideas, Make ideas, and Adjust ideas for the numbers.
+- Buying: one Buy button everywhere (check the price, buy, confirm for stackable things), Best buys on the Buy tab, and
+  a Next buy key that steps through them.
+- Selling: the Sell tab opens on Worth posting - undercut auctions first, then everything worth posting, ticked (untick
+  to keep; remembered); Post next (or the one-key routine key) does one step per press. Your auctions are checked by
+  themselves when the auction house opens. The separate sell list is gone.
+- Item page: ten plain numbers instead of nineteen, with a fair price to buy and a fair price to sell (also drawn on the
+  graph); Buy, Search and one Watch list menu; More numbers shows the rest.
+- Gold (Ledger and Wealth joined): profit per week, your best and worst flips, gold per hour of auction house time.
+- Mailbox: Open all auction mail.
+- Removed: guild price sharing, the price export, the market shape rows.
+- Silly prices are judged per day (a day with many scans no longer outweighs the others).
+
 ## v0.6.0
 
 - New simple window (what /xnah opens now): your gold on top, a list on the left, the picked line on the right with

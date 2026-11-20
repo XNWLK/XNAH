@@ -7,48 +7,45 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 
 ## What it does
 
-- **The simple window** (`/xnah`): your gold on top, a list on the left, and on the right the item's price graph, one
-  sentence what to do, one sentence why, and one big button that does it. Five pages: **To do** (the best things to do
-  now), **Buy**, **Sell**, **Trends** and **Wealth**. XNAH's strategies run by themselves and fill the lists. **More**
-  opens the full window with every page below.
+Eight pages (`/xnah`), plus Settings behind a button:
+
 - **Home**: what to do today - your gold and sales today and this week, and a to-do list (expired and undercut
-  auctions, deals, strategy finds, watched items under your price, crafting queue) with one button per job.
+  auctions, deals, watched items under your price, crafting queue) with one button per job.
+- **Market**: every item ever seen on your auction house - lowest price, market value, trend, how many are listed,
+  how many sell a day, and a small line of its price over the last 7 days. Filters: watch list, listed now, can be
+  crafted, quality, **Rising** and **Falling**.
+- **Item**: everything about one item in ten plain numbers - including a **fair price to buy** and a **fair price to
+  sell** worked out from its history - a graph (your own sales and buys as dots, a second item to compare, the best
+  weekday and hour to sell), its recipe and every recipe it goes into, and a **Buy** button.
+- **Deals**: everything worth buying right now in one list, best first, each with the idea that found it, why, and a
+  **Buy** button (check the price, buy, confirm). Sell ideas and make ideas next to it; Adjust ideas for the numbers.
+  The ideas: listed under what a vendor pays, far under the usual price, undercut gaps, resets, momentum, disenchanting,
+  vendor flips, cycles of the day and the week, recipes worth learning, cooldown crafts, what to gather and more.
+- **Buy**: your best buys, shopping lists with max prices, a sniper for watched items, and a **Next buy** key that
+  steps through the best buys.
+- **Sell**: **Worth posting** - your undercut auctions first, then everything in your bags worth posting, ticked; one
+  **Post next** button (or key) cancels and posts one step per press at XNAH's price. XNAH checks your auctions by
+  itself when the auction house opens. Posting by hand with price rules (undercut, floor, ceiling).
+- **Crafting**: every recipe of the game is built in; the cost to make every item (each reagent at its cheapest:
+  vendor, auction house or crafted), what it sells for after the cut, profit and margin, who knows the recipe, and a
+  crafting queue.
+- **Gold**: profit per week, your best and worst flips, gold per hour of auction house time, every sale and purchase
+  (read from the auction house mails), and the gold and items of all your characters.
+
+Also:
+
 - **Full scan** of the whole auction house in seconds (the server allows one about every 15 minutes), plus everything
   you look at while using the auction house normally, plus a quick **watch list scan** of starred items any time.
-- **Silly prices left out**: a price far off the item's typical price (a few silly listings, a scan that saw only
-  those) never makes a normal price look like a bargain. Right-click any item: Never suggest buying this.
-- **Price history** for every item: lowest price, market value (the average of the cheapest part of the market, so one
-  silly listing does not move it), how many are listed and by how many sellers. Every scan is kept for 7 days, a summary
-  per day for 60 days, then one per week for a year.
-- **Graphs** of price and supply over 1 day, 7, 30, 90 days or all time, with the values under the mouse, your own
-  sales and buys as dots, a second item to compare, and the best weekday and hour to sell.
+- **Price history** for every item: every scan for 7 days, a summary per day for 60 days, then one per week for a year.
+  **Silly prices are left out** (a price far off the item's typical price never makes a normal price look like a
+  bargain). Right-click any item: Never suggest buying this.
 - **In the game's auction house window**: a panel beside it with XNAH's numbers and graph for the item you pick, and
-  extra columns (% of the usual price, sells a day) in its lists.
-- **Trends**: 3 / 7 / 30-day averages, trend in % per week, day-to-day spread, supply against its 7-day average.
-- **Deals**: items listed far under their usual price, items listed under what a vendor pays for them, and vendor items
-  that sell for more on the auction house.
-- **Crafting**: every recipe of the game is built in (open your profession windows so XNAH knows which ones your
-  characters have); the cost to make every item (each reagent at its cheapest: vendor, auction house or crafted), what it sells for after the auction house cut,
-  profit and margin, and which of your characters know the recipe.
-- **Vendor prices**: what a vendor pays for an item, and what vendors sell (recorded when you visit them).
-- **Tooltips**: lowest price, market value, averages and trend, vendor prices and crafting cost on every item, times the
-  stack size in your bags.
-
-- **Sales speed**: how many of an item sell per day (estimated from full scans and your own sales) and the best hours
-  to post.
-- **Sell**: suggested prices by your rules (undercut, floor, ceiling), one post per click, a cancel scan for your
-  undercut auctions, and a **one-key routine**: each press of one key cancels an undercut auction or posts the next
-  item of your sell list.
-- **Buy**: shopping lists with max prices, and a sniper that tells you when a watched item is listed under your price.
-- **Ledger**: your sales, purchases, expired auctions and profit, read from the auction house mails.
-- **Wealth**: net worth of all your characters with a graph, and what in your bags to sell where.
-- **Strategies**: ready-made ways to make gold (vendor floor, buy the dip, undercut gaps, resets, momentum, scarcity,
-  crafting, disenchanting, time-of-day and weekday cycles, recipes worth learning, cooldown crafts, what to farm,
-  stocking up at a low and more) with the items each one finds right now.
-- **Quick search**: a Find box for any item or recipe, and Alt-click on any item (bags, chat, loot) opens its page.
-  Lists remember their sorting and can be copied as text.
-- **Disenchant value** of gear, **market shape** (walls, reset chances, sellers), a **crafting queue**, and **guild
-  price sharing**.
+  extra columns (% of the usual price, sells a day) in its lists. A bar above it: Full scan, Watch list, Next step.
+- **Mailbox**: Open all auction mail takes the gold and items of every auction house mail and logs your sales.
+- **Tooltips**: lowest price, market value, averages and trend, vendor prices, crafting cost, sales speed and your
+  own trades on every item.
+- **Quick search**: a Find box for any item or recipe; Alt-click any item (bags, chat, loot) to open its page. Lists
+  remember their sorting and can be copied as text. Drag the window's corner to make it bigger or smaller.
 
 ## Commands
 
