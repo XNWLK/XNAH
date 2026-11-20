@@ -1,11 +1,12 @@
--- Wealth tab: your characters of this realm and faction - gold, and what their bags, bank, mailbox and auctions are
--- worth - with the total over time, and for this character what to do with each thing in the bags.
--- Layout (940 x 550): help line and "Delete a character" on top; the characters table (7 rows) and the total line;
--- below the net worth graph (left, 440 wide) and "Your bags" (right, 490 wide).
+-- The "Characters" view of the Gold tab (UILedger.lua builds the tab): your characters of this realm and faction -
+-- gold, and what their bags, bank, mailbox and auctions are worth - with the total over time, and for this character
+-- what to do with each thing in the bags.
+-- Layout (940 x 522, under the Gold tab's view buttons): help and "Delete a character" on top; the characters table
+-- (6 rows) and the total line; below the net worth graph (left, 440 wide) and "Your bags" (right, 490 wide).
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
-local W, H = UI.W, UI.H
+local W, H = UI.W, UI.H - 28
 local GREY = "|cff999999"
 local NONE = "|cff666666-|r"
 local DAY = 86400
@@ -14,7 +15,7 @@ local rangeIdx = 1
 local GW = 440           -- graph width
 local BX = GW + 10       -- "Your bags" left edge
 local BW = W - BX        -- 490
-local LOW = 200          -- top of the lower half
+local LOW = 186          -- top of the lower half
 
 local function M(v)
 	if not v or v == 0 then return NONE end
@@ -114,11 +115,11 @@ local function build(p)
 	del:SetPoint("TOPRIGHT", 0, 0)
 	K.Tooltip(del, "Delete a character", "Forget a character you deleted or moved (this one comes back when you log in).")
 
-	p.chars = K.Table(p, W, 7 * 18 + 4, CHAR_COLS)
+	p.chars = K.Table(p, W, 6 * 18 + 4, CHAR_COLS)
 	p.chars:SetPoint("TOPLEFT", 0, -46)
 	p.chars:SortBy(7, true)
 	p.total = K.Label(p, "", "GameFontNormal")
-	p.total:SetPoint("TOPLEFT", 2, -46 - 7 * 18 - 10)
+	p.total:SetPoint("TOPLEFT", 2, -46 - 6 * 18 - 12)
 	p.total:SetWidth(W)
 	p.total:SetWordWrap(false)
 
@@ -154,5 +155,5 @@ local function build(p)
 	p.bags:SetPoint("TOPLEFT", BX, -top)
 end
 
-X.On("XNAH_INVENTORY", function() UI.Refresh() end)
-UI.AddTab("wealth", "Wealth", build, refresh, 9)
+-- the Gold tab (UILedger.lua) calls these for its Characters view (UI.lua refreshes the shown page on XNAH_INVENTORY)
+UI.GoldChars = {build = build, refresh = refresh}

@@ -14,15 +14,26 @@ X.Default("uiScale", 1)
 X.Default("sorts", {}) -- each table's sort column, per page ("market:1" = {column, descending})
 local MIN_SCALE, MAX_SCALE = 0.6, 1.6
 
--- a tab: build(panel) once, refresh(panel) whenever something changed while it is shown
-function UI.AddTab(key, title, build, refresh, order)
-	UI.tabs[key] = {key = key, title = title, build = build, refresh = refresh, n = order or (#UI.order + 1)}
+-- a tab: build(panel) once, refresh(panel) whenever something changed while it is shown. hidden = true: no button in
+-- the tab row (Settings opens from the gear button in the title bar)
+function UI.AddTab(key, title, build, refresh, order, hidden)
+	UI.tabs[key] = {key = key, title = title, build = build, refresh = refresh, n = order or (#UI.order + 1), hidden = hidden}
 	UI.order[#UI.order + 1] = key
 	table.sort(UI.order, function(a, b) return UI.tabs[a].n < UI.tabs[b].n end)
 end
 
+-- pages that were joined into others (v0.7): old names still open the right page
+UI.ALIASES = {trends = "market", strategies = "deals", ledger = "gold", wealth = "gold", settings = "scan"}
+-- and the view of the new page they open (a setting the page reads when it is shown)
+UI.ALIAS_VIEWS = {ledger = {"goldView", "items"}, wealth = {"goldView", "chars"}}
+
 local frame
 local function selectTab(key)
+	if not UI.tabs[key] and UI.ALIASES[key] then
+		local v = UI.ALIAS_VIEWS[key]
+		if v then X.S()[v[1]] = v[2] end
+		key = UI.ALIASES[key]
+	end
 	if not UI.tabs[key] then key = UI.order[1] end
 	UI.current = key
 	for _, k in ipairs(UI.order) do
@@ -62,7 +73,7 @@ function UI.Refresh(now)
 	if now then run() else X.Debounce("ui", 0.2, run) end
 end
 for _, e in ipairs({"XNAH_PRICES", "XNAH_SCAN", "XNAH_RECIPES", "XNAH_WATCH", "XNAH_AH", "XNAH_ANALYSIS", "XNAH_LEDGER",
-	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHARE", "XNAH_SHOP", "XNAH_HOME", "XNAH_IGNORE"}) do
+	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHOP", "XNAH_HOME", "XNAH_IGNORE"}) do
 	X.On(e, function() UI.Refresh() end)
 end
 
@@ -98,6 +109,11 @@ local function build()
 	local guide = K.Button(frame, "Guide", 64, 20, function() if X.ShowGuide then X.ShowGuide() end end)
 	guide:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	K.Tooltip(guide, "Guide", "How every page of XNAH works and how to use it to make gold.")
+	-- Settings (a page without a tab button)
+	local settings = K.Button(frame, "Settings", 78, 20, function() selectTab("scan") end)
+	settings:SetPoint("RIGHT", guide, "LEFT", -4, 0)
+	K.Tooltip(settings, "Settings", "Scans, prices, tooltips and the other settings.")
+	guide = settings
 	-- quick search (Quick.lua): any item or recipe by name
 	if UI.QuickSearchBox then
 		local box = UI.QuickSearchBox(frame)
@@ -132,9 +148,11 @@ local function build()
 	frame.grip = grip
 
 	-- tabs share the width of the window
-	local x, n = 10, #UI.order
+	local shown = {}
+	for _, key in ipairs(UI.order) do if not UI.tabs[key].hidden then shown[#shown + 1] = key end end
+	local x, n = 10, #shown
 	local tw = math.floor((W - 20 - 3 * (n - 1)) / math.max(1, n))
-	for _, key in ipairs(UI.order) do
+	for _, key in ipairs(shown) do
 		local tab = UI.tabs[key]
 		local b = K.Flat(frame, tw, 22)
 		b:SetPoint("TOPLEFT", x, -32)

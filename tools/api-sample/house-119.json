@@ -1,0 +1,171 @@
+{
+ "_links": {
+  "self": {
+   "href": "sample"
+  }
+ },
+ "auctions": [
+  {
+   "id": 119000159,
+   "item": {
+    "id": 4071
+   },
+   "buyout": 115200,
+   "bid": 92160,
+   "quantity": 1,
+   "time_left": "LONG"
+  },
+  {
+   "id": 119000160,
+   "item": {
+    "id": 4071
+   },
+   "buyout": 120700,
+   "bid": 96560,
+   "quantity": 1,
+   "time_left": "LONG"
+  },
+  {
+   "id": 119000161,
+   "item": {
+    "id": 15210,
+    "rand": -19
+   },
+   "buyout": 68300,
+   "bid": 54640,
+   "quantity": 1,
+   "time_left": "VERY_LONG"
+  },
+  {
+   "id": 119000162,
+   "item": {
+    "id": 15210,
+    "rand": -19
+   },
+   "buyout": 63400,
+   "bid": 50720,
+   "quantity": 1,
+   "time_left": "LONG"
+  },
+  {
+   "id": 119000163,
+   "item": {
+    "id": 15210,
+    "rand": -19
+   },
+   "buyout": 52100,
+   "bid": 41680,
+   "quantity": 1,
+   "time_left": "MEDIUM"
+  },
+  {
+   "id": 119000164,
+   "item": {
+    "id": 15210,
+    "rand": -11
+   },
+   "buyout": 46300,
+   "bid": 37040,
+   "quantity": 1,
+   "time_left": "SHORT"
+  },
+  {
+   "id": 119000165,
+   "item": {
+    "id": 15210,
+    "rand": -11
+   },
+   "buyout": 47500,
+   "bid": 38000,
+   "quantity": 1,
+   "time_left": "MEDIUM"
+  },
+  {
+   "id": 119000166,
+   "item": {
+    "id": 7524
+   },
+   "buyout": 27800,
+   "bid": 22240,
+   "quantity": 1,
+   "time_left": "SHORT"
+  },
+  {
+   "id": 119000167,
+   "item": {
+    "id": 7524
+   },
+   "buyout": 25900,
+   "bid": 20720,
+   "quantity": 1,
+   "time_left": "LONG"
+  },
+  {
+   "id": 119000168,
+   "item": {
+    "id": 7524
+   },
+   "buyout": 29800,
+   "bid": 23840,
+   "quantity": 1,
+   "time_left": "VERY_LONG"
+  },
+  {
+   "id": 119000169,
+   "item": {
+    "id": 2075
+   },
+   "buyout": 11700,
+   "bid": 9360,
+   "quantity": 1,
+   "time_left": "LONG"
+  },
+  {
+   "id": 119000170,
+   "item": {
+    "id": 2075
+   },
+   "buyout": 12300,
+   "bid": 9840,
+   "quantity": 1,
+   "time_left": "MEDIUM"
+  },
+  {
+   "id": 119000171,
+   "item": {
+    "id": 2075
+   },
+   "buyout": 12100,
+   "bid": 9680,
+   "quantity": 1,
+   "time_left": "VERY_LONG"
+  },
+  {
+   "id": 119000172,
+   "item": {
+    "id": 14168,
+    "rand": -24,
+    "context": 0,
+    "modifiers": [
+     {
+      "type": 9,
+      "value": 60
+     }
+    ]
+   },
+   "buyout": 196300,
+   "bid": 157040,
+   "quantity": 1,
+   "time_left": "VERY_LONG"
+  },
+  {
+   "id": 119000173,
+   "item": {
+    "id": 7524
+   },
+   "bid": 9000,
+   "quantity": 1,
+   "time_left": "LONG"
+  }
+ ]
+}

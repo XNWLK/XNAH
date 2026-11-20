@@ -1,73 +1,201 @@
--- The Deals tab: five lists of ways to make gold from what is listed right now.
---   Under usual price: listings far under their usual price - buy them, sell them again later at the usual price.
---   Under vendor price: listings cheaper than what a vendor pays - buy them and sell them to any vendor, no risk.
---   Vendor to auction house: things a vendor sells that go for more on the auction house.
---   Under disenchant value: gear listed for less than its disenchanting materials bring (needs a disenchanter).
---   Reset chances: everything listed far under the usual price of an item, bought up and listed again at the usual price.
+-- The Deals page: every idea for making gold in one place (the old Strategies page lives on here).
+--   Buy ideas: one list of everything worth buying right now - listings far under their usual price, and what every
+--     buy idea (Strategy.lua) finds - one row per item, best first, with the idea that found it, a short "why" and a
+--     Buy button in each row.
+--   Sell ideas: what to do with things you have (sell now, hold) - from the sell ideas.
+--   Make ideas: crafting, recipes worth learning, cooldowns, what to farm - from the make ideas.
+--   Adjust ideas (UIStrategies.lua): which ideas are in the lists, their numbers, how each works.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
 local W, H = UI.W, UI.H
-local TOP = 96 -- where the tables start (their column titles sit just above)
-local MAX_SEARCH = 50
+local TOP = 96      -- where the tables start (their column titles sit just above)
+local MAX = 50      -- rows used by the buttons under the buy list
+local BUY_W = 128   -- the Buy button in each row (its label says the next step: "Confirm 5 for 2g 10s")
 
--- "hide items that sell under N a day" (Under usual price)
+-- "hide items that sell under N a day" (buy ideas)
 X.Default("dealSpeedHide", false)
 X.Default("dealSpeedMin", 1)
+-- ideas left out of the lists: [idea key] = true
+X.Default("dealsHidden", {})
 
 local VIEWS = {
-	{key = "deals", title = "Under usual price", w = 128,
-		help = "Listed far under their usual price (the 30-day average): buy them now and sell them again at the usual price."},
-	{key = "vendor", title = "Under vendor price", w = 128,
-		help = "Listed for less than a vendor pays for them: buy them and sell them to any vendor. No risk."},
-	{key = "flips", title = "Vendor to auction house", w = 160,
-		help = "Things a vendor sells that go for more on the auction house: buy them from the vendor and list them."},
-	{key = "de", title = "Under disenchant value", w = 158,
-		help = "Gear listed for less than its disenchanting materials bring. Worth it if you or a friend can disenchant."},
-	{key = "resets", title = "Reset chances", w = 110,
-		help = "Buy every unit listed under 80% of the usual price and list them again at the usual price. Others may undercut."},
+	{key = "buy", title = "Buy ideas", w = 110,
+		help = "Worth buying now: listed under what it usually sells for, or under what a vendor pays. Best first."},
+	{key = "sell", title = "Sell ideas", w = 100,
+		help = "What to do with things you have: sell now while the price is good, or hold while it is low."},
+	{key = "make", title = "Make ideas", w = 100,
+		help = "Crafting for profit, recipes worth learning, cooldown crafts and what to gather."},
 }
 
--- [[ the lists, worked out again only when prices changed (or a minute passed: prices get old) ]]
-local data, dirty, madeAt = {}, {}, {}
-local function markDirty() for _, v in ipairs(VIEWS) do dirty[v.key] = true end end
-markDirty()
-X.On("XNAH_PRICES", markDirty)
-X.On("XNAH_ANALYSIS", function()
+-- [[ the ideas ]] the strategies (Strategy.lua) plus "Under usual price" (the deals test, Market.lua: X.Deals), which
+-- has its numbers in the settings (dealPct, dealMinProfit)
+local USUAL = {key = "usual", name = "Under usual price", side = "buy",
+	short = "Listed far under its usual price (the 30-day average).",
+	how = {
+		"Lists items whose lowest price is at or under a share of their usual price (the 30-day average, else the 7-day one), with enough profit after the auction house cut.",
+		"Buy them now and sell them again at the usual price.",
+		"When it fails: when the price has really moved (a patch, a new source) - the usual price is then old news.",
+	},
+	needs = "fresh prices (a full scan) and a few days of price history per item (one full scan a day)",
+	params = {
+		{key = "pct", label = "Share of usual price at most", kind = "pct",
+			tip = "The lowest price must be at or under this % of the usual price."},
+		{key = "minProfit", label = "Profit each at least", kind = "money",
+			tip = "Leave out items that bring less than this each (after the auction house cut)."},
+	},
+}
+local IDEAS = {}
+-- every idea, in the order shown (Under usual price first)
+function IDEAS.list()
+	local out = {USUAL}
+	for _, s in ipairs(X.Strategies and X.Strategies() or {}) do out[#out + 1] = s end
+	return out
+end
+function IDEAS.get(key)
+	if key == USUAL.key then return USUAL end
+	return X.Strategy and X.Strategy(key) or nil
+end
+function IDEAS.params(idea)
+	if idea == USUAL then
+		local S = X.S()
+		return {pct = S.dealPct, minProfit = S.dealMinProfit}
+	end
+	return X.StrategyParams(idea.key)
+end
+local dirty -- forward: the lists must be worked out again
+function IDEAS.setParam(idea, pkey, value)
+	if idea == USUAL then
+		if pkey == "pct" then X.S().dealPct = math.max(1, math.min(100, X.Round(value))) end
+		if pkey == "minProfit" then X.S().dealMinProfit = value end
+		dirty()
+		return
+	end
+	X.SetStrategyParam(idea.key, pkey, value)
+end
+function IDEAS.reset(idea)
+	if idea == USUAL then
+		X.S().dealPct, X.S().dealMinProfit = X.DEFAULTS.dealPct, X.DEFAULTS.dealMinProfit
+		dirty()
+		return
+	end
+	X.ResetStrategy(idea.key)
+end
+-- is the idea used in the Deals lists?
+function IDEAS.shown(key) return not (X.S().dealsHidden or {})[key] end
+function IDEAS.setShown(key, on)
+	X.S().dealsHidden = X.S().dealsHidden or {}
+	X.S().dealsHidden[key] = (not on) and true or nil
+	dirty()
+end
+UI.Ideas = IDEAS
+
+-- [[ the rows ]]
+local function riskOf(st, rate)
+	local score = 0
+	local vol = st and st.vol
+	if not vol then score = score + 1 elseif vol > 25 then score = score + 2 elseif vol > 12 then score = score + 1 end
+	local days = st and st.days or 0
+	if days < 7 then score = score + 1 end
+	if not rate then score = score + 1 elseif rate < 0.5 then score = score + 2 elseif rate < 2 then score = score + 1 end
+	if score <= 1 then return "Low" end
+	if score <= 3 then return "Medium" end
+	return "High"
+end
+-- the deals of "Under usual price" as idea rows (how many: about 3 days of sales when the speed is known); kept
+-- until prices or the numbers change (a minute at most: prices get old)
+local usualCache, usualAt, usualDirty
+local function usualRows()
+	if usualCache and not usualDirty and GetTime() - usualAt <= 60 then return usualCache end
+	local out = {}
+	for _, d in ipairs(X.Deals()) do
+		local rate = X.SaleRate and X.Try(X.SaleRate, d.key) or nil
+		local qty
+		if rate and rate > 0 then qty = math.max(1, math.min(d.qty or 1, math.floor(rate * 3 + 0.5))) end
+		local it = X.Items()[d.key]
+		out[#out + 1] = {key = d.key, action = "Buy and relist", now = d.buy, target = d.usual, profit = d.profit, qty = qty,
+			risk = riskOf(it and X.Stats(it), rate), rate = rate, total = d.profit * (qty or 1),
+			why = string.format("%.0f%% of its usual price", d.pct)}
+	end
+	usualCache, usualAt, usualDirty = out, GetTime(), false
+	return out
+end
+-- the rows one idea finds right now (nil: not worked out yet)
+function IDEAS.rows(idea)
+	if idea == USUAL then return usualRows() end
+	return X.StrategyRows(idea.key)
+end
+
+-- all ideas of one side, one row per item (the one bringing the most in all), best first
+local cache, cacheAt, cacheDirty = {}, {}, {}
+local function markDirty()
+	cacheDirty.buy, cacheDirty.sell, cacheDirty.make = true, true, true
+	usualDirty = true
+end
+dirty = function()
 	markDirty()
 	UI.Refresh()
-end)
-
-local function rowsFor(view)
-	if dirty[view] or not data[view] or (GetTime() - (madeAt[view] or 0)) > 60 then
-		if view == "deals" then
-			data[view] = X.Deals()
-			for _, r in ipairs(data[view]) do r.rate = X.SaleRate and X.SaleRate(r.key) or nil end
-		elseif view == "vendor" then data[view] = X.BelowVendor()
-		elseif view == "flips" then data[view] = X.VendorFlips()
-		elseif view == "de" then data[view] = X.UnderDE and X.UnderDE() or {}
-		else data[view] = X.Resets and X.Resets() or {} end
-		dirty[view], madeAt[view] = false, GetTime()
+end
+for _, e in ipairs({"XNAH_PRICES", "XNAH_STRATEGY", "XNAH_IGNORE", "XNAH_ANALYSIS", "XNAH_INVENTORY"}) do X.On(e, markDirty) end
+local function merge(side)
+	local best, others = {}, {}
+	local function take(idea, r)
+		local row = {}
+		for k, v in pairs(r) do row[k] = v end
+		row.idea, row.ideaName = idea.key, idea.name
+		row.total = row.total or (row.profit or 0) * (row.qty or 1)
+		local old = best[row.key]
+		others[row.key] = (others[row.key] or 0) + 1
+		if not old or row.total > old.total then best[row.key] = row end
 	end
-	local rows = data[view]
-	-- the speed filter: items known to sell slower than N a day are left out (unknown speed: shown)
-	local S = X.S()
-	if view == "deals" and S.dealSpeedHide then
-		local out = {}
-		for _, r in ipairs(rows) do
-			if not r.rate or r.rate >= (S.dealSpeedMin or 0) then out[#out + 1] = r end
+	for _, idea in ipairs(IDEAS.list()) do
+		if idea.side == side and IDEAS.shown(idea.key) then
+			local rows = (idea == USUAL) and usualRows() or (X.StrategyRows(idea.key) or {})
+			for _, r in ipairs(rows) do if r.key then take(idea, r) end end
 		end
-		rows = out
 	end
-	return rows
+	local out = {}
+	for key, row in pairs(best) do
+		row.more = others[key] - 1
+		if row.rate == nil then row.rate = X.SaleRate and X.Try(X.SaleRate, key) or nil end
+		out[#out + 1] = row
+	end
+	table.sort(out, function(a, b)
+		if a.total ~= b.total then return a.total > b.total end
+		return a.key < b.key
+	end)
+	return out
+end
+-- every buy idea (one row per item, best first): {key, idea, ideaName, action, now, target, profit, qty, total, risk,
+-- why, rate, more (other ideas that found it too), vendor (bought from a vendor)}
+function X.DealIdeas(side)
+	side = side or "buy"
+	if cacheDirty[side] ~= false or not cache[side] or GetTime() - (cacheAt[side] or 0) > 60 then
+		cache[side] = merge(side)
+		cacheAt[side], cacheDirty[side] = GetTime(), false
+	end
+	return cache[side]
+end
+
+-- the buy rows after the speed filter (items known to sell slower than N a day are left out; unknown speed: shown)
+local function buyRows()
+	local rows = X.DealIdeas("buy")
+	local S = X.S()
+	if not S.dealSpeedHide then return rows end
+	local out = {}
+	for _, r in ipairs(rows) do
+		if not r.rate or r.rate >= (S.dealSpeedMin or 0) then out[#out + 1] = r end
+	end
+	return out
 end
 
 -- [[ cells ]]
+local RISK_COLOR = {Low = "4ade80", Medium = "facc15", High = "f87171"}
+local GREY = "|cff999999"
 local function field(name) return function(r) return r[name] end end
 local function money(name) return function(r) return UI.MoneyCell(r[name]) end end
 local function itemName(r) return (X.ItemName(r.key)) end
 local function itemCell(r) return UI.ItemCell(r.key) end
-local function count(r) return r.qty and X.Num(r.qty) or "-" end
 -- sells per day (an estimate): "-" when not known yet
 function UI.RateText(rate)
 	if not rate then return "|cff666666-|r" end
@@ -75,122 +203,204 @@ function UI.RateText(rate)
 	if rate >= 0.1 then return string.format("%.1f", rate) end
 	return "|cff999999<0.1|r"
 end
-local function rate(r) return UI.RateText(r.rate) end
+local function ideaCell(r)
+	return (r.ideaName or "") .. ((r.more or 0) > 0 and (GREY .. " +" .. r.more .. "|r") or "")
+end
+local function riskCell(r) return "|cff" .. (RISK_COLOR[r.risk] or "ffffff") .. (r.risk or "-") .. "|r" end
+local function riskSort(r) return r.risk == "Low" and 1 or r.risk == "Medium" and 2 or 3 end
+-- what to do with it after buying, in front of the why
+local THEN = {["Buy and vendor"] = "sell to a vendor: ", ["Disenchant"] = "disenchant: ", ["Buy and hold"] = "keep a while: "}
+local function whyCell(r)
+	local pre = r.vendor and "buy from a vendor: " or THEN[r.action] or ""
+	return "|cffbbbbbb" .. pre .. (r.why or "") .. "|r"
+end
+local function qtyCell(r) return r.qty and X.Num(r.qty) or "|cff666666-|r" end
 local function onRow(row, button, rowFrame)
 	if not row.key then return end
 	if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
 end
 
+local BUY_COL = 11
 local COLUMNS = {
-	deals = {
-		{"Item", 290, "LEFT", text = itemCell, sort = itemName, desc = false},
-		{"Listed at", 100, "RIGHT", text = money("buy"), sort = field("buy"), desc = false},
-		{"Usual price", 100, "RIGHT", text = money("usual"), sort = field("usual")},
-		{"% of usual", 75, "RIGHT", text = function(r) return string.format("%.0f%%", r.pct) end, sort = field("pct"), desc = false},
-		{"Profit after cut", 110, "RIGHT", text = money("profit"), sort = field("profit")},
-		{"Listed", 60, "RIGHT", text = count, sort = field("qty")},
-		{"Sells/day", 75, "RIGHT", text = rate, sort = field("rate")},
-		{"Days of data", 80, "RIGHT", text = function(r) return tostring(r.days or "-") end, sort = field("days")},
+	buy = {
+		{"Item", 170, "LEFT", text = itemCell, sort = itemName, desc = false},
+		{"Idea", 100, "LEFT", text = ideaCell, sort = field("ideaName"), desc = false},
+		{"Price now", 66, "RIGHT", text = money("now"), sort = field("now"), desc = false},
+		{"Sells for", 66, "RIGHT", text = money("target"), sort = field("target")},
+		{"Profit each", 66, "RIGHT", text = money("profit"), sort = field("profit")},
+		{"Qty", 34, "RIGHT", text = qtyCell, sort = field("qty")},
+		{"Profit in all", 72, "RIGHT", text = money("total"), sort = field("total")},
+		{"Sells a day", 56, "RIGHT", text = function(r) return UI.RateText(r.rate) end, sort = field("rate")},
+		{"Risk", 42, "LEFT", text = riskCell, sort = riskSort, desc = false},
+		{"Why", 108, "LEFT", text = whyCell},
+		{"", BUY_W + 2, "LEFT", text = function(r) return r.vendor and (GREY .. " at a vendor|r") or "" end},
 	},
-	vendor = {
-		{"Item", 380, "LEFT", text = itemCell, sort = itemName, desc = false},
-		{"Listed at", 130, "RIGHT", text = money("buy"), sort = field("buy"), desc = false},
-		{"Vendor pays", 130, "RIGHT", text = money("sell"), sort = field("sell")},
-		{"Profit each", 130, "RIGHT", text = money("profit"), sort = field("profit")},
-		{"Listed", 90, "RIGHT", text = count, sort = field("qty")},
-	},
-	flips = {
-		{"Item", 330, "LEFT", text = itemCell, sort = itemName, desc = false},
-		{"Vendor price", 110, "RIGHT", text = money("buy"), sort = field("buy"), desc = false},
-		{"Sells for (after cut)", 140, "RIGHT", text = money("sell"), sort = field("sell")},
-		{"Profit each", 110, "RIGHT", text = money("profit"), sort = field("profit")},
-		{"Margin %", 80, "RIGHT", text = function(r) return X.Pct(r.pct) end, sort = field("pct")},
-		{"Limited stock", 100, "RIGHT", text = function(r) return r.lim and "|cffffd100yes|r" or "|cff999999no|r" end,
-			sort = function(r) return r.lim and 1 or 0 end},
-	},
-	de = {
-		{"Item", 330, "LEFT", text = itemCell, sort = itemName, desc = false},
-		{"Listed at", 110, "RIGHT", text = money("buy"), sort = field("buy"), desc = false},
-		{"Disenchant value", 120, "RIGHT",
-			text = function(r) return UI.MoneyCell(r.de) .. ((r.missing or 0) > 0 and " |cffff9933?|r" or "") end, sort = field("de")},
-		{"Profit after cut", 120, "RIGHT", text = money("profit"), sort = field("profit")},
-		{"% of value", 90, "RIGHT", text = function(r) return string.format("%.0f%%", r.pct) end, sort = field("pct"), desc = false},
-		{"Listed", 80, "RIGHT", text = count, sort = field("qty")},
-	},
-	resets = {
-		{"Item", 300, "LEFT", text = itemCell, sort = itemName, desc = false},
-		{"Units to buy", 95, "RIGHT", text = function(r) return X.Num(r.units) end, sort = field("units")},
-		{"Cost", 120, "RIGHT", text = money("cost"), sort = field("cost")},
-		{"Usual", 115, "RIGHT", text = money("usual"), sort = field("usual")},
-		{"Profit after cut", 120, "RIGHT", text = money("profit"), sort = field("profit")},
-		{"Sells per day", 100, "RIGHT", text = rate, sort = field("rate")},
+	other = {
+		{"Item", 200, "LEFT", text = itemCell, sort = itemName, desc = false},
+		{"Idea", 130, "LEFT", text = ideaCell, sort = field("ideaName"), desc = false},
+		{"Action", 100, "LEFT", text = function(r)
+			local a = r.action or ""
+			if a == "Hold" then return "|cff9db4ff" .. a .. "|r" end
+			if a == "Sell now" then return "|cffffd100" .. a .. "|r" end
+			return a
+		end, sort = field("action"), desc = false},
+		{"Now", 80, "RIGHT", text = money("now"), sort = field("now"), desc = false},
+		{"Target", 80, "RIGHT", text = money("target"), sort = field("target")},
+		{"Profit each", 80, "RIGHT", text = money("profit"), sort = field("profit")},
+		{"Qty", 44, "RIGHT", text = qtyCell, sort = field("qty")},
+		{"Risk", 50, "LEFT", text = riskCell, sort = riskSort, desc = false},
+		{"Why", 150, "LEFT", text = whyCell},
 	},
 }
 
--- [[ what to say when a list is empty ]]
-local NO_PRICES = "No prices yet. Open the auction house and press Full scan (tab Scan)."
-local function emptyText(view)
-	local S = X.S()
-	if next(X.Items()) == nil and view ~= "flips" then return NO_PRICES end
-	if view == "deals" then
-		return "No deals with these limits right now. A deal needs a price from the last " .. S.staleHours ..
-			" hours (a full scan) and at least " .. S.minSamples .. " days of price history for the item (scan once a day). " ..
-			"Try a higher % or a lower minimum profit."
-	elseif view == "vendor" then
-		return "Nothing is listed under what a vendor pays right now. Every full scan checks again " ..
-			"(prices older than " .. S.staleHours .. " hours are not used)."
-	elseif view == "de" then
-		return "No gear is listed under its disenchanting value right now. Needs fresh prices of the gear and of the " ..
-			"materials (dusts, essences, shards): a full scan."
-	elseif view == "resets" then
-		return "No reset chances right now. Each full scan looks for items with units listed under 80% of their usual " ..
-			"price (needs " .. S.minSamples .. "+ days of history) that sell again within about 5 days."
+-- [[ the Buy button in each row ]] the purchase button of the Buy page (UI.BuyButton: check the price, buy, confirm,
+-- each one click); a stand-in that shows the item on the auction house when that button is missing
+local function standIn(parent)
+	local b = K.Button(parent, "Find", BUY_W, 16)
+	b.standIn = true
+	function b:SetItem(key)
+		self.key = key
+		self:SetEnabled(X.ahOpen == true)
 	end
-	if next(X.db.vbuy) == nil then
-		return "XNAH does not know any vendor items yet. Open a vendor's window (any merchant) and XNAH remembers what " ..
-			"it sells and for how much. Then scan the auction house."
+	b:SetScript("OnClick", function(self)
+		if not self.key or not X.ahOpen then return end
+		if X.ShowOnAuctionHouse then X.ShowOnAuctionHouse(self.key) end
+		if X.scan.state == "idle" then X.ScanItems({self.key}, "one item") end
+	end)
+	K.Tooltip(b, "Find on the auction house", "Shows this item on the auction house (it must be open) to buy it there.")
+	return b
+end
+local function rowButton(rowFrame)
+	local b = rowFrame.buyButton
+	if b then return b end
+	if UI.BuyButton then
+		local ok, made = pcall(UI.BuyButton, rowFrame, BUY_W, 16)
+		if ok and made then b = made end
 	end
-	return "None of the vendor items XNAH knows sells for more on the auction house right now. Needs fresh auction " ..
-		"prices (a full scan); visit more vendors to add their items."
+	b = b or standIn(rowFrame)
+	b:SetPoint("LEFT", rowFrame.cols[BUY_COL], "LEFT", 0, 0)
+	rowFrame.buyButton = b
+	return b
+end
+-- the most to pay for one: the price now plus half the profit (still half the profit left)
+local function maxEach(r)
+	if not r.now then return nil end
+	return math.floor(r.now + math.max(0, r.profit or 0) / 2)
+end
+local function drawButtons(tbl)
+	for i, rowFrame in ipairs(tbl.rows) do
+		local r = tbl.items[i + tbl.offset]
+		if r and not r.vendor and rowFrame.cols then
+			local b = rowButton(rowFrame)
+			local max = maxEach(r)
+			local id = r.key .. ":" .. tostring(r.qty) .. ":" .. tostring(max)
+			-- set again only for another item (a purchase under way keeps its step when the list is drawn again)
+			if b.dealsId ~= id or b.standIn then
+				b.dealsId = id
+				-- source and tag as the Next buy key uses them: one purchase whichever starts it
+				local ok, err = pcall(b.SetItem, b, r.key, r.qty, max, "idea", "idea:" .. r.key)
+				if not ok then X.Debug("deals buy button: " .. tostring(err)) end
+			end
+			b:Show()
+		elseif rowFrame.buyButton then
+			rowFrame.buyButton:Hide()
+			rowFrame.buyButton.dealsId = nil
+		end
+	end
 end
 
--- [[ the tab ]]
+-- [[ what to say when a list is empty ]]
+local NO_PRICES = "No prices yet. Open the auction house and press Full scan (Settings)."
+local function emptyText(view)
+	local S = X.S()
+	if next(X.Items()) == nil then return NO_PRICES end
+	if X.StrategyBusy and X.StrategyBusy() then return "Working out the ideas ..." end
+	if view == "buy" then
+		return "No buy ideas right now. They need fresh prices (a full scan; prices older than " .. S.staleHours ..
+			" hours are not used), a few days of price history per item, and for some the sales speed or vendors visited. " ..
+			"Adjust ideas changes their numbers."
+	elseif view == "sell" then
+		return "No sell ideas right now. They look at what you have (log in your characters, open the bank and the " ..
+			"mailbox) and need a few days of price history."
+	end
+	return "No make ideas right now. They need recipes (open your profession windows) and fresh prices of what goes in " ..
+		"and what comes out. The Crafting page lists every recipe."
+end
+
+-- the hour of the day with the most sales (estimate), for the sell ideas
+local function bestHour()
+	if not X.BestHours then return nil end
+	local share = X.Try(X.BestHours)
+	if type(share) ~= "table" then return nil end
+	local best, h = 0, nil
+	for i = 0, 23 do if (share[i] or 0) > best then best, h = share[i], i end end
+	return h
+end
+
+-- the buy rows in the order shown, at most MAX, bought on the auction house
+local function shownBuys(p)
+	local out = {}
+	for _, r in ipairs(p.tables.buy.items or {}) do
+		if #out >= MAX then break end
+		if not r.vendor then out[#out + 1] = r end
+	end
+	return out
+end
+
+-- [[ the page ]]
 local function refresh(p)
+	if X.StrategyCheck then X.StrategyCheck() end -- works the ideas out again when prices changed or they are old
 	local S = X.S()
 	local view = p.view
+	local adjust = view == "adjust"
 	for _, v in ipairs(VIEWS) do
 		p.viewButtons[v.key]:SetSelected(v.key == view)
 		p.tables[v.key]:SetShown(v.key == view)
 	end
-	p.help:SetText(p.helpText[view])
-	p.controls:SetShown(view == "deals")
-	p.note:SetShown(view == "de" or view == "resets")
-	if view == "de" then
-		p.note:SetText("|cff999999Classic disenchanting chances (Forever may differ). Each material at its price; " ..
-			"|cffff9933?|r|cff999999 = a material has no price yet (counted as 0).|r")
-	elseif view == "resets" then
-		p.note:SetText("|cff999999Sales speed is an estimate from two full scans (cancelled auctions look like sales). " ..
-			"Profit = units x usual price after the cut - cost.|r")
+	p.adjustButton:SetSelected(adjust)
+	p.adjust:SetShown(adjust)
+	p.listBits:SetShown(not adjust)
+	if adjust then
+		if p.adjust.Refresh then p.adjust:Refresh() end
+		return
 	end
-	if not p.pctBox:HasFocus() then p.pctBox:SetText(tostring(S.dealPct)) end
-	if not p.profitBox:HasFocus() then p.profitBox:SetText(X.MoneyPlain(S.dealMinProfit)) end
+	local rows
+	if view == "buy" then rows = buyRows() else rows = X.DealIdeas(view) end
+	p.help:SetText(p.helpText[view])
+	p.controls:SetShown(view == "buy")
+	p.buyBar:SetShown(view == "buy")
+	p.note:SetShown(view ~= "buy")
+	p.hint2:SetShown(view ~= "buy")
+	if view == "sell" then
+		local h = bestHour()
+		p.note:SetText(GREY .. (h and ("Most sales happen about " .. string.format("%02d:00", h) .. " (your clock): post an hour or two before. ")
+			or "") .. "Sell ideas look at what you have on all your characters.|r")
+	elseif view == "make" then
+		p.note:SetText(GREY .. "Profit = what it sells for after the cut, minus what goes in at today's prices. " ..
+			"The Crafting page has every recipe.|r")
+	end
 	if not p.speedBox:HasFocus() then p.speedBox:SetText(tostring(S.dealSpeedMin)) end
 	p.speedCheck:SetChecked(S.dealSpeedHide and true or false)
-	local rows = rowsFor(view)
 	local tbl = p.tables[view]
 	tbl:SetRows(rows, emptyText(view))
-	p.count:SetText(#rows == 1 and "1 item" or (X.Num(#rows) .. " items"))
-	p.search:SetShown(X.ahOpen == true)
-	p.search:SetEnabled(#rows > 0 and X.scan.state == "idle")
+	local status = #rows == 1 and "1 item" or (X.Num(#rows) .. " items")
+	if X.StrategyBusy and X.StrategyBusy() then status = status .. ", working ..." end
+	p.count:SetText(status)
+	if view == "buy" then
+		local buys = #shownBuys(p)
+		p.search:SetEnabled(X.ahOpen == true and X.scan.state == "idle" and buys > 0)
+		p.shop:SetEnabled(X.ShopAdd ~= nil and buys > 0)
+		p.snipe:SetEnabled(buys > 0)
+	end
 end
 
 local function build(p)
-	p.view = "deals"
+	p.view = "buy"
 	p.helpText = {}
 	p.viewButtons = {}
 	p.tables = {}
 
-	-- the five views
+	-- the views
 	local x = 0
 	for _, v in ipairs(VIEWS) do
 		p.helpText[v.key] = v.help
@@ -202,73 +412,43 @@ local function build(p)
 		p.viewButtons[v.key] = b
 		x = x + v.w + 4
 	end
-
-	-- live prices for what is shown
-	p.search = K.Button(p, "Search these on the AH", 216, 22, function()
-		local tbl = p.tables[p.view]
-		local keys = {}
-		for i = 1, math.min(MAX_SEARCH, #(tbl.items or {})) do keys[#keys + 1] = tbl.items[i].key end
-		if #keys > 0 then X.ScanItems(keys, "deals") end
+	local adjustButton = K.Flat(p, 120, 22)
+	adjustButton:SetPoint("TOPRIGHT", 0, 0)
+	adjustButton:SetLabel("Adjust ideas")
+	adjustButton.label:SetJustifyH("CENTER")
+	adjustButton:SetScript("OnClick", function()
+		if p.view == "adjust" then p.view = p.lastList or "buy" else p.lastList, p.view = p.view, "adjust" end
+		refresh(p)
 	end)
-	p.search:SetPoint("TOPRIGHT", 0, 0)
-	K.Tooltip(p.search, "Search these on the auction house",
-		"Searches the first " .. MAX_SEARCH .. " items of this list one by one, in the order shown, to get their live prices " ..
-		"(a list can be out of date: someone may have bought them already).")
+	K.Tooltip(adjustButton, "Adjust ideas", "Which ideas go into these lists, their numbers, and how each one works.")
+	p.adjustButton = adjustButton
 
-	-- one plain line about the list
-	p.help = K.Label(p, "", "GameFontHighlight")
+	-- everything of the three lists (hidden while adjusting)
+	local bits = CreateFrame("Frame", nil, p)
+	bits:SetAllPoints(p)
+	p.listBits = bits
+	p.help = K.Label(bits, "", "GameFontHighlight")
 	p.help:SetPoint("TOPLEFT", 0, -30)
-	p.help:SetWidth(W - 120)
+	p.help:SetWidth(W - 130)
 	p.help:SetWordWrap(false)
-	p.count = K.Label(p, "", "GameFontDisableSmall", "RIGHT")
+	p.count = K.Label(bits, "", "GameFontDisableSmall", "RIGHT")
 	p.count:SetPoint("TOPRIGHT", 0, -32)
-	p.count:SetWidth(110)
-	-- a second line for the disenchant and reset views
-	p.note = K.Label(p, "", "GameFontHighlightSmall")
+	p.count:SetWidth(120)
+	p.note = K.Label(bits, "", "GameFontHighlightSmall")
 	p.note:SetPoint("TOPLEFT", 0, -56)
 	p.note:SetWidth(W)
 	p.note:SetWordWrap(false)
 
-	-- limits for "Under usual price"
-	local c = CreateFrame("Frame", nil, p)
+	-- hide slow sellers (buy ideas)
+	local c = CreateFrame("Frame", nil, bits)
 	c:SetPoint("TOPLEFT", 0, -52)
 	c:SetSize(W, 24)
 	p.controls = c
-	local l1 = K.Label(c, "Listed at or under")
-	l1:SetPoint("LEFT", 0, 0)
-	p.pctBox = K.Edit(c, 36)
-	p.pctBox:SetPoint("LEFT", l1, "RIGHT", 8, 0)
-	p.pctBox:SetScript("OnEditFocusLost", function(self)
-		local v = tonumber((X.Trim(self:GetText()):gsub("%%", "")))
-		if v and v > 0 then
-			X.S().dealPct = math.min(100, X.Round(v))
-			dirty.deals = true
-		end
-		self:SetText(tostring(X.S().dealPct))
-		refresh(p)
-	end)
-	local l2 = K.Label(c, "% of usual, profit at least")
-	l2:SetPoint("LEFT", p.pctBox, "RIGHT", 4, 0)
-	p.profitBox = K.Edit(c, 80)
-	p.profitBox:SetPoint("LEFT", l2, "RIGHT", 8, 0)
-	p.profitBox:SetScript("OnEditFocusLost", function(self)
-		local v = X.ParseMoney(self:GetText())
-		if v and v >= 0 then
-			X.S().dealMinProfit = v
-			dirty.deals = true
-		end
-		self:SetText(X.MoneyPlain(X.S().dealMinProfit))
-		refresh(p)
-	end)
-	K.Tooltip(p.profitBox, "Smallest profit", "Type e.g. 50g or 1g 50s, then Enter. The profit is after the auction house cut.")
-	local l3 = K.Label(c, "after the cut.")
-	l3:SetPoint("LEFT", p.profitBox, "RIGHT", 4, 0)
-	-- hide slow sellers
 	p.speedCheck = K.Check(c, "Hide items that sell under", function(on)
 		X.S().dealSpeedHide = on
 		refresh(p)
 	end)
-	p.speedCheck:SetPoint("LEFT", l3, "RIGHT", 24, 0)
+	p.speedCheck:SetPoint("LEFT", 0, 0)
 	K.Tooltip(p.speedCheck, "Hide slow sellers",
 		"Leaves out items known to sell fewer than this many a day. The sales speed is an estimate from two full scans " ..
 		"up to 4 hours apart (cancelled auctions look like sales, so it can be high). Items whose speed is not known yet stay in the list.")
@@ -283,16 +463,78 @@ local function build(p)
 	local l4 = K.Label(c, "a day")
 	l4:SetPoint("LEFT", p.speedBox, "RIGHT", 4, 0)
 
-	-- one table per view (same place, one shown)
+	-- the tables (same place, one shown)
 	for _, v in ipairs(VIEWS) do
-		local tbl = K.Table(p, W, H - TOP - 20, COLUMNS[v.key], onRow)
+		local tbl = K.Table(bits, W, H - TOP - 28, v.key == "buy" and COLUMNS.buy or COLUMNS.other, onRow)
 		tbl:SetPoint("TOPLEFT", 0, -TOP)
+		tbl:SortBy(v.key == "buy" and 7 or 6, true) -- the most profit first
 		p.tables[v.key] = tbl
 	end
+	-- a Buy button in each row of the buy list
+	local buyTbl = p.tables.buy
+	local baseRefresh = buyTbl.Refresh
+	function buyTbl:Refresh()
+		baseRefresh(self)
+		drawButtons(self)
+	end
 
-	local hint = K.Label(p, "|cff999999Left click a row: item page.  Right click: menu (watch list, search).  " ..
+	-- under the buy list: search, shopping list, sniper (the first rows shown, bought on the auction house)
+	local bar = CreateFrame("Frame", nil, bits)
+	bar:SetPoint("BOTTOMLEFT", 0, 0)
+	bar:SetSize(W, 22)
+	p.buyBar = bar
+	p.search = K.Button(bar, "Search these on the AH", 166, 22, function()
+		local keys = {}
+		for _, r in ipairs(shownBuys(p)) do keys[#keys + 1] = r.key end
+		if #keys > 0 and X.ahOpen and X.scan.state == "idle" then X.ScanItems(keys, "deals") end
+	end)
+	p.search:SetPoint("BOTTOMLEFT", 0, 0)
+	K.Tooltip(p.search, "Search these on the auction house",
+		"Searches the first " .. MAX .. " items of this list one by one, in the order shown, for their live prices " ..
+		"(the list can be out of date: someone may have bought them already). Needs the auction house open.")
+	p.shop = K.Button(bar, "Add to shopping list", 150, 22, function()
+		if not X.ShopAdd then return end
+		local name, n = "Deals", 0
+		for _, r in ipairs(shownBuys(p)) do
+			if X.ShopAdd(name, r.key, r.qty or 1, maxEach(r)) then n = n + 1 end
+		end
+		X.Print(n .. " items put on the shopping list \"" .. name .. "\" (Buy page), each with a top price of its price now " ..
+			"plus half the profit.")
+	end)
+	p.shop:SetPoint("LEFT", p.search, "RIGHT", 6, 0)
+	K.Tooltip(p.shop, "Add to shopping list", "Puts the first " .. MAX .. " items to buy on the shopping list \"Deals\", " ..
+		"with the quantity shown and a top price of the price now plus half the profit.")
+	p.snipe = K.Button(bar, "Snipe at this price", 140, 22, function()
+		local n = 0
+		for _, r in ipairs(shownBuys(p)) do
+			X.SetWatchMax(r.key, X.Round(r.now))
+			n = n + 1
+		end
+		X.Print(n .. " items on the watch list with a top price (the sniper on the Buy page looks for them).")
+	end)
+	p.snipe:SetPoint("LEFT", p.shop, "RIGHT", 6, 0)
+	K.Tooltip(p.snipe, "Snipe at this price", "Puts the first " .. MAX .. " items to buy on the watch list with their " ..
+		"price now as the most to pay: the sniper tells you when one is listed at or under it.")
+	local hint = K.Label(bar, GREY .. "Click: item page.  Right-click: menu.  +1 = another idea found it too.|r", nil, "RIGHT")
+	hint:SetPoint("BOTTOMRIGHT", 0, 4)
+	hint:SetWidth(W - 480)
+	hint:SetWordWrap(false)
+	p.hint2 = K.Label(bits, GREY .. "Click a row: item page.  Right-click: menu.  +1 = another idea found it too.  " ..
 		"Click a column title to sort.|r")
-	hint:SetPoint("BOTTOMLEFT", 0, 2)
+	p.hint2:SetPoint("BOTTOMLEFT", 0, 4)
+
+	-- Adjust ideas (UIStrategies.lua)
+	local area = CreateFrame("Frame", nil, p)
+	area:SetPoint("TOPLEFT", 0, -30)
+	area:SetSize(W, H - 30)
+	if UI.BuildIdeasAdjust then
+		local ok, err = pcall(UI.BuildIdeasAdjust, area, W, H - 30, function() dirty() end)
+		if not ok then X.OnError(err) end
+	end
+	area:Hide()
+	p.adjust = area
 end
+
+X.On("XNAH_STRATEGY", function() UI.Refresh() end)
 
 UI.AddTab("deals", "Deals", build, refresh, 3)

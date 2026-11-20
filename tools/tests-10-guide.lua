@@ -62,7 +62,7 @@ T.scene("guide: every part, Previous / Next, Open this page", function()
 	local X = W.start()
 	W.advance(5)
 	local pages = X.GuidePages()
-	T.check("16 parts", #pages, 16)
+	T.check("13 parts", #pages, 13)
 	local keys = {}
 	for i, p in ipairs(pages) do
 		keys[p.key] = i
@@ -70,11 +70,11 @@ T.scene("guide: every part, Previous / Next, Open this page", function()
 			type(p.text) == "string" and #p.text > 200, p.key)
 		T.ok("part " .. i .. " text is plain ASCII", not p.text:find("[\128-\255]"), p.key)
 	end
-	for _, k in ipairs({"welcome", "scanning", "market", "tooltips", "deals", "strategies", "craft", "trends", "sell", "buy",
-		"ledger", "wealth", "settings", "good"}) do
+	for _, k in ipairs({"welcome", "home", "scanning", "market", "tooltips", "deals", "craft", "sell", "buy",
+		"gold", "settings", "good"}) do
 		T.ok("part " .. k .. " is there", keys[k] ~= nil)
 	end
-	T.check("strategies page belongs to its tab", pages[keys.strategies].tab, "strategies")
+	T.check("deals page belongs to its tab", pages[keys.deals].tab, "deals")
 
 	-- every part opens (by number and by key)
 	local f = guide()
@@ -88,8 +88,8 @@ T.scene("guide: every part, Previous / Next, Open this page", function()
 		T.check("part " .. p.key .. " by its key", f.page, i)
 	end
 	-- the list on the left
-	W.click("Trends", f)
-	T.check("list button opens its part", f.page, keys.trends)
+	W.click("Gold", f)
+	T.check("list button opens its part", f.page, keys.gold)
 
 	-- Next walks through all, Previous back
 	X.ShowGuide(1)

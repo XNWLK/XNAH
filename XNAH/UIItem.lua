@@ -1,19 +1,20 @@
--- Item tab: everything about one item - prices now and over time (graph), ways to make gold with it, its recipe and
--- what it is used in. UI.ShowItem(key) opens it; "Back" goes to the item before.
--- Layout (940 x 550): header 48 high; below it numbers (left, 300 wide) and the graph area (right, 630 wide: a row of
--- buttons, the graph 238 high, a row of names under it - or the best-time charts); under those the profit box (left)
--- and the crafting box (right), 208 high.
+-- Item tab: everything about one item - prices now and over time (graph), fair prices to buy and sell at, ways to make
+-- gold with it, its recipe and what it is used in. UI.ShowItem(key) opens it; "Back" goes to the item before.
+-- Layout (940 x 550): header 48 high (Buy, Search, Watch list); below it the numbers (left, 300 wide: ten plain rows,
+-- or all the numbers with "More numbers") and the graph area (right, 630 wide: a row of buttons, the graph 238 high, a
+-- row of names under it - or the best-time charts); under those the profit box (left) and the crafting box (right).
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
-local GREY, GREEN, RED = "|cff999999", "|cff4ade80", "|cfff87171"
+local GREY, GREEN, RED, YELLOW = "|cff999999", "|cff4ade80", "|cfff87171", "|cffffd100"
 local NONE = "|cff666666-|r"
 local RANGES = {{"1 day", 86400}, {"7 days", 7 * 86400}, {"30 days", 30 * 86400}, {"90 days", 90 * 86400}, {"All", nil}}
 local rangeIdx = 3
 local HOW = {vendor = "Vendor", ah = "Auction", craft = "Craft"}
-local NUMBERS = 19  -- rows in the number grid
-local PROFITS = 4   -- slots in the profit box (the best four ways)
+local NUMBERS = 16  -- rows in the number box (ten in the plain view, up to sixteen with "More numbers")
+local PROFITS = 3   -- slots in the profit box (the best three ways)
 local PARTS = 8     -- reagent rows
+X.Default("itemMore", false) -- true: the number box shows all the numbers
 
 local function M(v) return X.Money(v, true) end
 local function signed(v)
@@ -55,10 +56,13 @@ local refresh -- below
 -- names under it (click one to hide / show its line, dots or bars), or the best-time charts (630 x 258) instead
 local GX, GW = 310, 630 -- where the graph area starts, its width
 local SALE, BUY, CMP = {1, 0.55, 0.2}, {0.75, 0.5, 1}, {0.3, 0.85, 0.95}
+local FAIRBUY, FAIRSELL = {0.55, 0.95, 0.7}, {1, 0.9, 0.55}
 local LEGEND = {
 	{"mkt", "Market value", {1, 0.82, 0}, "The market value at each scan: the average of the cheaper listings (price of one)."},
 	{"low", "Lowest price", {0.29, 0.87, 0.5}, "The cheapest listing at each scan (price of one)."},
 	{"bars", "Listed", {0.54, 0.64, 1}, "The faint bars: how many were listed at each scan."},
+	{"fair", "Fair prices", {0.85, 0.85, 0.85}, "Two thin flat lines: the fair price to buy (lower) and the fair price " ..
+		"to sell (upper), worked out from the last 14 days."},
 	{"sales", "Your sales", SALE, "Your own sales of this item (from the ledger): a dot at the price of one. Hover it for the details."},
 	{"buys", "Your buys", BUY, "Your own purchases of this item (from the ledger): a dot at the price of one. Hover it for the details."},
 	{"cmp", "", CMP, nil},
@@ -191,6 +195,64 @@ local function buildGraph(panel, body)
 	end
 end
 
+-- [[ Watch list button ]] one menu for the watch list, the highest price to pay and the shopping list
+local function askMax(key)
+	local cur = X.WatchMax(key)
+	K.Ask("Highest price to buy " .. X.ItemName(key) .. " at (each; empty = none)", cur and X.MoneyPlain(cur) or "", false, function(text)
+		local c = X.ParseMoney(text)
+		if not X.Watched(key) then X.SetWatched(key, true) end
+		X.SetWatchMax(key, c)
+	end, "Set")
+end
+local function askShop(key)
+	local fair = X.FairPrices(key)
+	local price = fair or X.Price(key)
+	local list = (X.ShopLists and X.ShopLists()[1]) or "Shopping"
+	K.Ask2("Add " .. X.ItemName(key) .. " to a shopping list", {"How many", "20"},
+		{"Max price each", price and X.MoneyPlain(price) or "", "List: " .. list},
+		function(qty, max)
+			X.ShopAdd(list, key, tonumber(qty) or 1, X.ParseMoney(max))
+			X.Print("added to the shopping list \"" .. list .. "\"")
+		end, "Add")
+end
+local function listsMenu(anchor, key)
+	local watched = X.Watched(key) and true or false
+	local wmax = X.WatchMax(key)
+	local fair = X.FairPrices(key)
+	local items = {
+		{text = "On the watch list", checked = watched, func = function() X.SetWatched(key, not X.Watched(key)) end},
+		{text = "Highest price to pay" .. (wmax and (": " .. X.MoneyPlain(wmax)) or "") .. " ...", func = function() askMax(key) end},
+	}
+	if fair and fair ~= wmax then
+		items[#items + 1] = {text = "Highest price = the fair price to buy (" .. X.MoneyPlain(fair) .. ")", func = function()
+			if not X.Watched(key) then X.SetWatched(key, true) end
+			X.SetWatchMax(key, fair)
+		end}
+	end
+	if wmax then items[#items + 1] = {text = "No highest price", func = function() X.SetWatchMax(key, nil) end} end
+	if X.ShopAdd then items[#items + 1] = {text = "Add to the shopping list ...", func = function() askShop(key) end} end
+	K.Menu(anchor, items)
+end
+
+-- [[ Buy button stand-in ]] until the Buy tab's button exists: shows the item's listings in the game's auction house
+-- window (buy them there). Same use as the real one: btn:SetItem(key, qty, maxEach, source).
+local function standInBuy(parent, w, h)
+	local b = K.Button(parent, "Buy", w, h, function(self)
+		if self.key and X.ahOpen then X.ShowOnAuctionHouse(self.key) end
+	end)
+	function b:SetItem(key, qty, maxEach)
+		self.key = key
+		if X.ahOpen then
+			self:SetText(maxEach and ("Buy at or under " .. X.MoneyPlain(maxEach)) or "Buy")
+			self:SetEnabled(true)
+		else
+			self:SetText("Open the auction house")
+			self:SetEnabled(false)
+		end
+	end
+	return b
+end
+
 local function build(panel)
 	local W = UI.W
 
@@ -254,47 +316,29 @@ local function build(panel)
 		end)
 	end)
 
-	panel.ah = K.Button(panel, "Search on the auction house", 200, 22, function()
+	-- [[ the buttons: Watch list (a menu), Search, Buy ]]
+	panel.lists = K.Button(panel, "Watch list", 150, 22, function(self)
+		if UI.itemKey then listsMenu(self, UI.itemKey) end
+	end)
+	panel.lists:SetPoint("TOPRIGHT", 0, -25)
+	K.Tooltip(panel.lists, "Watch list and shopping list", "Put the item on the watch list (watch list scans and the " ..
+		"sniper on the Buy tab look for it), set the highest price you would pay for one, or add it to your shopping list.")
+	panel.ah = K.Button(panel, "Search on the auction house", 190, 22, function()
 		if UI.itemKey then
 			X.ShowOnAuctionHouse(UI.itemKey)
 			X.ScanItems({UI.itemKey}, "one item")
 		end
 	end)
-	panel.ah:SetPoint("TOPRIGHT", 0, -25)
+	panel.ah:SetPoint("RIGHT", panel.lists, "LEFT", -6, 0)
 	K.Tooltip(panel.ah, "Search on the auction house", "Looks this item up now and records its prices. " ..
-		"The game's auction house window shows its listings too, ready to buy.")
-	panel.star = K.Button(panel, "Add to watch list", 150, 22, function()
-		local key = UI.itemKey
-		if key then X.SetWatched(key, not X.Watched(key)) end
-	end)
-	panel.star:SetPoint("RIGHT", panel.ah, "LEFT", -6, 0)
-	-- highest price to buy at (the sniper on the Buy tab watches for it)
-	panel.max = K.Button(panel, "Max price", 96, 22, function()
-		local key = UI.itemKey
-		if not key then return end
-		local cur = X.WatchMax(key)
-		K.Ask("Highest price to buy " .. X.ItemName(key) .. " at (each; empty = none)", cur and X.MoneyPlain(cur) or "", false, function(text)
-			local c = X.ParseMoney(text)
-			if not X.Watched(key) then X.SetWatched(key, true) end
-			X.SetWatchMax(key, c)
-		end, "Set")
-	end)
-	panel.max:SetPoint("RIGHT", panel.star, "LEFT", -6, 0)
-	K.Tooltip(panel.max, "Max price", "Puts the item on the watch list with the highest price you would pay for one. " ..
-		"With the sniper on (Buy tab) XNAH tells you when one is listed at or under it.")
-	panel.shop = K.Button(panel, "Shopping list", 104, 22, function()
-		local key = UI.itemKey
-		if not key or not X.ShopAdd then return end
-		local price = X.Price(key)
-		K.Ask2("Add " .. X.ItemName(key) .. " to a shopping list", {"How many", "20"},
-			{"Max price each", price and X.MoneyPlain(math.floor(price * 1.1)) or "", "List: " .. ((X.ShopLists and X.ShopLists()[1]) or "Shopping")},
-			function(qty, max)
-				local list = (X.ShopLists and X.ShopLists()[1]) or "Shopping"
-				X.ShopAdd(list, key, tonumber(qty) or 1, X.ParseMoney(max))
-				X.Print("added to the shopping list \"" .. list .. "\"")
-			end, "Add")
-	end)
-	panel.shop:SetPoint("RIGHT", panel.max, "LEFT", -6, 0)
+		"The game's auction house window shows its listings too.")
+	-- Buy: buys what is listed at or under the fair price to buy (check, buy, confirm - one click each)
+	panel.buy = UI.BuyButton and UI.BuyButton(panel, 190, 22) or standInBuy(panel, 190, 22)
+	if not panel.buy:GetScript("OnEnter") then
+		K.Tooltip(panel.buy, "Buy", "Buys this item from the auction house at or under the fair price to buy (see " ..
+			"the numbers on the left). Click to look up the listings, click again to buy; stackable items ask once " ..
+			"more to confirm the total.")
+	end
 
 	panel.hint = K.Label(panel, "Pick an item on the Market tab or type a name above.", "GameFontDisable", "CENTER")
 	panel.hint:SetPoint("CENTER", 0, 20)
@@ -310,21 +354,45 @@ local function build(panel)
 	local nums = K.Panel(body, 300, 280, {0, 0, 0, 0.25})
 	nums:SetPoint("TOPLEFT", 0, 0)
 	nums:EnableMouse(true)
-	K.Tooltip(nums, "The numbers", "Lowest now and market value come from the last scan (grey when old). Averages use " ..
-		"one value per day. Trend: how fast the price moved over the last 14 days. Spread: how much it jumps from day " ..
-		"to day. Supply: how many are listed now compared with the last 7 days.")
+	nums:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine("The numbers")
+		if X.S().itemMore then
+			GameTooltip:AddLine("Averages use one value per day. Trend: how fast the price moved over the last 14 days. " ..
+				"Day-to-day spread: how much it jumps from day to day (big = risky, or good to buy on a low day). Supply: " ..
+				"how many are listed now against the last 7 days.", 1, 1, 1, true)
+		else
+			GameTooltip:AddLine("Lowest now: the cheapest listing at the last scan (grey when old). Usually sells for: " ..
+				"its average price over the last 30 days. Fair prices: see the line under the numbers. Sells a day: an " ..
+				"estimate from the scans and your own sales. You own: on all your characters here (bags, bank, mail, " ..
+				"auctions).", 1, 1, 1, true)
+			GameTooltip:AddLine("More numbers: averages, highs and lows, spread, disenchant value and more.", 0.6, 0.6, 0.6, true)
+		end
+		GameTooltip:Show()
+	end)
+	nums:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	panel.numL, panel.numR = {}, {}
 	for i = 1, NUMBERS do
 		local l = K.Label(nums, "", "GameFontHighlightSmall")
-		l:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 14.3)
-		l:SetWidth(128)
+		l:SetWidth(118)
 		l:SetWordWrap(false)
 		local r = K.Label(nums, "", "GameFontHighlightSmall")
-		r:SetPoint("TOPLEFT", 138, -6 - (i - 1) * 14.3)
-		r:SetWidth(156)
+		r:SetWidth(166)
 		r:SetWordWrap(false)
 		panel.numL[i], panel.numR[i] = l, r
 	end
+	-- the line that explains the fair prices (plain view only)
+	panel.fairNote = K.Label(nums, "", "GameFontDisableSmall")
+	panel.fairNote:SetWidth(284)
+	panel.fairNote:SetJustifyV("TOP")
+	-- More numbers / Fewer numbers
+	panel.more = K.Flat(nums, 120, 18)
+	panel.more:SetPoint("BOTTOMLEFT", 8, 6)
+	panel.more.label:SetJustifyH("CENTER")
+	panel.more:SetScript("OnClick", function()
+		X.S().itemMore = not X.S().itemMore
+		refresh(panel)
+	end)
 
 	buildGraph(panel, body)
 
@@ -456,25 +524,64 @@ function UI.RecipeTooltip(owner, rid, mark)
 end
 
 -- [[ filling it in ]]
-local function fillNumbers(panel, key, s)
+-- "rising 6% a week" / "steady"
+local function trendText(p)
+	if not p then return NONE end
+	if math.abs(p) < 4 then return GREY .. "steady|r" end
+	return (p > 0 and GREEN .. "rising " or RED .. "falling ") .. string.format("%.0f%%", math.abs(p)) ..
+		"|r" .. GREY .. " a week|r"
+end
+
+-- the ten plain rows
+local function plainRows(s)
+	local cur, st = s.cur, s.st or {}
+	local stale = not s.fresh
+	local low = NONE
+	if cur then
+		if (cur.qty or 0) == 0 then
+			low = GREY .. "none listed|r"
+		else
+			low = UI.MoneyCell(cur.min, stale)
+			if s.fresh and s.fairBuy and cur.min and cur.min <= s.fairBuy then low = low .. GREEN .. "  a good price|r" end
+		end
+	end
+	local listed = NONE
+	if cur and cur.qty then
+		listed = X.Num(cur.qty)
+		if st.supply and cur.qty > 0 then
+			if st.supply <= -25 then listed = listed .. GREY .. "  fewer than usual|r"
+			elseif st.supply >= 25 then listed = listed .. GREY .. "  more than usual|r"
+			else listed = listed .. GREY .. "  about as usual|r" end
+		end
+	end
+	local own = NONE
+	if s.owned then
+		own = s.owned > 0 and (X.Num(s.owned) .. (s.ownedBags and s.ownedBags > 0 and s.ownedBags < s.owned and
+			(GREY .. "  (" .. X.Num(s.ownedBags) .. " in your bags)|r") or "")) or (GREY .. "none|r")
+	end
+	return {
+		{"Lowest now", low},
+		{"Usually sells for", M(s.usual)},
+		{"Fair price to buy", s.fairBuy and (M(s.fairBuy) .. GREY .. "  or less|r") or (GREY .. "not known yet|r")},
+		{"Fair price to sell", s.fairSell and (M(s.fairSell) .. GREY .. "  (you keep |r" .. M(X.AfterCut(s.fairSell)) .. GREY .. ")|r") or
+			(GREY .. "not known yet|r")},
+		{"Sells a day", s.rate and (GREY .. "about |r" .. X.Rate(s.rate)) or NONE},
+		{"Listed now", listed},
+		{"Price trend", trendText(st.trend)},
+		{"Vendor pays", M(s.vsell)},
+		{"You own", own},
+		{"Seen", cur and cur.t and (X.Ago(cur.t) .. (stale and (GREY .. "  (old - search again)|r") or "")) or (GREY .. "never|r")},
+	}
+end
+
+-- every number ("More numbers")
+local function moreRows(s)
 	local cur, st = s.cur, s.st or {}
 	local stale = not s.fresh
 	local info = s.vbuyInfo
-	-- "4 sellers, wall 200 at 1g 2s"
-	local shape = NONE
-	if s.shape then
-		local parts = {}
-		if s.shape.sellers then parts[#parts + 1] = X.Num(s.shape.sellers) .. GREY .. " sellers|r" end
-		if s.shape.wall then
-			parts[#parts + 1] = GREY .. "wall |r" .. X.Num(s.shape.wall.units or 0) .. GREY .. " at |r" .. M(s.shape.wall.price)
-		end
-		if #parts > 0 then shape = table.concat(parts, GREY .. ", |r") end
-	end
-	local rows = {
-		{"Lowest now", cur and ((cur.qty or 0) == 0 and GREY .. "none listed|r" or UI.MoneyCell(cur.min, stale)) or NONE},
+	return {
 		{"Market value", cur and UI.MoneyCell(cur.mkt, stale) or NONE},
-		{"Listed", cur and cur.qty and (X.Num(cur.qty) .. GREY .. " (" .. X.Num(cur.auc or 0) .. " auctions" ..
-			(cur.sellers and (", " .. X.Num(cur.sellers) .. " sellers") or "") .. ")|r") or NONE},
+		{"Listed", cur and cur.qty and (X.Num(cur.qty) .. GREY .. " (" .. X.Num(cur.auc or 0) .. " auctions)|r") or NONE},
 		{"3-day average", M(st.avg3)},
 		{"7-day average", M(st.avg7)},
 		{"30-day average", M(st.avg30)},
@@ -483,7 +590,6 @@ local function fillNumbers(panel, key, s)
 		{"Day-to-day spread", st.vol and string.format("%.0f%%", st.vol) or NONE},
 		{"Supply vs 7 days", st.supply and (X.Pct(st.supply, true) .. GREY .. " (usually " .. X.Num(st.qty7) .. ")|r") or NONE},
 		{"Sells per day", s.rate and (GREY .. "about |r" .. X.Rate(s.rate) .. (s.rateHours and (GREY .. "  (" .. X.Num(s.rateHours) .. " h seen)|r") or "")) or NONE},
-		{"Vendor pays", M(s.vsell)},
 		{"Vendor sells at", s.vbuy and (M(s.vbuy) .. (info and info.lim and (GREY .. " limited|r") or "") ..
 			(info and info.from and (GREY .. "  " .. info.from .. "|r") or "")) or NONE},
 		{"Disenchant value", s.de and M(s.de) or NONE},
@@ -491,48 +597,66 @@ local function fillNumbers(panel, key, s)
 		{"Your trades", s.ledger and (((s.ledger.sold or 0) > 0 or (s.ledger.bought or 0) > 0) and
 			(GREY .. "sold |r" .. X.Num(s.ledger.sold or 0) .. GREY .. ", bought |r" .. X.Num(s.ledger.bought or 0) ..
 			(s.ledger.sellThrough and (GREY .. ", " .. string.format("%.0f%%", s.ledger.sellThrough * 100) .. " sell|r") or "")) or NONE) or NONE},
-		{"Market shape", shape},
-		{"Strategies", s.marks and #s.marks > 0 and ("|cffffd100" .. table.concat(s.marks, ", ") .. "|r") or NONE},
-		{"Seen", cur and cur.t and (X.Ago(cur.t) .. GREY .. (st.first and ("  (first " .. X.Date(st.first * 86400 + 43200, "%b %d") .. ")") or "") .. "|r") or NONE},
+		{"Strategies", s.marks and #s.marks > 0 and (YELLOW .. table.concat(s.marks, ", ") .. "|r") or NONE},
+		{"First seen", st.first and X.Date(st.first * 86400 + 43200, "%b %d") or NONE},
 	}
-	for i = 1, NUMBERS do
-		local r = rows[i]
-		panel.numL[i]:SetText(r and (GREY .. r[1] .. "|r") or "")
-		panel.numR[i]:SetText(r and r[2] or "")
-	end
 end
 
+local function fillNumbers(panel, key, s)
+	local more = X.S().itemMore and true or false
+	local rows = more and moreRows(s) or plainRows(s)
+	local step = more and 14.6 or 18
+	for i = 1, NUMBERS do
+		local r = rows[i]
+		local l, v = panel.numL[i], panel.numR[i]
+		l:ClearAllPoints()
+		l:SetPoint("TOPLEFT", 8, -7 - (i - 1) * step)
+		v:ClearAllPoints()
+		v:SetPoint("TOPLEFT", 128, -7 - (i - 1) * step)
+		l:SetText(r and (GREY .. r[1] .. "|r") or "")
+		v:SetText(r and r[2] or "")
+		l:SetShown(r ~= nil)
+		v:SetShown(r ~= nil)
+	end
+	panel.fairNote:ClearAllPoints()
+	panel.fairNote:SetPoint("TOPLEFT", 8, -7 - #rows * step - 4)
+	panel.fairNote:SetText(more and "" or (GREY .. (s.fairNote or "") .. "|r"))
+	panel.fairNote:SetShown(not more)
+	panel.more:SetLabel(more and "Fewer numbers" or "More numbers")
+end
+
+-- [[ ways to make gold ]] only real chances: a profit after the cut, at the fair price to sell (not a one-off high
+-- price), with today's listings for the ones that need buying on the auction house. The best three.
 local function fillProfits(panel, s)
-	local cut = X.S().cut
 	local cur = s.cur
 	local list = {}
-	local old = s.fresh and "" or " (old prices)"
-	if s.flip and cur and (cur.qty or 0) > 0 then
-		list[#list + 1] = {s.flip, "Buy the cheapest, sell it again", "Buy one for " .. M(cur.min) .. GREY .. ", list it at " ..
-			M(s.price) .. GREY .. ". After the " .. cut .. "% cut you keep " .. M(s.sell) .. GREY .. old .. "."}
+	local sellAt = s.fairSell or s.usual
+	local keep = sellAt and X.AfterCut(sellAt)
+	local listedNow = s.fresh and cur and cur.min and (cur.qty or 0) > 0
+	local old = s.fresh and "" or " Prices are old: search again first."
+	local slow = ""
+	if s.rate and s.rate < 0.5 then slow = " It sells slowly (about " .. X.Rate(s.rate) .. " a day)." end
+	if listedNow and keep and s.fairBuy and cur.min <= s.fairBuy and keep - cur.min > 0 then
+		list[#list + 1] = {keep - cur.min, "Buy it now, sell it later", "Listed now at " .. M(cur.min) .. GREY ..
+			", a fair price to buy. Sold at its usual " .. M(sellAt) .. GREY .. " you keep " .. M(keep) .. GREY .. "." .. slow}
 	end
-	if s.vendorFlip then
+	if listedNow and s.vsell and s.vsell > cur.min then
+		list[#list + 1] = {s.vsell - cur.min, "Listed under the vendor price", "Buy it for " .. M(cur.min) .. GREY ..
+			"; any vendor pays " .. M(s.vsell) .. GREY .. ". No risk."}
+	end
+	if s.vbuy and keep and keep > s.vbuy then
 		local from = s.vbuyInfo and s.vbuyInfo.from
-		list[#list + 1] = {s.vendorFlip, "Buy from a vendor, sell here", "A vendor" .. (from and (" (" .. from .. ")") or "") ..
-			" sells it for " .. M(s.vbuy) .. GREY .. "; here it brings " .. M(s.sell) .. GREY .. " after the cut" .. old .. "."}
+		local lim = s.vbuyInfo and s.vbuyInfo.lim and " (only a few)" or ""
+		list[#list + 1] = {keep - s.vbuy, "Buy from a vendor, sell here", "A vendor" .. (from and (" (" .. from .. ")") or "") ..
+			" sells it for " .. M(s.vbuy) .. GREY .. lim .. "; here you keep " .. M(keep) .. GREY .. "." .. old .. slow}
 	end
-	if s.belowVendor and s.belowVendor > 0 and cur and (cur.qty or 0) > 0 then
-		list[#list + 1] = {s.belowVendor, "Listed under the vendor price", "Listed for " .. M(cur.min) .. GREY ..
-			" but any vendor pays " .. M(s.vsell) .. GREY .. ": buy it and sell it to a vendor. No risk" .. old .. "."}
+	if s.craft and keep and keep > s.craft then
+		list[#list + 1] = {keep - s.craft, "Craft it and sell it", "The reagents cost " .. M(s.craft) .. GREY ..
+			" (see Crafting); you keep " .. M(keep) .. GREY .. "." .. old .. slow}
 	end
-	if s.craftProfit then
-		list[#list + 1] = {s.craftProfit, "Craft it and sell it", "The reagents for one cost " .. M(s.craft) .. GREY ..
-			" (see Crafting); it brings " .. M(s.sell) .. GREY .. " after the cut" .. old .. "."}
-	end
-	if s.de and cur and cur.min and (cur.qty or 0) > 0 and s.de > cur.min then
-		list[#list + 1] = {s.de - cur.min, "Buy it and disenchant it", "Listed for " .. M(cur.min) .. GREY ..
-			"; disenchanting gives materials worth " .. M(s.de) .. GREY .. " on average (needs an enchanter)" .. old .. "."}
-	end
-	if s.shape and s.shape.reset and (s.shape.reset.profit or 0) > 0 then
-		local r = s.shape.reset
-		list[#list + 1] = {r.profit / math.max(1, r.units or 1), "Buy the cheap ones, relist", "Buying all " .. X.Num(r.units or 0) ..
-			" listed under the usual price costs " .. M(r.cost) .. GREY .. "; sold again at the usual price they bring " ..
-			M(r.profit) .. GREY .. " profit in all (if they sell)" .. old .. "."}
+	if listedNow and s.de and s.de > cur.min then
+		list[#list + 1] = {s.de - cur.min, "Buy it and disenchant it", "Listed at " .. M(cur.min) .. GREY ..
+			"; the materials are worth " .. M(s.de) .. GREY .. " on average (needs an enchanter)."}
 	end
 	table.sort(list, function(a, b) return a[1] > b[1] end)
 	local y = -24
@@ -547,12 +671,13 @@ local function fillProfits(panel, s)
 				slot.head:SetText(signed(e[1]) .. "  " .. e[2] .. GREY .. " (each)|r")
 				slot.text:SetText(GREY .. e[3] .. "|r")
 			else
-				slot.head:SetText(GREY .. "Nothing found yet.|r")
-				slot.text:SetText(GREY .. "More scans, vendor visits and opened profession windows fill this in.|r")
+				slot.head:SetText(GREY .. "Nothing worth doing with it right now.|r")
+				slot.text:SetText(GREY .. "XNAH looks for: buying it cheap and selling it again, vendor prices, crafting " ..
+					"and disenchanting. More scans, vendor visits and profession windows help.|r")
 			end
 			slot.head:Show()
 			slot.text:Show()
-			y = y - 14 - math.max(12, slot.text:GetStringHeight() or 24) - 7
+			y = y - 14 - math.max(12, slot.text:GetStringHeight() or 24) - 8
 		else
 			slot.head:Hide()
 			slot.text:Hide()
@@ -649,7 +774,8 @@ local function average(points)
 	return n > 0 and s / n or nil
 end
 
--- the names under the graph, left to right; info = {sales, buys (in all), inSales, inBuys (in the range), cmpName, right}
+-- the names under the graph, left to right; info = {sales, buys (in all), inSales, inBuys (in the range), fair (fair
+-- prices known), cmpName, right}
 local function layoutLegend(panel, info)
 	local hide = X.S().graphHide
 	local x = 0
@@ -660,6 +786,8 @@ local function layoutLegend(panel, info)
 			show, text = info.sales > 0, "Your sales (" .. info.inSales .. ")"
 		elseif k == "buys" then
 			show, text = info.buys > 0, "Your buys (" .. info.inBuys .. ")"
+		elseif k == "fair" then
+			show = info.fair
 		elseif k == "cmp" then
 			show = info.cmpName ~= nil
 			text = "vs " .. (info.cmpName or "") .. (info.right and GREY .. " (scale on the right)|r" or "") .. RED .. "  x|r"
@@ -679,7 +807,7 @@ local function layoutLegend(panel, info)
 	end
 end
 
-local function fillGraph(panel, key)
+local function fillGraph(panel, key, fairBuy, fairSell)
 	local hide = X.S().graphHide
 	for i, b in ipairs(panel.ranges) do b:SetSelected(i == rangeIdx) end
 	local range = RANGES[rangeIdx][2]
@@ -716,12 +844,20 @@ local function fillGraph(panel, key)
 	local empty
 	if #hist == 0 and range and #X.History(key, 0) > 0 then empty = "No prices in this time - pick a longer range" end
 	if #series == 0 and #marks == 0 and #hist > 0 then empty = "Everything is hidden - click the names under the graph to show them" end
-	panel.graph:SetSeries(series, {bars = (not hide.bars) and qty or nil, barsLabel = "Listed", empty = empty, marks = marks})
-	layoutLegend(panel, {sales = nSales, buys = nBuys, inSales = #sales, inBuys = #buys, cmpName = cmpName, right = right})
+	-- the fair prices as two flat lines
+	local levels = {}
+	if not hide.fair and fairBuy and fairSell then
+		levels[1] = {v = fairSell, color = FAIRSELL, label = "Fair to sell"}
+		levels[2] = {v = fairBuy, color = FAIRBUY, label = "Fair to buy"}
+	end
+	panel.graph:SetSeries(series, {bars = (not hide.bars) and qty or nil, barsLabel = "Listed", empty = empty, marks = marks,
+		levels = levels})
+	layoutLegend(panel, {sales = nSales, buys = nBuys, inSales = #sales, inBuys = #buys, fair = fairBuy ~= nil and #hist > 0,
+		cmpName = cmpName, right = right})
 end
 
 -- the graph or the best-time charts
-local function fillView(panel, key)
+local function fillView(panel, key, s)
 	local best = showBest and true or false
 	panel.viewBest:SetSelected(best)
 	panel.viewPrice:SetSelected(not best)
@@ -738,7 +874,7 @@ local function fillView(panel, key)
 		for _, b in ipairs(panel.legend) do b:Hide() end
 		panel.best:SetData(X.BestTimes(key))
 	else
-		fillGraph(panel, key)
+		fillGraph(panel, key, s.fairBuy, s.fairSell)
 	end
 end
 
@@ -750,9 +886,8 @@ refresh = function(panel)
 	panel.icon:SetShown(has)
 	panel.name:SetShown(has)
 	panel.sub:SetShown(has)
-	panel.star:SetShown(has)
-	panel.max:SetShown(has)
-	panel.shop:SetShown(has and X.ShopAdd ~= nil)
+	panel.lists:SetShown(has)
+	panel.buy:SetShown(has)
 	panel.ah:SetShown(has and X.ahOpen == true)
 	if not has then return end
 
@@ -760,8 +895,12 @@ refresh = function(panel)
 	if X.SaleRate then s.rate, s.rateHours = X.SaleRate(key) end
 	if X.DEValue then s.de = X.DEValue(key) end
 	if X.LedgerItem then s.ledger = X.LedgerItem(key) end
-	if X.Shape then s.shape = X.Shape(key) end
 	if X.StrategyMarks then s.marks = X.StrategyMarks(key) end
+	if X.Owned then
+		local total, parts = X.Owned(key)
+		s.owned, s.ownedBags = total, parts and parts.bags
+	end
+	s.fairBuy, s.fairSell, s.fairNote = X.FairPrices(key)
 	local id = s.id
 	local tex = id and X.Try(C_Item.GetItemIconByID, id)
 	panel.icon.tex:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -774,13 +913,20 @@ refresh = function(panel)
 		sub = sub .. "  -  |cffff8040prices are old (" .. X.Ago(s.cur.t) .. ")|r"
 	end
 	panel.sub:SetText(GREY .. sub .. "|r")
-	panel.star:SetText(X.Watched(key) and "Remove from watch list" or "Add to watch list")
 	local wmax = X.WatchMax(key)
-	panel.max:SetText(wmax and ("Max " .. X.MoneyPlain(wmax)) or "Max price")
+	panel.lists:SetText(X.Watched(key) and (wmax and ("Watched, max " .. X.MoneyPlain(wmax)) or "Watched") or "Watch list")
 	panel.ah:SetEnabled(X.scan and X.scan.state == "idle")
+	-- Buy: set again only when the item or the price changes (it walks its own steps: buy, confirm)
+	local buyFor = key .. "/" .. tostring(s.fairBuy)
+	if panel.buyFor ~= buyFor or not UI.BuyButton then
+		panel.buyFor = buyFor
+		panel.buy:SetItem(key, nil, s.fairBuy, "item")
+	end
+	panel.buy:ClearAllPoints()
+	panel.buy:SetPoint("RIGHT", panel.ah:IsShown() and panel.ah or panel.lists, "LEFT", -6, 0)
 
 	fillNumbers(panel, key, s)
-	fillView(panel, key)
+	fillView(panel, key, s)
 	fillProfits(panel, s)
 	fillCrafting(panel, s)
 end

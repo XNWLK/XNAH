@@ -183,15 +183,15 @@ end
 local function build(p)
 	p.cards = {
 		card(p, 1, "Gold, all characters", "Gold of all your characters of this realm and faction, and how it changed today " ..
-			"and over the last 7 days (as far as XNAH has seen it: a character counts from the first time XNAH saw it). Click for tab Wealth.", "wealth"),
+			"and over the last 7 days (as far as XNAH has seen it: a character counts from the first time XNAH saw it). Click for tab Gold.", "gold"),
 		card(p, 2, "Sales today", "What your auctions brought today after the auction house cut, and what you spent on " ..
-			"auctions. Read from the auction house mails in your mailbox. Click for tab Ledger.", "ledger"),
+			"auctions. Read from the auction house mails in your mailbox. Click for tab Gold.", "gold"),
 		card(p, 3, "Sales, last 7 days", "What your auctions brought over the last 7 days after the cut. Profit = sales " ..
-			"minus what you bought on the auction house in that time. Click for tab Ledger.", "ledger"),
+			"minus what you bought on the auction house in that time. Click for tab Gold.", "gold"),
 		card(p, 4, "Net worth", "Gold plus the items of all your characters at auction house prices, and the change over " ..
-			"the last 7 days. Click for tab Wealth.", "wealth"),
+			"the last 7 days. Click for tab Gold.", "gold"),
 		card(p, 5, "Last full scan", "When XNAH last read every auction, and when the server allows the next full scan. " ..
-			"Click for tab Scan.", "scan"),
+			"Click for Settings.", "scan"),
 	}
 	p.jobTitle = K.Label(p, "", "GameFontNormal")
 	p.jobTitle:SetPoint("TOPLEFT", 2, -(TOP + 2))

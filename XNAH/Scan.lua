@@ -585,8 +585,7 @@ function X.Perf()
 	X.Print(string.format("memory: %s (all addons' Lua: %.0f MB)", kb and string.format("%.1f MB", kb / 1024) or "?",
 		(select(2, pcall(collectgarbage, "count")) or 0) / 1024))
 	X.Print("busy: " .. (X.JobList and X.JobList() or "?") .. "; names to look up: " .. #nameQueue ..
-		"; scan: " .. tostring(X.scan.state) .. (X.SnipeOn and X.SnipeOn() and "; sniper ON" or "") ..
-		(X.ShareState and ("; sharing: " .. (X.ShareState().on and "on" or "off") .. ", queued " .. tostring(X.ShareState().queued or 0)) or ""))
+		"; scan: " .. tostring(X.scan.state) .. (X.SnipeOn and X.SnipeOn() and "; sniper ON" or ""))
 	local items, bytes = X.DataSize()
 	X.Print("saved data: " .. X.Num(items) .. " items, about " .. string.format("%.1f MB", bytes / 1048576))
 	X.Print("time spent in XNAH in the last 60 s: " .. string.format("%.0f ms", X.PerfTime and X.PerfTime() or 0) ..

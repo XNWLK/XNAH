@@ -1,7 +1,10 @@
--- The Sell tab: what is in your bags that can be sold, a suggested price for each (undercut the cheapest seller that is
--- not you, within your floor and ceiling), and posting - one click on Post = one auction (the game allows posting only
--- on a click). The second view lists your auctions that someone undercut, to cancel them (one click each). The third
--- view is the one-key routine (Routine.lua): each press of one key or of its big button does the next step.
+-- The Sell tab. It opens on "Worth posting": your undercut auctions first (with their Cancel step), then everything in
+-- your bags that can go on the auction house, with XNAH's price. What is worth posting is ticked; untick what you want
+-- to keep (XNAH remembers it per item). One big "Post next" button (or your key for it) does the next step of the
+-- one-key routine (Routine.lua): cancel an undercut auction, or post the next ticked item - one per press, as the game
+-- allows. Your auctions are checked by themselves when the auction house opens (Post.lua).
+-- The other views: "Undercut auctions" (your auctions someone sells cheaper, one Cancel click each) and "Post by hand"
+-- (one item: your own price, amount, duration, and its price rules - floor, ceiling, undercut, normal price).
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -10,16 +13,17 @@ local TOP = 70         -- where the table starts (its column titles sit just abo
 local LEFT_W = 600     -- table width
 local RX, RW = 612, 328 -- the panel on the right
 
-for _, e in ipairs({"XNAH_LIVE", "XNAH_POST", "XNAH_CANCEL", "XNAH_ROUTINE", "BAG_UPDATE_DELAYED"}) do
+for _, e in ipairs({"XNAH_LIVE", "XNAH_POST", "XNAH_CANCEL", "XNAH_ROUTINE", "XNAH_SELLTICK", "BAG_UPDATE_DELAYED"}) do
 	X.On(e, function() UI.Refresh() end)
 end
 
+local GREY, GREEN, RED, GOLD = "|cff999999", "|cff33ff33", "|cfff87171", "|cffffd100"
 local function field(name) return function(r) return r[name] end end
 local function money(name) return function(r) return UI.MoneyCell(r[name]) end end
 local function itemName(r) return (X.ItemName(r.key)) end
 local function itemCell(r) return UI.ItemCell(r.key) end
 
--- [[ rows of the bag view ]] (worked out on every refresh: a bag holds few items)
+-- [[ rows of the "Post by hand" view ]] (worked out on every refresh: a bag holds few items)
 local function sellRows()
 	local rows = X.SellItems()
 	for _, r in ipairs(rows) do
@@ -36,9 +40,7 @@ local function sellRows()
 end
 
 local SELL_COLUMNS = {
-	{"Item", 160, "LEFT", text = itemCell, sort = itemName, desc = false},
-	{"List", 30, "CENTER", text = function(r) return X.OnSellList(r.key) and "|cff33ff33yes|r" or "" end,
-		sort = function(r) return X.OnSellList(r.key) and 1 or 0 end},
+	{"Item", 190, "LEFT", text = itemCell, sort = itemName, desc = false},
 	{"Have", 45, "RIGHT", text = function(r) return X.Num(r.have) end, sort = field("have")},
 	{"Lowest now", 80, "RIGHT", text = function(r)
 		return UI.MoneyCell(r.lowest, r.info and r.info.from == "scan")
@@ -57,27 +59,65 @@ local CANCEL_COLUMNS = {
 		sort = function(r) return r.timeLeftSeconds or r.timeLeft end, desc = false},
 	{"Cancel cost", 80, "RIGHT", text = function(r) return r.cost and UI.MoneyCell(r.cost) or "-" end, sort = field("cost")},
 }
+-- the Worth posting list (its own rows: each has a tick box)
+local WORTH_COLUMNS = {{"", 24, "LEFT"}, {"Item", 176, "LEFT"}, {"Have", 44, "RIGHT"}, {"Lowest now", 78, "RIGHT"},
+	{"XNAH price", 78, "RIGHT"}, {"Brings", 74, "RIGHT"}, {"Step", 104, "LEFT"}}
 
--- the one-key routine's steps
-local STEP_DONE = {cancel = "cancelled", post = "posted"}
-local function stepStatus(s)
-	if s.status == "wait" then return "|cff999999waiting for its price|r" end
-	if s.status == "todo" then return s.isNext and "|cffffd100next|r" or "to do" end
-	if s.status == "sent" then
-		if s.kind == "post" and X.post.state == "warning" and X.post.key == s.key then return "|cffffd100price warning: press again to post|r" end
-		return "waiting for the auction house"
+-- [[ the Worth posting rows ]] undercut auctions first, then the ticked bag items (most valuable first), then the rest
+local function worthRows()
+	local out = {}
+	for _, a in ipairs(X.cancel.rows or {}) do
+		out[#out + 1] = {kind = "cancel", key = a.key, a = a, id = "a" .. tostring(a.auctionID)}
 	end
-	if s.status == "done" then return "|cff33ff33" .. STEP_DONE[s.kind] .. "|r" end
-	return "|cffff8888skipped: " .. (s.why or "?") .. "|r"
+	for _, row in ipairs(X.SellItems()) do
+		local worth, w = X.SellWorth(row)
+		local choice = X.SellChoice(row.key)
+		local ticked
+		if choice == nil then ticked = worth else ticked = choice end
+		out[#out + 1] = {kind = "post", key = row.key, row = row, worth = worth, w = w, ticked = ticked, choice = choice,
+			id = "p" .. row.key}
+	end
+	table.sort(out, function(a, b)
+		if a.kind ~= b.kind then return a.kind == "cancel" end
+		if a.kind == "post" then
+			if a.ticked ~= b.ticked then return a.ticked end
+			local va, vb = a.w.net or -1, b.w.net or -1
+			if va ~= vb then return va > vb end
+		end
+		return a.id < b.id
+	end)
+	return out
 end
-local ROUTINE_COLUMNS = {
-	{"#", 28, "RIGHT", text = function(r) return tostring(r.n or "") end, sort = field("n"), desc = false},
-	{"Step", 62, "LEFT", text = function(r) return r.kind == "cancel" and "Cancel" or "Post" end, sort = field("kind")},
-	{"Item", 190, "LEFT", text = itemCell, sort = itemName, desc = false},
-	{"Qty", 45, "RIGHT", text = function(r) return X.Num(r.qty or 1) end, sort = field("qty")},
-	{"Price", 85, "RIGHT", text = function(r) return UI.MoneyCell(r.price) end, sort = field("price")},
-	{"Status", 190, "LEFT", text = stepStatus, sort = field("status")},
-}
+
+-- the routine's word for a row: next, posted, skipped ...
+local function stepOf(r, peek)
+	local R = X.routine
+	local first, done, skipped, why
+	for _, s in ipairs(R.steps) do
+		local mine
+		if r.kind == "cancel" then mine = s.kind == "cancel" and s.auctionID == r.a.auctionID
+		else mine = s.kind == "post" and s.key == r.key end
+		if mine then
+			if s == peek.step then return GOLD .. "next|r" end
+			if s.status == "sent" then return "waiting ..." end
+			if s.status == "todo" or s.status == "wait" then first = first or s.status end
+			if s.status == "done" then done = true end
+			if s.status == "skipped" then skipped, why = true, s.why end
+		end
+	end
+	if first == "todo" then return "to do" end
+	if first == "wait" then return GREY .. "checking price|r" end
+	if r.kind == "cancel" then
+		if done then return GREEN .. "cancelled|r" end
+		local by = (r.a.unit and r.a.lowest) and (r.a.unit - r.a.lowest) or nil
+		return RED .. "undercut" .. (by and (" by " .. X.MoneyPlain(by)) or "") .. "|r"
+	end
+	if done then return GREEN .. "posted|r" end
+	if skipped then return RED .. "skipped|r" .. (why and (GREY .. ": " .. why .. "|r") or "") end
+	if r.choice == false then return GREY .. "kept|r" end
+	if not r.ticked then return GREY .. (r.w.why or "not ticked") .. "|r" end
+	return ""
+end
 
 local function selected(p)
 	for _, r in ipairs(p.rows or {}) do if r.key == p.selKey then return r end end
@@ -95,13 +135,13 @@ local function boxQty(p)
 	return n and math.floor(n) or nil
 end
 
--- [[ the right panel: posting one item ]]
+-- [[ the right panel: posting one item by hand ]]
 local function refreshSell(p)
 	local b = p.sellBox
 	local row = selected(p)
 	local key = row and row.key
 	if not row then
-		b.title:SetText("|cff999999Pick an item on the left.|r")
+		b.title:SetText(GREY .. "Pick an item on the left.|r")
 		for _, fs in ipairs(b.lines) do fs:SetText("") end
 		b.controls:Hide()
 		p.post:SetEnabled(false)
@@ -117,11 +157,11 @@ local function refreshSell(p)
 	local live = X.live[key]
 	b.title:SetText(UI.ItemCell(key, 16))
 	local searched = live and ("searched " .. X.Ago(live.t)) or (X.ahOpen and "searching ..." or "from the last scan")
-	b.lines[1]:SetText("Lowest now (not yours): " .. UI.MoneyCell(info.lowest) .. "  |cff999999" ..
+	b.lines[1]:SetText("Lowest now (not yours): " .. UI.MoneyCell(info.lowest) .. "  " .. GREY ..
 		(info.from == "search" and searched or "from the last scan") .. "|r")
 	b.lines[2]:SetText("Usual price: " .. UI.MoneyCell(info.usual) .. "   Market: " .. UI.MoneyCell(row.market) ..
 		(info.craft and ("   Craft: " .. UI.MoneyCell(info.craft)) or ""))
-	b.lines[3]:SetText("Suggested: " .. UI.MoneyCell(row.price) .. "  |cff999999(floor " .. X.MoneyPlain(info.floor) ..
+	b.lines[3]:SetText("Suggested: " .. UI.MoneyCell(row.price) .. "  " .. GREY .. "(floor " .. X.MoneyPlain(info.floor) ..
 		", ceiling " .. X.MoneyPlain(info.ceiling) .. ")|r")
 	b.lines[4]:SetText("|cffaaaaaa" .. (row.reason or "") .. "|r")
 	-- the boxes: filled with the suggestion until you type your own
@@ -144,8 +184,7 @@ local function refreshSell(p)
 	fill(p.ceilBox, tostring(rule.ceiling))
 	fill(p.underBox, rule.undercut and rule.undercut > 0 and X.MoneyPlain(rule.undercut) or "")
 	fill(p.normalBox, rule.normal and X.MoneyPlain(rule.normal) or "")
-	b.ruleNote:SetText(next(rule.own) and "|cffffd100this item has its own rules|r" or "|cff999999the general rules|r")
-	p.listCheck:SetChecked(X.OnSellList(key))
+	b.ruleNote:SetText(next(rule.own) and (GOLD .. "this item has its own rules|r") or (GREY .. "the general rules|r"))
 	-- Post / Confirm
 	local state = X.post.state
 	local warn = state == "warning" and X.post.key == key
@@ -157,8 +196,8 @@ local function refreshSell(p)
 	if not blocked and state == "sent" then blocked = X.post.text end
 	p.post:SetText(unit and qty and ("Post " .. X.Num(qty) .. " at " .. X.MoneyPlain(unit) .. (qty > 1 and " each" or "")) or "Post")
 	p.post:SetEnabled(blocked == nil and not warn)
-	p.postStatus:SetText(warn and ("|cffffd100" .. (X.post.text or "") .. "|r") or (blocked and ("|cffff8888" .. blocked .. "|r") or
-		("|cff999999" .. (X.post.text or "One click = one auction.") .. "|r")))
+	p.postStatus:SetText(warn and (GOLD .. (X.post.text or "") .. "|r") or (blocked and ("|cffff8888" .. blocked .. "|r") or
+		(GREY .. (X.post.text or "One click = one auction.") .. "|r")))
 end
 
 -- [[ the right panel: one undercut auction ]]
@@ -166,7 +205,7 @@ local function refreshCancel(p)
 	local b = p.cancelBox
 	local r = selectedAuction(p)
 	if not r then
-		b.title:SetText("|cff999999" .. (#X.cancel.rows > 0 and "Pick an auction on the left." or "Press Cancel scan to check your auctions.") .. "|r")
+		b.title:SetText(GREY .. (#X.cancel.rows > 0 and "Pick an auction on the left." or "Press Check auctions to check your auctions.") .. "|r")
 		for _, fs in ipairs(b.lines) do fs:SetText("") end
 		p.cancelButton:SetEnabled(false)
 		return
@@ -175,69 +214,87 @@ local function refreshCancel(p)
 	b.lines[1]:SetText("Your auction: " .. X.Num(r.qty) .. " at " .. UI.MoneyCell(r.unit) .. " each")
 	b.lines[2]:SetText("Lowest now (not yours): " .. UI.MoneyCell(r.lowest))
 	b.lines[3]:SetText("Time left: " .. X.TimeLeftText(r.timeLeftSeconds, r.timeLeft))
-	b.lines[4]:SetText("Cancelling costs: " .. (r.cost and UI.MoneyCell(r.cost) or "|cff999999unknown|r") ..
-		"  |cff999999(the deposit is not paid back)|r")
+	b.lines[4]:SetText("Cancelling costs: " .. (r.cost and UI.MoneyCell(r.cost) or (GREY .. "unknown|r")) ..
+		"  " .. GREY .. "(the deposit is not paid back)|r")
 	p.cancelButton:SetEnabled(X.ahOpen == true and not r.cancelling)
 	p.cancelButton:SetText(r.cancelling and "Cancelling ..." or "Cancel this auction")
 end
 
--- [[ the one-key routine ]]
-local function refreshRoutine(p)
+-- [[ the Worth posting view and its Post next panel ]]
+local NEXT_ON = {start = true, done = true, cancel = true, post = true, confirm = true, finish = true}
+local function pickedWorth(p)
+	for _, r in ipairs(p.worthRows or {}) do if r.id == p.selWorth then return r end end
+	return nil
+end
+local function refreshWorth(p)
+	X.RoutineAuto() -- a round starts by itself while you look at this view (it only asks and searches)
 	local R = X.routine
 	local peek = X.RoutinePeek()
-	for i, s in ipairs(R.steps) do
-		s.n = i
-		s.isNext = peek.step == s
-		if s.kind == "cancel" then s.price = s.unit
-		elseif s.status == "todo" or s.status == "wait" then s.price = (X.PostPrice(s.key))
-		else s.price = s.unit end
-	end
-	p.routineTable:SetRows(R.steps, R.state == "off" and
-		"Press Next step (or your key) to start: XNAH checks your auctions and searches the prices of your sell list." or
-		"Nothing to do: no undercut auctions, and nothing of your sell list is in your bags.")
-	local b = p.routineBox
-	p.nextButton:SetText(peek.text or "Next step")
-	local can = peek.what == "start" or peek.what == "done" or peek.what == "cancel" or peek.what == "post" or
-		peek.what == "confirm" or peek.what == "finish"
-	p.nextButton:SetEnabled(can)
-	b.nextText:SetText((peek.what == "done" and "|cff999999Press again to start a new round.|r") or
-		(peek.what == "closed" and "|cffff8888The routine works only while the auction house is open.|r") or
-		(peek.what == "confirm" and "|cffffd100The auction house warns that this price is far from usual. Press again to post anyway, or Skip.|r") or
-		(peek.what == "wait" and "|cff999999Prices are searched about one a second.|r") or "")
+	p.peek = peek
+	local rows = worthRows()
+	p.worthRows = rows
+	p.worthList:SetItems(rows, X.ahOpen and "Nothing in your bags can go on the auction house, and none of your auctions is undercut." or
+		"Nothing to sell in your bags (open the auction house to see exactly what it takes).")
+	local rb = p.routineBox
+	p.nextButton:SetText(peek.text or "Post next")
+	p.nextButton:SetEnabled(NEXT_ON[peek.what] == true)
+	rb.nextText:SetText((peek.what == "done" and (GREY .. "Press again to look for more.|r")) or
+		(peek.what == "closed" and "|cffff8888Posting works only while the auction house is open.|r") or
+		(peek.what == "confirm" and (GOLD .. "The auction house warns that this price is far from usual. Press again to post anyway, or Skip.|r")) or
+		(peek.what == "wait" and (GREY .. "Prices are searched about one a second.|r")) or "")
 	local finished, all = X.RoutineProgress()
 	local c = R.counts
-	b.progress:SetText(all > 0 and ("Step " .. math.min(finished + 1, all) .. " of " .. all .. "   |cff999999(" .. c.cancelled ..
+	rb.progress:SetText(all > 0 and ("Step " .. math.min(finished + 1, all) .. " of " .. all .. "   " .. GREY .. "(" .. c.cancelled ..
 		" cancelled, " .. c.posted .. " posted, " .. c.skipped .. " skipped)|r") or "")
-	b.note:SetText("|cff999999" .. (R.note or (R.state == "off" and R.text) or "") .. "|r")
+	rb.note:SetText(GREY .. (R.note or (R.state == "off" and R.text) or "") .. "|r")
 	local key = GetBindingKey and GetBindingKey("XNAH_NEXT")
-	b.keyText:SetText(key and ("Your key: |cffffd100" .. key .. "|r") or
-		"|cffff8888No key set yet:|r set one in the game's key bindings, under AddOns > XNAH.")
-	p.skipButton:SetEnabled(peek.step ~= nil)
+	rb.keyText:SetText(key and ("Your key: " .. GOLD .. key .. "|r") or
+		"|cffff8888No key set yet:|r set one in the game's key bindings, under AddOns > XNAH (One-key routine).")
+	p.skipButton:SetEnabled(peek.step ~= nil or (R.cur ~= nil and X.post.state == "warning"))
 	p.stopButton:SetEnabled(R.state == "on")
 	p.restartButton:SetEnabled(X.ahOpen == true and R.cur == nil)
 	p.cancelFirst:SetChecked(X.S().routineCancel == true)
-	local inBags = 0
-	for _, r in ipairs(X.SellItems()) do if X.OnSellList(r.key) then inBags = inBags + 1 end end
-	b.listText:SetText("Sell list: " .. #X.SellListKeys() .. " items, " .. inBags .. " of them in your bags.")
+	-- the picked row
+	local r = pickedWorth(p)
+	if not r then
+		rb.pickTitle:SetText(GREY .. "Click a row for its price and why.|r")
+		rb.pickWhy:SetText("")
+		p.rulesButton:Hide()
+	elseif r.kind == "cancel" then
+		rb.pickTitle:SetText(UI.ItemCell(r.key, 16))
+		rb.pickWhy:SetText("You ask " .. X.MoneyPlain(r.a.unit) .. " each, someone else " .. X.MoneyPlain(r.a.lowest) ..
+			": yours will not sell. Post next cancels it first; it comes back by mail, then post it again.")
+		p.rulesButton:Hide()
+	else
+		rb.pickTitle:SetText(UI.ItemCell(r.key, 16))
+		local w = r.w
+		rb.pickWhy:SetText("XNAH price: " .. UI.MoneyCell(w.price) .. "  " .. GREY .. (w.reason or "") .. "|r" ..
+			(w.why and ("\n" .. RED .. "Not worth posting: " .. w.why .. "|r") or ""))
+		p.rulesButton:Show()
+	end
 end
 
 local function refresh(p)
 	local view = p.view
-	p.viewSell:SetSelected(view == "sell")
+	p.viewWorth:SetSelected(view == "worth")
 	p.viewCancel:SetSelected(view == "cancel")
-	p.viewRoutine:SetSelected(view == "routine")
+	p.viewSell:SetSelected(view == "sell")
+	p.worthList:SetShown(view == "worth")
 	p.sellTable:SetShown(view == "sell")
 	p.cancelTable:SetShown(view == "cancel")
-	p.routineTable:SetShown(view == "routine")
+	p.routineBox:SetShown(view == "worth")
 	p.sellBox:SetShown(view == "sell")
 	p.cancelBox:SetShown(view == "cancel")
-	p.routineBox:SetShown(view == "routine")
 	local blocked = X.SearchBlocked()
-	p.cancelScan:SetEnabled(blocked == nil and X.cancel.state ~= "asking" and X.cancel.state ~= "checking")
-	if view == "routine" then
-		p.status:SetText(X.routine.state == "on" and "One press = one step. Cancels first, then posts." or
-			"Each press of your key (or of Next step) does the next step: cancel an undercut auction, or post the next item.")
-		refreshRoutine(p)
+	local cs = X.cancel.state
+	local checking = cs == "asking" or cs == "checking"
+	p.cancelScan:SetEnabled(blocked == nil and not checking)
+	p.cancelScan:SetText(checking and "Checking ..." or "Check auctions")
+	if view == "worth" then
+		p.status:SetText(not X.ahOpen and ("|cffff8888The auction house is closed:|r prices from the last scan. Open it to post.") or
+			(checking and (X.cancel.text or "Checking your auctions ...")) or
+			"Ticked items are posted by Post next (or your key), most valuable first. Untick what you want to keep.")
+		refreshWorth(p)
 	elseif view == "sell" then
 		p.rows = sellRows()
 		p.sellTable:SetRows(p.rows, X.ahOpen and "Nothing in your bags can be sold on the auction house." or
@@ -246,8 +303,8 @@ local function refresh(p)
 			"Click an item: it is searched for the live lowest price. Prices in grey are from the last scan.")
 		refreshSell(p)
 	else
-		p.cancelTable:SetRows(X.cancel.rows, X.cancel.state == "done" and "None of your auctions is undercut." or
-			"Press Cancel scan: XNAH asks for your auctions and searches each item for the cheapest price that is not yours.")
+		p.cancelTable:SetRows(X.cancel.rows, cs == "done" and "None of your auctions is undercut." or
+			"XNAH checks your auctions by itself when the auction house opens (or press Check auctions).")
 		p.status:SetText(X.cancel.text or (blocked and ("|cffff8888" .. blocked .. "|r") or "Your auctions that someone undercut."))
 		refreshCancel(p)
 	end
@@ -263,37 +320,143 @@ local function ruleBox(parent, text, x, y, w, onSet)
 	e:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 	return e
 end
+local function viewButton(p, text, x, view)
+	local b = K.Flat(p, 150, 22)
+	b:SetPoint("TOPLEFT", x, 0)
+	b:SetLabel(text)
+	b.label:SetJustifyH("CENTER")
+	b:SetScript("OnClick", function() p.view = view refresh(p) end)
+	return b
+end
+local function wrapLabel(parent, y, h, font)
+	local fs = K.Label(parent, "", font)
+	fs:SetPoint("TOPLEFT", 10, y)
+	fs:SetWidth(RW - 20)
+	if h then
+		fs:SetHeight(h)
+		fs:SetJustifyV("TOP")
+		fs:SetWordWrap(true)
+	else
+		fs:SetWordWrap(false)
+	end
+	return fs
+end
+
+-- the Worth posting list and the Post next panel
+local function buildWorth(p)
+	p.worthList = K.List(p, LEFT_W, H - TOP - 20, 22, function(row, r)
+		local priceText, lowText, haveText, bringText
+		if r.kind == "cancel" then
+			haveText = X.Num(r.a.qty or 1)
+			lowText = UI.MoneyCell(r.a.lowest)
+			priceText = RED .. X.MoneyPlain(r.a.unit) .. "|r"
+			bringText = GREY .. "-|r"
+		else
+			local w = r.w
+			local info = w.info or {}
+			haveText = X.Num(r.row.have)
+			lowText = UI.MoneyCell(info.lowest, info.from == "scan")
+			priceText = UI.MoneyCell(w.price)
+			bringText = w.net and ((r.ticked and "" or GREY) .. X.MoneyPlain(math.floor(w.net)) .. (r.ticked and "" or "|r")) or (GREY .. "-|r")
+		end
+		row:SetCols("", UI.ItemCell(r.key), haveText, lowText, priceText, bringText, stepOf(r, p.peek or {}))
+		row:SetSelected(r.id == p.selWorth)
+		if not row.check then
+			row.check = K.Check(row, "", function(on)
+				local item = row.item
+				if item and item.kind == "post" then X.SetSellTick(item.key, on, item.row) end
+				refresh(p)
+			end)
+			row.check:SetPoint("LEFT", 1, 0)
+			row.check:SetSize(20, 20)
+			K.Tooltip(row.check, "Post it?", "Ticked: Post next (and your key) posts it. Untick to keep it - XNAH remembers.")
+		end
+		row.item = r
+		row.check:SetShown(r.kind == "post")
+		row.check:SetChecked(r.kind == "post" and r.ticked == true)
+		row:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then UI.ItemMenu(self, r.key) return end
+			p.selWorth = r.id
+			refresh(p)
+		end)
+		row:SetScript("OnEnter", function(self) UI.ItemTooltip(self, r.key) end)
+		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	end, WORTH_COLUMNS)
+	p.worthList:SetPoint("TOPLEFT", 0, -TOP)
+
+	local rb = K.Panel(p, RW, H - 52)
+	rb:SetPoint("TOPLEFT", RX, -52)
+	p.routineBox = rb
+	local rt = K.Label(rb, "Post next", "GameFontNormal")
+	rt:SetPoint("TOPLEFT", 10, -10)
+	local intro = wrapLabel(rb, -30, 56)
+	intro:SetText("Each press does the next step: cancel an auction someone undercut, or post the next ticked item at " ..
+		"XNAH's price. One press = one auction - the game allows no more. It never buys anything.")
+	rb.keyText = wrapLabel(rb, -90, 28)
+	p.nextButton = K.Button(rb, "Post next", RW - 20, 48, function()
+		X.RoutineNext("button")
+		refresh(p)
+	end)
+	p.nextButton:SetPoint("TOPLEFT", 10, -122)
+	local nfs = p.nextButton:GetFontString()
+	if nfs then
+		nfs:SetWidth(RW - 36)
+		nfs:SetWordWrap(true)
+	end
+	K.Tooltip(p.nextButton, "Post next", "Does what the button says: one cancel or one post per press. Your key for the " ..
+		"one-key routine does the same while the auction house is open.")
+	rb.nextText = wrapLabel(rb, -176, 30)
+	rb.progress = wrapLabel(rb, -210, nil, "GameFontHighlight")
+	rb.note = wrapLabel(rb, -230)
+	p.skipButton = K.Button(rb, "Skip this step", 110, 22, function() X.RoutineSkip() refresh(p) end)
+	p.skipButton:SetPoint("TOPLEFT", 10, -250)
+	K.Tooltip(p.skipButton, "Skip this step", "Leaves the next step out (or says no to a price warning).")
+	p.restartButton = K.Button(rb, "Start over", 100, 22, function() X.RoutineStart() refresh(p) end)
+	p.restartButton:SetPoint("LEFT", p.skipButton, "RIGHT", 6, 0)
+	K.Tooltip(p.restartButton, "Start over", "Checks your auctions and your bags again and makes a new list of steps.")
+	p.stopButton = K.Button(rb, "Stop", 80, 22, function() X.RoutineStop() refresh(p) end)
+	p.stopButton:SetPoint("LEFT", p.restartButton, "RIGHT", 6, 0)
+	p.cancelFirst = K.Check(rb, "Cancel undercut auctions first", function(on)
+		X.S().routineCancel = on
+		refresh(p)
+	end)
+	p.cancelFirst:SetPoint("TOPLEFT", 8, -280)
+	K.Tooltip(p.cancelFirst, "Cancel undercut auctions first", "Off: Post next only posts. Cancelled items come back by mail, " ..
+		"so they are posted again once they are in your bags.")
+	rb.pickTitle = wrapLabel(rb, -316, nil, "GameFontNormal")
+	rb.pickWhy = wrapLabel(rb, -338, 70)
+	p.rulesButton = K.Button(rb, "Price rules for this item", 170, 22, function()
+		local r = pickedWorth(p)
+		if r then p.selKey = r.key end
+		p.view = "sell"
+		if r and X.ahOpen then X.LiveSearch(r.key) end
+		refresh(p)
+	end)
+	p.rulesButton:SetPoint("TOPLEFT", 10, -414)
+	K.Tooltip(p.rulesButton, "Price rules", "Opens Post by hand with this item: its floor, ceiling, undercut and normal price.")
+	local foot = wrapLabel(rb, -446, 40)
+	foot:SetText(GREY .. "Ticked = worth posting (it brings more than a vendor pays). Untick to keep an item; tick anything " ..
+		"to post it anyway.|r")
+end
 
 local function build(p)
-	p.view = "sell"
+	p.view = "worth"
 	p.duration = X.S().postDuration
-	p.viewSell = K.Flat(p, 150, 22)
-	p.viewSell:SetPoint("TOPLEFT", 0, 0)
-	p.viewSell:SetLabel("Sell from your bags")
-	p.viewSell.label:SetJustifyH("CENTER")
-	p.viewSell:SetScript("OnClick", function() p.view = "sell" refresh(p) end)
-	p.viewCancel = K.Flat(p, 150, 22)
-	p.viewCancel:SetPoint("TOPLEFT", 154, 0)
-	p.viewCancel:SetLabel("Undercut auctions")
-	p.viewCancel.label:SetJustifyH("CENTER")
-	p.viewCancel:SetScript("OnClick", function() p.view = "cancel" refresh(p) end)
-	p.viewRoutine = K.Flat(p, 150, 22)
-	p.viewRoutine:SetPoint("TOPLEFT", 308, 0)
-	p.viewRoutine:SetLabel("One-key routine")
-	p.viewRoutine.label:SetJustifyH("CENTER")
-	p.viewRoutine:SetScript("OnClick", function() p.view = "routine" refresh(p) end)
-	p.cancelScan = K.Button(p, "Cancel scan", 120, 22, function()
-		p.view = "cancel"
+	p.viewWorth = viewButton(p, "Worth posting", 0, "worth")
+	p.viewCancel = viewButton(p, "Undercut auctions", 154, "cancel")
+	p.viewSell = viewButton(p, "Post by hand", 308, "sell")
+	p.cancelScan = K.Button(p, "Check auctions", 120, 22, function()
 		p.selAuction = nil
 		X.CancelScan()
 		refresh(p)
 	end)
 	p.cancelScan:SetPoint("TOPRIGHT", 0, 0)
-	K.Tooltip(p.cancelScan, "Cancel scan", "Asks the auction house for your auctions, searches each item (one a second) " ..
-		"and lists the ones where someone sells for less than you. Cancelling is one click each.")
+	K.Tooltip(p.cancelScan, "Check auctions", "Asks the auction house for your auctions, searches each item (one a second) " ..
+		"and lists the ones where someone sells for less than you. XNAH also does this by itself when the auction house " ..
+		"opens (at most every 5 minutes). Cancelling is one click each.")
 	local again = K.Button(p, "Search again", 110, 22, function()
-		local row = selected(p)
-		if row then X.LiveSearch(row.key) end
+		local key = p.view == "worth" and (pickedWorth(p) or {}).key or p.selKey
+		if key then X.LiveSearch(key) end
 	end)
 	again:SetPoint("RIGHT", p.cancelScan, "LEFT", -6, 0)
 	K.Tooltip(again, "Search again", "Searches the picked item again for its live lowest price.")
@@ -302,6 +465,7 @@ local function build(p)
 	p.status:SetWidth(W)
 	p.status:SetWordWrap(false)
 
+	buildWorth(p)
 	p.sellTable = K.Table(p, LEFT_W, H - TOP - 20, SELL_COLUMNS, function(row, button, rowFrame)
 		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) return end
 		p.selKey = row.key
@@ -315,14 +479,10 @@ local function build(p)
 		refresh(p)
 	end)
 	p.cancelTable:SetPoint("TOPLEFT", 0, -TOP)
-	p.routineTable = K.Table(p, LEFT_W, H - TOP - 20, ROUTINE_COLUMNS, function(row, button, rowFrame)
-		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) end
-	end)
-	p.routineTable:SetPoint("TOPLEFT", 0, -TOP)
-	local hint = K.Label(p, "|cff999999Click a row to pick it.  Right click: menu.  Click a column title to sort.|r")
+	local hint = K.Label(p, GREY .. "Click a row to pick it.  Right click: menu.|r")
 	hint:SetPoint("BOTTOMLEFT", 0, 2)
 
-	-- [[ right: posting ]]
+	-- [[ right: posting by hand ]]
 	local b = K.Panel(p, RW, H - 52)
 	b:SetPoint("TOPLEFT", RX, -52)
 	p.sellBox = b
@@ -422,13 +582,9 @@ local function build(p)
 		refresh(p)
 	end)
 	reset:SetPoint("TOPLEFT", 10, -184)
-	p.listCheck = K.Check(c, "On the sell list (the one-key routine posts it)", function(on)
-		if p.selKey then X.SetSellList(p.selKey, on) end
-		refresh(p)
-	end)
-	p.listCheck:SetPoint("TOPLEFT", 8, -212)
-	K.Tooltip(p.listCheck, "Sell list", "The one-key routine (third view of this tab) posts the items of this list that are in " ..
-		"your bags, at the suggested price, one press each.")
+	local ruleHint = K.Label(c, GREY .. "Post next (view Worth posting) uses these rules too.|r")
+	ruleHint:SetPoint("TOPLEFT", 10, -214)
+	ruleHint:SetWidth(RW - 20)
 	p.post = K.Button(b, "Post", RW - 20, 32, function()
 		local row = selected(p)
 		if row and X.PostClick(row, boxPrice(p), boxQty(p), p.duration) then p.edited, p.qtyEdited = false, false end
@@ -443,6 +599,7 @@ local function build(p)
 	p.postStatus:SetPoint("BOTTOMLEFT", 10, 6)
 	p.postStatus:SetWidth(RW - 20)
 	p.postStatus:SetHeight(26)
+	b:Hide()
 
 	-- [[ right: cancelling ]]
 	local cb = K.Panel(p, RW, H - 52)
@@ -463,83 +620,10 @@ local function build(p)
 		refresh(p)
 	end)
 	p.cancelButton:SetPoint("BOTTOM", 0, 34)
-	local note = K.Label(cb, "|cff999999One click = one auction cancelled. The items come back by mail.|r")
+	local note = K.Label(cb, GREY .. "One click = one auction cancelled. The items come back by mail.|r")
 	note:SetPoint("BOTTOMLEFT", 10, 10)
 	note:SetWidth(RW - 20)
 	cb:Hide()
-
-	-- [[ right: the one-key routine ]]
-	local rb = K.Panel(p, RW, H - 52)
-	rb:SetPoint("TOPLEFT", RX, -52)
-	p.routineBox = rb
-	local rt = K.Label(rb, "One-key routine", "GameFontNormal")
-	rt:SetPoint("TOPLEFT", 10, -10)
-	local intro = K.Label(rb, "Each press does the next step: first it cancels your auctions that someone undercut, then it " ..
-		"posts the items of your sell list that are in your bags, at XNAH's suggested price. The game allows one action per " ..
-		"click or key press, so press once for each step. It never buys anything.")
-	intro:SetPoint("TOPLEFT", 10, -32)
-	intro:SetWidth(RW - 20)
-	intro:SetHeight(70)
-	intro:SetJustifyV("TOP")
-	intro:SetWordWrap(true)
-	rb.keyText = K.Label(rb, "")
-	rb.keyText:SetPoint("TOPLEFT", 10, -108)
-	rb.keyText:SetWidth(RW - 20)
-	rb.keyText:SetHeight(28)
-	rb.keyText:SetJustifyV("TOP")
-	rb.keyText:SetWordWrap(true)
-	p.nextButton = K.Button(rb, "Next step", RW - 20, 48, function()
-		X.RoutineNext("button")
-		refresh(p)
-	end)
-	p.nextButton:SetPoint("TOPLEFT", 10, -140)
-	local nfs = p.nextButton:GetFontString()
-	if nfs then
-		nfs:SetWidth(RW - 36)
-		nfs:SetWordWrap(true)
-	end
-	K.Tooltip(p.nextButton, "Next step", "Does what the button says: one cancel or one post per press. Your key for the " ..
-		"one-key routine does the same while the auction house is open.")
-	rb.nextText = K.Label(rb, "")
-	rb.nextText:SetPoint("TOPLEFT", 10, -196)
-	rb.nextText:SetWidth(RW - 20)
-	rb.nextText:SetHeight(30)
-	rb.nextText:SetJustifyV("TOP")
-	rb.nextText:SetWordWrap(true)
-	rb.progress = K.Label(rb, "", "GameFontHighlight")
-	rb.progress:SetPoint("TOPLEFT", 10, -232)
-	rb.progress:SetWidth(RW - 20)
-	rb.progress:SetWordWrap(false)
-	rb.note = K.Label(rb, "")
-	rb.note:SetPoint("TOPLEFT", 10, -254)
-	rb.note:SetWidth(RW - 20)
-	rb.note:SetWordWrap(false)
-	p.skipButton = K.Button(rb, "Skip this step", 110, 22, function() X.RoutineSkip() refresh(p) end)
-	p.skipButton:SetPoint("TOPLEFT", 10, -278)
-	K.Tooltip(p.skipButton, "Skip this step", "Leaves the next step out (or says no to a price warning).")
-	p.restartButton = K.Button(rb, "Start over", 100, 22, function() X.RoutineStart() refresh(p) end)
-	p.restartButton:SetPoint("LEFT", p.skipButton, "RIGHT", 6, 0)
-	K.Tooltip(p.restartButton, "Start over", "Checks your auctions and your bags again and makes a new list of steps.")
-	p.stopButton = K.Button(rb, "Stop", 80, 22, function() X.RoutineStop() refresh(p) end)
-	p.stopButton:SetPoint("LEFT", p.restartButton, "RIGHT", 6, 0)
-	p.cancelFirst = K.Check(rb, "Cancel undercut auctions first", function(on)
-		X.S().routineCancel = on
-		refresh(p)
-	end)
-	p.cancelFirst:SetPoint("TOPLEFT", 8, -312)
-	K.Tooltip(p.cancelFirst, "Cancel undercut auctions first", "Off: the routine only posts. Cancelled items come back by mail, " ..
-		"so they are posted again on a later round, once they are in your bags.")
-	rb.listText = K.Label(rb, "")
-	rb.listText:SetPoint("TOPLEFT", 10, -344)
-	rb.listText:SetWidth(RW - 20)
-	local how = K.Label(rb, "|cff999999To put an item on the sell list: view \"Sell from your bags\", pick the item, tick \"On the " ..
-		"sell list\". Its price follows that item's price rules.|r")
-	how:SetPoint("TOPLEFT", 10, -362)
-	how:SetWidth(RW - 20)
-	how:SetHeight(42)
-	how:SetJustifyV("TOP")
-	how:SetWordWrap(true)
-	rb:Hide()
 end
 
-UI.AddTab("sell", "Sell", build, refresh, 6)
+UI.AddTab("sell", "Sell", build, refresh, 5)

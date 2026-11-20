@@ -615,9 +615,19 @@ function X.History(key, from, raw)
 	if not it then return {} end
 	local out = X.HistoryRaw(it, from)
 	if raw or #out < 3 then return out end
-	-- crazy prices left out (the middle of these points and the price now)
+	-- crazy prices left out: the typical price is the middle of each day's middle price (a day with many scans counts
+	-- once, like a day with one) and the price now
+	local byDay, order = {}, {}
+	for _, p in ipairs(out) do
+		local v = p[3] or p[2]
+		if v then
+			local d = math.floor(p[1] / 86400)
+			if not byDay[d] then byDay[d] = {} order[#order + 1] = d end
+			table.insert(byDay[d], v)
+		end
+	end
 	local vals = {}
-	for _, p in ipairs(out) do if p[3] or p[2] then vals[#vals + 1] = p[3] or p[2] end end
+	for _, d in ipairs(order) do vals[#vals + 1] = median(byDay[d]) end
 	if it.cur and (it.cur.mkt or it.cur.min) then vals[#vals + 1] = it.cur.mkt or it.cur.min end
 	local m = median(vals)
 	local kept = {}

@@ -248,6 +248,176 @@ function X.LedgerDays(days)
 	return out
 end
 
+-- [[ time at the auction house ]] X.Realm().ahTime = {[day number] = seconds the auction house window was open that
+-- day}, X.Realm().ahTimeFirst = the first day counted. Counted from AUCTION_HOUSE_SHOW to AUCTION_HOUSE_CLOSED (or
+-- logging out / reloading); one visit counts at most 6 hours (a window left open while away from the keyboard).
+local AH_MAX = 6 * 3600
+local ahSince -- when the auction house window opened (nil while it is closed)
+local function ahAdd(from, to)
+	if not from or not to or to <= from then return end
+	if to - from > AH_MAX then from = to - AH_MAX end
+	local r = X.Realm()
+	r.ahTime = r.ahTime or {}
+	local first = X.Day(from)
+	if not r.ahTimeFirst or first < r.ahTimeFirst then r.ahTimeFirst = first end
+	local t = from
+	while t < to do
+		local d = X.Day(t)
+		local stop = math.min(to, (d + 1) * DAY)
+		r.ahTime[d] = (r.ahTime[d] or 0) + (stop - t)
+		t = stop
+	end
+end
+local function ahClose()
+	if ahSince then
+		ahAdd(ahSince, X.Now())
+		ahSince = nil
+		X.Debounce("xnah-ahtime", 0.5, function() X.Fire("XNAH_LEDGER") end)
+	end
+end
+X.On("AUCTION_HOUSE_SHOW", function()
+	if not ahSince then ahSince = X.Now() end
+end)
+X.On("AUCTION_HOUSE_CLOSED", ahClose)
+X.On("PLAYER_LOGOUT", ahClose)
+
+-- seconds the auction house window was open from the day of `from` on (nil = every day counted), this visit included
+function X.AHSeconds(from)
+	local r = X.Realm()
+	local fromDay = from and X.Day(from) or nil
+	local s = 0
+	for d, secs in pairs(r.ahTime or {}) do
+		if not fromDay or d >= fromDay then s = s + secs end
+	end
+	if ahSince then s = s + math.min(AH_MAX, math.max(0, X.Now() - ahSince)) end
+	return s
+end
+
+-- X.GoldPerHour(days) -> {perHour (copper an hour, nil under one minute counted), profit (sales after the cut minus
+-- purchases), seconds (auction house time), since (time the numbers start)} over the last `days` days (today
+-- included; nil = since XNAH started counting the time). Days before the counting started are left out of both.
+function X.GoldPerHour(days)
+	local r = X.Realm()
+	local today = X.Day()
+	local first = r.ahTimeFirst or (ahSince and X.Day(ahSince)) or today
+	local startDay = first
+	if days then startDay = math.max(first, today - days + 1) end
+	local since = startDay * DAY
+	local seconds = X.AHSeconds(since)
+	local profit = X.LedgerTotals(since).profit
+	return {perHour = seconds >= 60 and profit / (seconds / 3600) or nil, profit = profit, seconds = seconds, since = since}
+end
+
+-- [[ profit per week ]] weeks start on Monday (server days)
+local function weekOf(day) return math.floor((day + 3) / 7) end
+X.LedgerWeekOf = weekOf
+-- X.LedgerWeeks(n) -> {{start (day number of its Monday), income (sales after the cut), spent, profit, sales, buys,
+-- seconds (auction house time)}, ...} the last n weeks (this one included), oldest first
+function X.LedgerWeeks(n)
+	n = n or 12
+	local this = weekOf(X.Day())
+	local out, byWeek = {}, {}
+	for w = this - n + 1, this do
+		local row = {week = w, start = w * 7 - 3, income = 0, spent = 0, profit = 0, sales = 0, buys = 0, seconds = 0}
+		out[#out + 1] = row
+		byWeek[w] = row
+	end
+	local L = ledger()
+	for _, e in ipairs(L.sales) do
+		local row = byWeek[weekOf(X.Day(e.t or 0))]
+		if row then
+			row.income = row.income + (e.money or 0) - (e.cut or 0)
+			row.sales = row.sales + 1
+		end
+	end
+	for _, e in ipairs(L.buys) do
+		local row = byWeek[weekOf(X.Day(e.t or 0))]
+		if row then
+			row.spent = row.spent + (e.money or 0)
+			row.buys = row.buys + 1
+		end
+	end
+	for d, secs in pairs(X.Realm().ahTime or {}) do
+		local row = byWeek[weekOf(d)]
+		if row then row.seconds = row.seconds + secs end
+	end
+	if ahSince then
+		local row = byWeek[this]
+		row.seconds = row.seconds + math.min(AH_MAX, math.max(0, X.Now() - ahSince))
+	end
+	for _, row in ipairs(out) do row.profit = row.income - row.spent end
+	return out
+end
+
+-- [[ flips ]] items you bought and later sold. Per item the units sold are matched with the units bought before them,
+-- oldest first; units sold that were never bought (farmed, crafted) are left out.
+-- X.LedgerFlips(from) -> rows {key, name, units, cost (paid for them), income (their sales after the cut), profit,
+-- each (profit of one), buyEach, sellEach, pct (profit / cost), last (latest sale)}, the best profit of one first, the
+-- worst last. from = only sales from then on count (nil = all kept)
+function X.LedgerFlips(from)
+	local L = ledger()
+	local per = {}
+	local function slot(e)
+		local id = e.key or ("n:" .. (e.name or "?"):lower())
+		local s = per[id]
+		if not s then
+			s = {key = e.key, name = e.name, list = {}}
+			per[id] = s
+		end
+		return s
+	end
+	for _, e in ipairs(L.buys) do
+		local c = e.count or 1
+		if (e.money or 0) > 0 and c > 0 then table.insert(slot(e).list, {t = e.t or 0, buy = true, n = c, each = e.money / c}) end
+	end
+	for _, e in ipairs(L.sales) do
+		local c = e.count or 1
+		if e.money and c > 0 then
+			table.insert(slot(e).list, {t = e.t or 0, buy = false, n = c, each = (e.money - (e.cut or 0)) / c})
+		end
+	end
+	local out = {}
+	for _, s in pairs(per) do
+		local list = s.list
+		table.sort(list, function(a, b)
+			if a.t ~= b.t then return a.t < b.t end
+			return a.buy and not b.buy
+		end)
+		local lots, head = {}, 1 -- units bought and not yet sold: {n, each}
+		local units, cost, income, last = 0, 0, 0, nil
+		for _, x in ipairs(list) do
+			if x.buy then
+				lots[#lots + 1] = {n = x.n, each = x.each}
+			else
+				local want = x.n
+				while want > 0 and lots[head] do
+					local lot = lots[head]
+					local take = math.min(want, lot.n)
+					if not from or x.t >= from then
+						units = units + take
+						cost = cost + take * lot.each
+						income = income + take * x.each
+						if not last or x.t > last then last = x.t end
+					end
+					lot.n = lot.n - take
+					want = want - take
+					if lot.n <= 0 then head = head + 1 end
+				end
+			end
+		end
+		if units > 0 then
+			local profit = income - cost
+			out[#out + 1] = {key = s.key, name = s.name, units = units, cost = cost, income = income, profit = profit,
+				each = profit / units, buyEach = cost / units, sellEach = income / units, pct = cost > 0 and profit / cost or nil, last = last}
+		end
+	end
+	table.sort(out, function(a, b)
+		if a.each ~= b.each then return a.each > b.each end
+		return (a.last or 0) > (b.last or 0)
+	end)
+	return out
+end
+
 -- is there anything in the ledger at all?
 function X.LedgerEmpty()
 	local L = ledger()
@@ -265,6 +435,13 @@ local function prune(now)
 	end
 	local seenLimit = now - SEEN_DAYS * DAY
 	for fp, t in pairs(L.seen) do if t < seenLimit then L.seen[fp] = nil end end
+	-- auction house time: a year
+	local r = X.Realm()
+	if r.ahTime then
+		local oldest = X.Day(limit)
+		for d in pairs(r.ahTime) do if d < oldest then r.ahTime[d] = nil end end
+		if r.ahTimeFirst and r.ahTimeFirst < oldest then r.ahTimeFirst = oldest end
+	end
 end
 
 -- entries saved by name only get their item key once the item is known (a few per mailbox visit)

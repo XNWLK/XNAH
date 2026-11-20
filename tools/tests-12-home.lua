@@ -241,7 +241,7 @@ T.scene("home: the tab - first tab, opens on Home each session, buttons", functi
 	T.ok("Scan now started a full scan", X.scan.state ~= "idle" or X.Realm().lastFull ~= nil)
 	W.waitFor(function() return X.scan.state == "idle" end, 300)
 	-- undercut auctions: Show opens tab Sell on its undercut view
-	X.cancel = {state = "done", rows = {{key = "2589", auctionID = 1, unit = 100, qty = 1}}, all = {}}
+	X.cancel = {state = "done", rows = {{key = "2589", auctionID = 1, unit = 100, qty = 1}}, all = {}, at = W.NOW}
 	X.Fire("XNAH_CANCEL")
 	X.HomeForget()
 	W.advance(1.5)

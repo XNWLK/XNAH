@@ -30,7 +30,7 @@ local PAGES = {
 		"1. Talk to an auctioneer. A small XNAH bar appears on top of the auction house window.",
 		"2. Press Full scan on that bar. XNAH reads every auction at once (a bar shows how far it is). The server " ..
 		"allows one full scan about every 15 minutes - do one every time you visit the auction house.",
-		"3. Type /xnah (or click the gold coin at the minimap) and look at the Deals and Strategies pages: they list " ..
+		"3. Type /xnah (or click the gold coin at the minimap) and look at the Deals page: it lists " ..
 		"what you can buy cheap and sell for more. Most of them need a few days of prices, so scan once a day.",
 		"4. Star the items you care about: right-click an item in any list, then Add to watch list. Starred items " ..
 		"can be searched any time (no 15-minute wait), and the sniper can watch them for you.",
@@ -85,10 +85,10 @@ local PAGES = {
 		"- Reads every auction on the auction house at once, then works out the prices of every item.",
 		"- The server allows it about every 15 minutes. Until then the button shows " .. g("Ready in 12:34") ..
 		" counting down.",
-		"- Start it with Full scan on the bar above the auction house window, on the Scan page, or with /xnah scan.",
+		"- Start it with Full scan on the bar above the auction house window, on the Settings page, or with /xnah scan.",
 		"- XNAH reads it in small parts so the game never freezes. It can take a little while on a big auction house.",
 		"- Items that were listed before but are gone now count as sold out (" .. g("none listed") .. ").",
-		"- Tip: on the Scan page you can tick \"Start a full scan by itself when the auction house opens\".",
+		"- Tip: on the Settings page you can tick \"Start a full scan by itself when the auction house opens\".",
 		"",
 		h("2. Using the auction house normally"),
 		"- Everything the auction house shows you is recorded too: the lowest price and how many are listed from " ..
@@ -97,7 +97,7 @@ local PAGES = {
 		"",
 		h("3. Watch list scan"),
 		"- Searches your starred items one by one. Any time - no 15-minute wait.",
-		"- Start it with Watch list on the bar, Scan watch list on the Scan page, or /xnah watch.",
+		"- Start it with Watch list on the bar, Scan watch list on the Settings page, or /xnah watch.",
 		"- Other buttons do the same for a few items: Search on the auction house (Item page), Search these on the " ..
 		"AH (Deals page), Search reagents (Crafting page).",
 		"",
@@ -116,7 +116,7 @@ local PAGES = {
 		"",
 		h("How long prices are kept"),
 		"Every scan is kept for 7 days, then one price a day; after 60 days one a week, for a year. You can change " ..
-		"this on the Scan page.")},
+		"this on the Settings page.")},
 
 	{key = "ahwindow", title = "In the auction house window", text = lines(
 		"XNAH also works inside the game's own auction house window.",
@@ -140,70 +140,47 @@ local PAGES = {
 	{key = "market", title = "Market and Item pages", tab = "market", text = lines(
 		h("The Market page"),
 		"Every item ever seen on this auction house, in one list. Type in Search (a name or an item number) and " ..
-		"use the buttons next to it: All, Watch list (only starred items), Listed now, Can be crafted, Quality.",
+		"use the buttons next to it: All, Watch list, Listed now, Can be crafted, Quality, Rising and Falling.",
+		"- Rising / Falling: only items whose price went up (or down) over the last two weeks, fastest first: sell " ..
+		"into a rise, wait out a fall.",
+		"- The 7 days column: a small line of each item's price over the last week (green up, red down).",
+		"- Sells a day: about how many sell in a day (an estimate from two full scans - see Good to know).",
+		"- Lowest: the cheapest one listed at the last scan. Market: the market value - the average of the cheapest " ..
+		"part of the listings, so one silly price hardly moves it. Trend: % per week. Seen: " .. g("grey") .. " = old.",
 		"At most 2,000 rows are shown at once - search to narrow it down. Sorting goes through all of them.",
 		"",
-		h("The columns"),
-		"- Item: a " .. GOLD .. "*|r in front means it is on your watch list.",
-		"- Lowest: the cheapest one listed at the last scan (" .. g("none") .. " = none listed).",
-		"- Market: the market value - the average of the cheapest part of the listings, so one silly price " ..
-		"hardly moves it. This is the best guess of what the item is worth now.",
-		"- 7-day avg: the average of the last 7 days.",
-		"- Trend: how fast the price moved over the last two weeks, in % per week. An arrow up = rising.",
-		"- Listed: how many were on the auction house at the last scan.",
-		"- Vendor pays: what any vendor gives you for one.",
-		"- Sold/day: about how many sell in a day (an estimate - see Good to know).",
-		"- Seen: when the item was last seen; " .. g("grey") .. " = old.",
-		"",
 		h("The Item page"),
-		"Everything about one item. Type a name in Find item, or click any item anywhere. Back goes to the item " ..
-		"before. Buttons on top:",
-		"- Search on the auction house (auction house open): looks the item up now.",
-		"- Add to watch list: stars it.",
-		"- Max price: the most you would pay for one. The sniper (Buy page) tells you when one is listed at or under it.",
+		"Everything about one item. Type a name in Find item, or click any item anywhere. Back goes to the item before.",
+		"- Buy: buys what is listed at or under the fair price to buy (first click checks the price, then buy, then " ..
+		"confirm for stackable things).",
+		"- Search on the auction house (auction house open): looks it up now.",
+		"- Watch list: watch list on / off, the highest price to pay (or the fair price to buy), the shopping list.",
 		"",
-		h("The graph"),
-		"- Your own sales (orange) and buys (violet) are dots at the price you got or paid for one. Hover a dot for " ..
-		"the date and count.",
-		"- Click a name under the graph to hide or show that line or those dots.",
-		"- Compare: type a second item's name and pick it. Its market value is drawn in cyan, on its own scale " ..
-		"(numbers on the right) when the prices are far apart. Click its name under the graph to take it off.",
-		"- Best time: the price by weekday and by hour of the day (server time), and when your own sales did best. " ..
-		"It needs about two weeks of prices for the days, and scans at different hours on two days for the hours.",
-		"",
-		h("Used in"),
-		"Every recipe that needs the item. Hover one to see the whole recipe with prices; click it to open what it makes.",
-		"- Shopping list: puts it on your shopping list with how many and a max price.",
-		"",
-		h("The number grid (left)"),
-		"- Lowest now, Market value, Listed (with the number of auctions and sellers).",
-		"- 3-day, 7-day and 30-day average: one value per day, averaged.",
-		"- 30-day low / high: the cheapest and dearest day of the month.",
-		"- Trend: % per week. Day-to-day spread: how much the price jumps from day to day. A big spread means a " ..
-		"risky item - or a good one to buy on a low day.",
-		"- Supply vs 7 days: how many are listed now against the usual number. Fewer than usual is good for sellers.",
-		"- Sells per day (an estimate), Vendor pays, Vendor sells at (" .. g("limited") .. " = the vendor has " ..
-		"only a few), Disenchant value, After the 5% cut (what a sale brings you).",
-		"- Your trades: what you sold and bought (from the Ledger). Market shape: sellers and walls (see Trends).",
+		h("The numbers (left)"),
+		"Ten plain rows: Lowest now (" .. g("a good price") .. " when it is at or under the fair price to buy), Usually " ..
+		"sells for (the 30-day average), Fair price to buy, Fair price to sell, Sells a day, Listed now (fewer or more " ..
+		"than usual), Price trend, Vendor pays, You own (all your characters here), Seen.",
+		"- Fair price to buy: over the last 14 days it was listed this cheap or cheaper about 1 time in 4. Fair price to " ..
+		"sell: its usual market value in that time. Both show as thin flat lines on the graph.",
+		"- More numbers: averages, 30-day low and high, trend, day-to-day spread, supply, vendor price, disenchant " ..
+		"value, your trades, strategies.",
 		"",
 		h("The graph (right)"),
 		"Pick 1 day, 7 days, 30 days, 90 days or All. Yellow line = market value, green line = lowest price, blue " ..
 		"bars = how many were listed. Move the mouse over it to read the values of that moment.",
+		"- Your own sales (orange) and buys (violet) are dots at the price you got or paid for one.",
+		"- Click a name under the graph to hide or show that line, the dots or the fair prices.",
+		"- Compare: a second item's market value in cyan (on its own scale when the prices are far apart).",
+		"- Best time: the price by weekday and by hour of the day (server time), and when your own sales did best.",
 		"",
 		h("Ways to make gold with this item"),
-		"The best (up to four) ways XNAH finds, with the profit for each one: buy the cheapest and sell it again, " ..
-		"buy from a vendor and sell here, buy what is listed under the vendor price, craft it, disenchant it, or " ..
-		"buy all the cheap ones and relist them. " .. g("(old prices)") .. " means: scan again before you trust it.",
+		"Up to three real chances, worked out at the fair price to sell after the cut. Ideas that need buying right " ..
+		"now only show with fresh prices.",
 		"",
-		h("Crafting (bottom right)"),
-		"The recipe that makes the item (the cheapest one), which of your characters know it, each reagent with " ..
-		"its price and where to get it cheapest (Vendor, Auction, Craft), and the cost to make one. Click a reagent " ..
-		"to open its page. XNAH knows every recipe of the game, also ones none of your characters has.",
-		"",
-		h("Used in"),
-		"Every recipe that needs this item (scroll for more). Hover one to see the whole recipe: profession and " ..
-		"skill, who knows it, each reagent with its price, the cost, what it sells for and the profit. Click it to " ..
-		"open what it makes.")},
+		h("Crafting and Used in (bottom)"),
+		"The recipe that makes the item (the cheapest), who knows it, each reagent with its price and where to get it " ..
+		"cheapest, and the cost to make one. Used in: every recipe that needs this item - hover one to see the whole " ..
+		"recipe with prices, click it to open what it makes. XNAH knows every recipe of the game.")},
 
 	{key = "tooltips", title = "Tooltips", text = lines(
 		"Every item tooltip in the game (bags, bank, chat links, the auction house) gets a few XNAH lines:",
@@ -213,74 +190,42 @@ local PAGES = {
 		"- Lowest price and Market value (see the Market page).",
 		"- 7-day average with the trend per week, and the 30-day average.",
 		"- Sells per day: about how many sell in a day (an estimate).",
-		"- You: what you sold and bought of it, and at what price (from the Ledger).",
+		"- You: what you sold and bought of it, and at what price (from the Gold page).",
 		"- Vendor pays, and Vendor sells at (when a vendor you visited sells it).",
 		"- Crafting cost, with the profit in green (or the loss in red).",
 		"- Disenchant value: what its disenchanting materials bring on average.",
-		"- Items a strategy found (Strategies page) are marked too.",
+		"- Items a strategy found (Deals page, Adjust ideas, Mark on tooltips) are marked too.",
 		"",
 		h("A stack in your bags"),
 		"For a stack, the prices are for the whole stack, with " .. g("(... each)") .. " for one. The XNAH line shows " ..
 		"the stack size, e.g. " .. GOLD .. "XNAH|r " .. g("x20") .. ".",
 		"",
 		h("Too much?"),
-		"On the Scan page, under Item tooltips, you can turn the XNAH lines off, or only some of them (vendor prices, " ..
+		"On the Settings page, under Item tooltips, you can turn the XNAH lines off, or only some of them (vendor prices, " ..
 		"crafting, averages, the stack size).")},
 
-	{key = "deals", title = "Deals", tab = "deals", text = lines(
-		"Five lists of chances in what is listed right now. Pick one with the buttons on top. Every list needs a " ..
-		"fresh full scan - and what is listed can be bought by someone else at any moment.",
+	{key = "deals", title = "Deals and ideas", tab = "deals", text = lines(
+		"Everything XNAH found to make gold right now, in one place. The buttons on top switch between Buy ideas, " ..
+		"Sell ideas and Make ideas; Adjust ideas is on the right.",
 		"",
-		h("Under usual price"),
-		"Listed far under the usual price (the 30-day average). Buy it now, sell it again at the usual price.",
-		"- Listed at, Usual price, % of usual, Profit after cut (what you keep when you sell it at the usual price, " ..
-		"minus what you paid), Listed, Sells/day, Days of data.",
-		"- The line on top sets the limits: listed at or under 60% of usual, profit at least 10s (type e.g. 50g, " ..
-		"then Enter). \"Hide items that sell under 1 a day\" leaves out slow sellers.",
-		"- Only items with at least 3 days of prices and a price from the last 3 days.",
-		"- Before you buy: open the Item page and look at the graph. Was the usual price real, or one high day? Is " ..
-		"the price falling for good? Does it sell (Sells/day)?",
+		h("Buy ideas"),
+		"Everything worth buying right now in one list, best first (most profit in all). Each row says which idea " ..
+		"found it and why, and has a Buy button: click to check the price, again to buy (stackable things ask once " ..
+		"more to confirm). " .. g("+2") .. " after the idea = two more ideas found it too.",
+		"- Hide items that sell under N a day: leaves out slow sellers (unknown speed is shown).",
+		"- Search these on the AH, Add to shopping list, Snipe at this price: for the whole list.",
+		"- Right-click a row: Never suggest buying this (it never shows up again; Settings lists them).",
 		"",
-		h("Under vendor price"),
-		"Listed for less than a vendor pays for it. Buy it and sell it to any vendor. No risk at all.",
+		h("Sell ideas and Make ideas"),
+		"Sell ideas are about what you have (sell now, hold); the best time to post is shown there. Make ideas are " ..
+		"crafting, recipes worth learning, cooldown crafts and what to gather.",
 		"",
-		h("Vendor to auction house"),
-		"Things a vendor sells that go for more here: buy them from the vendor, list them. XNAH learns what " ..
-		"vendors sell when you open their window, so talk to many vendors. " .. g("Limited stock") .. " = the vendor " ..
-		"only has a few at a time.",
+		h("Adjust ideas"),
+		"Every idea in Buy, Sell and Make groups: switch one in or out of the lists (Use in the lists), change its " ..
+		"numbers, read how it works and what it finds right now. Reset numbers puts them back. Mark on tooltips " ..
+		"marks the items an idea finds on their tooltips.",
 		"",
-		h("Under disenchant value"),
-		"Gear listed for less than its disenchanting materials bring. Worth it if you or a friend can disenchant. " ..
-		"An orange " .. "|cffff9933?|r" .. " = a material has no price yet (counted as 0). The chances are estimates.",
-		"",
-		h("Reset chances"),
-		"Buy every unit listed under 80% of the usual price, then list them again at the usual price. Only items " ..
-		"that sell again within about 5 days. A chance, not a sure thing: others may list cheap again.",
-		"",
-		h("Buying a deal"),
-		"- Search these on the AH (auction house open) searches the first 50 of the list for their live price - a " ..
-		"list can be out of date.",
-		"- Then buy it in the game's auction house window, or put it on a shopping list or give it a max price " ..
-		"(Item page) and buy it on the Buy page. Each purchase is a click of yours.")},
-
-	{key = "strategies", title = "Strategies", tab = "strategies", text = lines(
-		"Ready-made ways to make gold. Each strategy is one idea; XNAH goes through all your prices and lists the " ..
-		"items where that idea works right now.",
-		"",
-		h("How to use it"),
-		"1. Pick a strategy in the list on the left (grouped Buy, Sell and Make; the number is how many items it " ..
-		"found right now).",
-		"2. Adjust its numbers if you like (for example how cheap is cheap, or the smallest profit). " ..
-		"\"Reset numbers\" puts them back.",
-		"3. Read the list: for each item what to do (the action), the price to buy or sell at (the target), the " ..
-		"profit, and the risk.",
-		"4. Search them on the auction house for live prices, then put the ones you want on a shopping list or " ..
-		"give them to the sniper (Buy page).",
-		"Tick \"Mark on tooltips\" and the items that strategy finds are marked on their tooltips and item pages, so " ..
-		"you notice them while you browse (a * in the list shows which ones are on).",
-		"Sell strategies look at what you own (bags, bank, mail, auctions, your other characters).",
-		"",
-		h("The strategies"),
+		h("The ideas"),
 		"- Vendor floor: listed under what a vendor pays. Buy, sell to a vendor. No risk.",
 		"- Buy the dip: far under its usual price for now. Buy, sell when it is back.",
 		"- Undercut gaps: a few cheap ones, then a big jump in price. Buy the cheap ones, list just under the next.",
@@ -336,151 +281,80 @@ local PAGES = {
 		"",
 		"The game lets an addon craft only on a click: each Craft next is one click of yours.")},
 
-	{key = "trends", title = "Trends", tab = "trends", text = lines(
-		"Three views, picked with the buttons on top.",
-		"",
-		h("Price and supply"),
-		"Four lists of items that are moving (each needs at least 3 days of prices and a fresh price):",
-		"- Rising prices: up over the last two weeks (% per week). A good time to sell what you hold.",
-		"- Falling prices: down over the last two weeks. Sell soon, or wait and buy cheap later.",
-		"- Supply dropped: far fewer listed than usual while the price holds. List yours now.",
-		"- Flooded: far more listed than usual. Prices are under pressure - wait a few days before selling.",
-		"",
-		h("Best time to post"),
-		"Bars for each hour of the day (your clock): the share of all sales seen in that hour. The three best hours " ..
-		"are green; " .. g("grey") .. " bars are hours never watched. Post an hour or two before the best hours, so " ..
-		"your auctions are fresh and cheap when buyers come.",
-		"This is an estimate. It needs two full scans in one session, an hour or more apart (up to 4 hours) - " ..
-		"better many, on different days and at different hours.",
-		"",
-		h("Few sellers / walls"),
-		"- Sellers and Top seller share: one seller holding most of an item can set its price.",
-		"- Wall at / Wall units: many units at one price. That is the price you must undercut; above it you wait " ..
-		"until the wall is bought.",
-		"- The full scan has no seller names on Forever: sellers are counted when you open an item on the auction " ..
-		"house, or with a watch list scan. The share is a guess when several sell at one price.")},
-
 	{key = "sell", title = "Sell", tab = "sell", text = lines(
-		h("Sell from your bags"),
-		"Lists what in your bags can go on the auction house, with the lowest price now, the market value, a " ..
-		"suggested price, the deposit and what a sale brings after the cut.",
-		"Click an item (auction house open): XNAH searches it for the live lowest price that is not yours. On the " ..
-		"right you see the suggestion and why (" .. g("undercut 12g 3s by 1c") .. ", " .. g("floor: 80% of market") ..
-		" ...).",
-		"",
-		h("Posting"),
-		"- Price each is filled with the suggestion; type your own if you like (Suggested puts it back).",
-		"- Quantity, and Duration 2h / 8h / 24h. The deposit and what you get after the cut update as you type.",
-		"- Post: one click = one auction. Stackable items go up as one auction (you type the price of one); other " ..
-		"items one auction per click.",
-		"- If the game warns you (for example a price far under the market), Confirm: post it or Don't post - a " ..
-		"second click.",
-		"",
-		h("Price rules"),
-		"- Floor %: never under this % of the usual price (80%), or under the crafting cost when known. When the " ..
-		"cheapest is under the floor, XNAH uses the normal price instead - it does not chase the price down.",
-		"- Ceiling %: never over this % of the usual price (200%).",
-		"- Undercut by: how much under the cheapest other seller (empty = the smallest step).",
-		"- Normal: the price when nobody else sells it (empty = the usual price).",
-		"Changing a rule here gives that item its own rules; Back to the general rules undoes it.",
+		h("Worth posting"),
+		"Your undercut auctions first, then everything in your bags that can go on the auction house, with XNAH's " ..
+		"price. What is worth posting (it brings more than a vendor pays) is ticked; untick what you want to keep - " ..
+		"XNAH remembers it.",
+		"- Post next (or your key) does one step per press: cancel an undercut auction, then post the ticked items, " ..
+		"most valuable first. If the game warns about a price, press again to post anyway, or Skip.",
+		"- Set the key in the game's key bindings, under AddOns, XNAH: " .. g("One-key routine: next step") .. ". It " ..
+		"works only while the auction house is open. Next step on the bar above the auction house window does the same.",
+		"- XNAH checks your auctions by itself when the auction house opens (at most every 5 minutes).",
 		"",
 		h("Undercut auctions"),
-		"Press Cancel scan: XNAH asks for your auctions and searches each item (one a second). The list shows the " ..
-		"ones where someone sells for less than you, with the time left and what cancelling costs (the deposit is " ..
-		"not paid back). Pick one, then Cancel this auction - one click each. The items come back by mail; post " ..
-		"them again at a better price.",
+		"Your auctions where someone sells for less, with the time left and what cancelling costs (the deposit is not " ..
+		"paid back). Cancel them one by one; the items come back by mail - post them again.",
 		"",
-		h("One-key routine"),
-		"Each press of one key does the next step: first it cancels your auctions that someone undercut, then it " ..
-		"posts the items of your sell list at XNAH's suggested price.",
-		"- Put items on the sell list: Sell from your bags, pick an item, tick " .. g("On the sell list") .. ".",
-		"- Set the key in the game's key bindings, under AddOns, XNAH: " .. g("One-key routine: next step") .. ". It works " ..
-		"only while the auction house is open. The Next step button (Sell page and the bar on the auction house) does the same.",
-		"- The first press starts it: XNAH checks your auctions and searches prices in the background (about one a " ..
-		"second). Each next press does one thing. If the game warns about a price, press again to post anyway, or Skip.",
-		"- Steps that cannot be done are skipped with the reason in chat. It never buys anything.")},
+		h("Post by hand"),
+		"Your own price, amount and duration (2h / 8h / 24h), one auction per click, and each item's price rules, " ..
+		"which Post next uses too:",
+		"- Floor %: never under this % of the usual price, or under the crafting cost when known.",
+		"- Ceiling %: never over this % of the usual price.",
+		"- Undercut by: how much under the cheapest other seller (empty = the smallest step).",
+		"- Normal: the price when nobody else sells it (empty = the usual price).")},
 
 	{key = "buy", title = "Buy", tab = "buy", text = lines(
-		h("Shopping lists (left)"),
-		"- New list makes a list; the List button switches lists, renames, empties or deletes them.",
-		"- Add item: type a name or shift-click an item. Under the list set Buy in all (how many) and Max each " ..
-		"(the most to pay for one), then Enter.",
-		"- Columns: Need (still to buy), Bought, Max, Lowest now (" .. g("grey") .. " = from the last scan), Cost " ..
-		"to buy rest (a red number = only that many are listed under your max).",
-		"- Search list searches every item you still need, one a second, for live prices.",
+		h("Best buys"),
+		"What is worth buying right now. Your shopping lists and watched items under your max price come first, then " ..
+		"the best ideas and deals.",
+		"- Each row has a Buy button: the first click checks the live price (it buys nothing), the next one buys; " ..
+		"stackable items ask for the exact price first, so they need one more click to confirm.",
+		"- The Next buy key (key bindings, AddOns, XNAH: " .. g("Next buy: next step") .. ") does the same for the best " ..
+		"buy, one step per press, then moves on. Skip leaves a buy out for 10 minutes.",
+		"- Right-click a row: Never suggest buying this.",
 		"",
-		h("Buying (right, top)"),
-		"Click an item of the list (auction house open): it is searched and the panel shows what one click buys, " ..
-		"never over your max price.",
-		"- Stackable items (cloth, herbs...): two clicks. The first asks the server for the exact price, the " ..
-		"second buys. If the price went up, XNAH tells you instead of buying.",
-		"- Other items (gear): one click buys one auction.",
-		"- Cancel stops a purchase, Search again looks once more, Clear empties the panel.",
-		"",
-		h("The sniper (right, below)"),
-		"- Sniper: ON searches every watched item that has a max price, one by one, again and again (with a wait " ..
-		"between rounds that you set, 10 seconds at first).",
-		"- When one is listed at or under your max: a sound, the game's icon flashes, a chat line, and it shows " ..
-		"under Hits. Click the hit, then Buy.",
-		"- Set a max price: pick a watched item in the list and type it, or use Max price on the Item page.",
-		"- It pauses while a scan runs, while you search yourself and while you buy. It never buys by itself.",
-		"",
-		"Every purchase step is a click of yours: the game does not let an addon buy alone.")},
+		h("Shopping lists and sniper"),
+		"- New list makes a list; add items with how many to buy in all and the most to pay for one. Buy goes through " ..
+		"the list one item at a time.",
+		"- The sniper watches your watched items with a max price while you are at the auction house and tells you " ..
+		"when one is listed at or under it.")},
 
-	{key = "ledger", title = "Ledger", tab = "ledger", text = lines(
-		"Your own trades, read from the auction house mails when you open your mailbox: what you sold, bought, and " ..
-		"what came back expired or cancelled. Each mail is counted once, even if you leave it there.",
+	{key = "gold", title = "Gold", tab = "gold", text = lines(
+		"What you earn on the auction house (read from its mails when you open your mailbox) and what you own. Four " ..
+		"views: Overview, By item, Recent, Characters.",
 		"",
-		h("Totals"),
-		"For the last 7 days, 30 days and all time:",
-		"- Income: what your sales brought, after the auction house cut.",
-		"- Spent: what you paid for auctions you bought.",
-		"- Auction house cut: what the auction house kept of your sales.",
-		"- Profit: income minus spent. Sales and Purchases: how many mails.",
-		"The graph shows income (green) and spending (red) per day for the last 30 days.",
+		h("Overview"),
+		"- Income, spent, the auction house cut and profit for 7 days, 30 days and everything.",
+		"- Auction house time: how long its window was open. Gold per hour: the profit divided by those hours.",
+		"- Profit per week: one bar a week, green for a profit and red for a loss. Hover a bar for its numbers.",
+		"- Your flips: items you bought and later sold. Profit of one = the sale after the cut minus what you paid " ..
+		"(oldest purchase first). Best first, worst last.",
 		"",
-		h("By item"),
-		"Sold, average sale price, Bought, average buy price, Profit, Expired (and cancelled), and Sell-through: " ..
-		"the share of what you posted that really sold (" .. "|cff4ade80" .. "60% or more|r" .. " is good, " ..
-		"|cfff87171" .. "under 30%|r" .. " means it often comes back). Drop or reprice items with a low sell-through: " ..
-		"every expired auction costs its deposit.",
-		"",
-		h("Recent"),
-		"Every sale, purchase, expiry and cancel with the time, the money and the character. " ..
-		g("(money on the way)") .. " = sold, the money mail is still coming.")},
-
-	{key = "wealth", title = "Wealth", tab = "wealth", text = lines(
-		"What all your characters on this realm and faction are worth.",
+		h("By item and Recent"),
+		"Every item you sold or bought with its totals, and the newest sales, purchases and expired auctions one by one.",
 		"",
 		h("Characters"),
-		"- Gold, and the value of their Bags, Bank, Mail and Auctions, the Total, and when it was Updated.",
-		"- Items count at their auction house price after the cut; soulbound items at what a vendor pays.",
-		"- Log in with each character once, and open the bank and the mailbox, so XNAH can count them. The " ..
-		"account bank has its own row.",
-		"- Delete a character: forget one you deleted or moved.",
-		"",
-		h("Net worth graph"),
-		"The total of all characters over time (30 days, 90 days, All). It is saved once a day when you log in.",
-		"",
-		h("Your bags: sell or keep?"),
-		"For each thing in this character's bags: its auction house value, what a vendor pays, and the Best place " ..
-		"to sell it. Items that sell under 0.2 a day go to a vendor unless the auction house pays 3 times as much. " ..
-		"Soulbound items say Keep (bound). The total on top is what selling everything the best way would bring.")},
+		"Gold, bags, bank, mail and auctions of each of your characters (also your other accounts after Sync " ..
+		"accounts), your net worth over time, and what to do with each thing in your bags.")},
 
-	{key = "settings", title = "Scan page and settings", tab = "scan", text = lines(
+	{key = "settings", title = "Settings", tab = "scan", text = lines(
+		"Settings opens from the Settings button in the title bar.",
+		"",
 		h("Scanning"),
 		"The box on the left: whether the auction house is open, Full scan (or the countdown), Scan watch list, " ..
 		"Stop, a progress bar, and the last full scan. Below: the last 10 scans on this realm.",
 		"",
-		h("Guild price sharing"),
-		"- On: XNAH users in your guild (same realm and faction) hand each other the prices of their newest full " ..
-		"scan, so one scan helps everyone. Only prices are sent, nothing else.",
-		"- It shows who in your guild has XNAH, and when prices were last sent and received.",
-		"- During boss fights the game blocks addon messages; XNAH holds them and sends them later.",
+		h("Mailbox"),
+		"- At a mailbox, Open all auction mail (above the game's mail window) takes the gold and items of every " ..
+		"auction house mail (sold, bought, expired, cancelled, outbid), one after the other, and writes them in the ledger.",
+		"- Mails from players, cash on delivery and Game Masters are never touched. It stops when your bags are full " ..
+		"(gold is still taken); click it again to stop.",
+		"- The Mailbox box here switches the button on or off and shows what it took last time.",
 		"",
-		h("Export prices"),
-		"Text to copy (Ctrl+C) into a spreadsheet: item number, name, lowest price, market value, listed, the 7-day " ..
-		"and 30-day average and when it was seen, for every item seen in the last 3 days. Prices are in copper.",
+		h("Hourly prices (optional)"),
+		"With the PC tool Hourly prices (see the README) XNAH gets your whole auction house about once an hour, also " ..
+		"while you are not at the auction house. The line on this page says how fresh it is; new hours come with /reload.",
 		"",
 		h("Settings"),
 		"- Price used for costs and values: market value (best for most), lowest price, or an average (steadier, " ..
@@ -496,8 +370,8 @@ local PAGES = {
 		"",
 		h("Other"),
 		"- Delete this realm's data: starts this realm's price history over (it asks first, and it cannot be undone).",
-		"- Minimap button: left-click opens XNAH, right-click opens the Scan page, drag it to move it.",
-		"- You can give \"Open / close XNAH\" a key in the game's key bindings.")},
+		"- Minimap button: left-click opens XNAH, right-click opens Settings, drag it to move it.",
+		"- Key bindings (AddOns, XNAH): Open / close XNAH, One-key routine: next step (posting), Next buy: next step.")},
 
 	{key = "good", title = "Good to know", text = lines(
 		h("Silly prices"),
@@ -508,7 +382,7 @@ local PAGES = {
 		"- Grey (junk) items are never suggested as buys to sell again - only to sell to a vendor when they are " ..
 		"listed under what a vendor pays.",
 		"- Right-click any item: Never suggest buying this. It no longer shows up on the Buy page, in deals or " ..
-		"strategies. The Scan page lists them (click one to allow it again).",
+		"strategies. Settings lists them (click one to allow it again).",
 		"",
 		h("What is only an estimate"),
 		"- Sales speed (Sold/day, Sells per day, Best time to post): worked out by comparing two full scans. An " ..
@@ -525,7 +399,7 @@ local PAGES = {
 		h("Neutral auction houses"),
 		"The neutral auction houses (in the goblin towns) keep a bigger cut, about 15%, and ask a higher deposit. " ..
 		"XNAH saves what you scan there with your own faction's prices, so it is best to scan your faction's " ..
-		"auction house. If you trade at a neutral one, set the cut to 15 on the Scan page.",
+		"auction house. If you trade at a neutral one, set the cut to 15 on the Settings page.",
 		"",
 		h("Clicks"),
 		"The game allows posting, buying, cancelling and crafting only on a click of yours. XNAH prepares " ..

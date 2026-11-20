@@ -316,7 +316,7 @@ local function computeTodo()
 		if inMail > 0 then
 			add({id = "expiredMail", count = inMail, text = plural(inMail, "expired auction") .. " waiting in your mailbox",
 				why = "Take " .. (inMail == 1 and "it" or "them") .. " at a mailbox, then post again in tab Sell.",
-				button = "Ledger", tab = "ledger", view = openView("ledgerView", "recent")})
+				button = "Gold", tab = "gold", view = openView("goldView", "recent")})
 		end
 		if inBags > 0 then
 			add({id = "expiredBags", count = inBags, text = plural(inBags, "expired item") .. " back in your bags",
@@ -336,8 +336,8 @@ local function computeTodo()
 	if mailGold > 0 then
 		add({id = "mailGold", count = mailChars, text = X.Money(mailGold, true) .. " waiting in " ..
 			(mailChars == 1 and "a mailbox" or (mailChars .. " mailboxes")),
-			why = "Gold from sales you have not taken yet (as seen at the last visit). Tab Wealth shows who has it.",
-			button = "Wealth", tab = "wealth"})
+			why = "Gold from sales you have not taken yet (as seen at the last visit). Tab Gold, view Characters, shows who has it.",
+			button = "Gold", tab = "gold", view = openView("goldView", "chars")})
 	end
 
 	-- your auctions that someone undercut (known after a cancel scan), or a check when the auction house is open
@@ -397,7 +397,7 @@ local function computeTodo()
 		if total > 0 then
 			add({id = "strategies", count = total, text = "Your strategies found " .. plural(total, "item"),
 				why = table.concat(parts, ", ", 1, math.min(3, #parts)) .. (#parts > 3 and ", ..." or ""),
-				button = "Strategies", tab = "strategies"})
+				button = "Deals", tab = "deals"})
 		end
 	end
 

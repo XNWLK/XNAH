@@ -1,4 +1,4 @@
--- XNAH test scenes, part 11: strategies (Strategy.lua) and the Strategies tab (UIStrategies.lua). A 10-day market
+-- XNAH test scenes, part 11: strategies (Strategy.lua) and Adjust ideas on the Deals page (UIStrategies.lua). A 10-day market
 -- (plus a few items with longer or finer history) where each strategy must find the item made for it and leave out
 -- the look-alikes; marks; numbers saved across a reload; the tab and its buttons; a 2,000-item market in slices.
 
@@ -319,19 +319,23 @@ T.scene("strategies: sliced runs, marks, numbers saved", function()
 	T.check("tab closed, no marks: nothing worked out", fired, 0)
 end)
 
-T.scene("strategies: the tab and its buttons", function()
+T.scene("strategies: Adjust ideas on the Deals page, and the buttons of the buy list", function()
 	local X = W.start()
 	market(X)
 	X.UI.Toggle() -- the full window (/xnah opens the simple one)
-	X.UI.Open("strategies")
+	X.UI.Open("deals")
 	W.advance(3)
-	local p = X.UI.tabs.strategies.panel
+	local p = X.UI.tabs.deals.panel
+	W.click("Adjust ideas", p)
+	W.advance(0.3)
 	local text = W.screen(p)
-	for _, s in ipairs({"Buy", "Sell", "Make", "Vendor floor", "Buy the dip", "Crafting margin", "Hold in a flood", "Mark on tooltips",
-		"Reset numbers", "Search these on the AH", "Add to shopping list", "Snipe at this price", "Why", "Risk"}) do
+	for _, s in ipairs({"Buy", "Sell", "Make", "Under usual price", "Vendor floor", "Buy the dip", "Crafting margin",
+		"Hold in a flood", "Use in the lists", "Reset numbers", "Work out again", "Why", "Risk"}) do
 		T.ok("shows " .. s, text:find(s, 1, true) ~= nil)
 	end
-	T.ok("vendor floor lists the cheap hide", text:find("Cheap Hide", 1, true) ~= nil, text)
+	W.click("Vendor floor", p)
+	W.advance(0.3)
+	T.ok("vendor floor lists the cheap hide", W.screen(p):find("Cheap Hide", 1, true) ~= nil, W.screen(p))
 	-- every strategy: click it, the right side follows
 	for _, s in ipairs(X.Strategies()) do
 		W.click(s.name, p)
@@ -360,28 +364,7 @@ T.scene("strategies: the tab and its buttons", function()
 	W.advance(1)
 	T.check("marked", X.StrategyOn("dip"), true)
 	T.ok("star in the list", W.screen(p):find("* Buy the dip", 1, true) ~= nil)
-	-- shopping list and sniper (buy rows only)
-	W.advance(3)
-	W.click("Add to shopping list", p)
-	local list = X.ShopList and X.ShopList("Strategy: Buy the dip")
-	T.ok("shopping list made", list ~= nil and #list.items > 0)
-	local e = X.ShopEntry and X.ShopEntry("Strategy: Buy the dip", key("dip"))
-	T.check("shopping: max = 5% over now", e and e.max, 6300)
-	W.click("Snipe at this price", p)
-	T.check("sniper: max price", X.WatchMax(key("dip")), 6000)
-	-- sell strategies: no shopping list, no sniper
-	W.click("Hold in a flood", p)
-	W.advance(0.3)
-	T.ok("flood: shopping off", W.findButton("Add to shopping list", p).disabled == true)
-	-- searching what is shown
-	W.click("Vendor floor", p)
-	W.advance(0.3)
-	W.click("Search these on the AH", p)
-	T.ok("search started", X.scan.state ~= "idle")
-	W.waitFor(function() return X.scan.state == "idle" end, 60)
 	-- the money box of a strategy
-	W.click("Buy the dip", p)
-	W.advance(0.3)
 	local money
 	W.walk(p, function(f) if not money and f.kind == "EditBox" and f:IsVisible() and f.text == "10s" then money = f end end)
 	T.ok("money box shows 10s", money ~= nil)
@@ -389,15 +372,46 @@ T.scene("strategies: the tab and its buttons", function()
 		W.type(money, "1g 50s")
 		W.step(money.scripts.OnEditFocusLost, money)
 		T.check("typed money", X.StrategyParams("dip").minProfit, 15000)
+		W.click("Reset numbers", p)
 	end
 	W.click("Work out again", p)
 	W.advance(3)
+	-- back to the buy list: shopping list and sniper (bought on the auction house only)
+	W.click("Buy ideas", p)
+	W.advance(0.3)
+	X.UI.Refresh(true)
+	local row
+	for _, r in ipairs(p.tables.buy.items or {}) do if r.key == key("dip") then row = r end end
+	T.ok("buy list: the steady herb", row ~= nil)
+	W.click("Add to shopping list", p)
+	local list = X.ShopList and X.ShopList("Deals")
+	T.ok("shopping list made", list ~= nil and #list.items > 0)
+	local e = X.ShopEntry and X.ShopEntry("Deals", key("dip"))
+	if row then
+		T.check("shopping: max = price now + half the profit", e and e.max, math.floor(row.now + row.profit / 2))
+		W.click("Snipe at this price", p)
+		T.check("sniper: max price", X.WatchMax(key("dip")), X.Round(row.now))
+	end
+	for _, r in ipairs(p.tables.buy.items or {}) do T.ok("buy list: no sell or make rows", r.action ~= "Hold" and r.action ~= "Craft", r.key) end
+	-- sell ideas: no shopping list, no sniper
+	W.click("Sell ideas", p)
+	W.advance(0.3)
+	T.ok("sell ideas: no shopping button", W.findButton("Add to shopping list", p) == nil)
+	T.ok("sell ideas: the flooded leather", W.screen(p):find("Flooded Leather", 1, true) ~= nil, W.screen(p))
+	-- searching what is shown
+	W.click("Buy ideas", p)
+	W.advance(0.3)
+	W.click("Search these on the AH", p)
+	T.ok("search started", X.scan.state ~= "idle")
+	W.waitFor(function() return X.scan.state == "idle" end, 60)
 	-- an empty start: says what is needed
 	X = W.start()
 	X.UI.Toggle() -- the full window (/xnah opens the simple one)
-	X.UI.Open("strategies")
+	X.UI.Open("deals")
 	W.advance(3)
-	p = X.UI.tabs.strategies.panel
+	p = X.UI.tabs.deals.panel
+	W.click("Adjust ideas", p)
+	W.advance(0.3)
 	T.ok("empty: says a scan is needed", W.screen(p):find("Full scan", 1, true) ~= nil, W.screen(p))
 	W.click("Sell into scarcity", p)
 	W.advance(3)

@@ -3,11 +3,13 @@
 --   local g = X.K.Graph(parent, w, h)
 --   g:SetSeries({{points = {{t, value}, ...}, color = {r, g, b}, width = 2, label = "Market value", right = true}, ...},
 --     {bars = {{t, value}, ...}, barsLabel = "Listed", empty = "text when there is nothing", format = fn(value),
---      marks = {{t = time, v = value, color = {r, g, b}, text = "line for the mouse-over box"}, ...}})
+--      marks = {{t = time, v = value, color = {r, g, b}, text = "line for the mouse-over box"}, ...},
+--      levels = {{v = value, color = {r, g, b}, label = "Fair to buy"}, ...}})
 -- Times are server seconds, oldest first. A nil value breaks a line (sold out at that time).
 -- right = true (optional): the line gets its own scale, its numbers on the right side inside the graph (for a second
 -- item whose price is far from the first one's). marks (optional): single dots (your own sales and buys), drawn over
--- the lines; the mouse-over box lists the dots near the mouse.
+-- the lines; the mouse-over box lists the dots near the mouse. levels (optional): thin flat lines right across the
+-- graph with a small name on the left (the fair prices to buy and to sell), also listed in the mouse-over box.
 -- Everything is drawn with pooled lines and textures: a new SetSeries reuses what the last one made.
 --
 -- Also here: X.BestTimes(key) (price by weekday and by hour of the day) and K.TimeBars (its little bar charts).
@@ -127,6 +129,7 @@ function K.Graph(parent, w, h)
 		fs:Hide()
 		xlab[i] = fs
 	end
+	local levlab = {} -- names of the flat lines (made when needed)
 	g.empty = K.Label(plot, "", "GameFontDisableSmall", "CENTER")
 	g.empty:SetPoint("CENTER")
 	g.empty:SetWidth(pw - 20)
@@ -257,6 +260,9 @@ function K.Graph(parent, w, h)
 			end
 		end
 		for i = #data.series + 1, #hoverDots do hoverDots[i]:Hide() end
+		for _, lv in ipairs(data.levels or {}) do
+			text = text .. "\n" .. hex(lv.color) .. (lv.label or "") .. "|r  " .. fmt(lv.v)
+		end
 		if data.bars then
 			local v = valueAt(data.bars, m.t)
 			text = text .. "\n|cff8aa4ff" .. (data.barsLabel or "Listed") .. "|r  " .. (v and X.Num(v) or "-")
@@ -351,6 +357,7 @@ function K.Graph(parent, w, h)
 		for i = 1, nSpots do spots[i].edge:Hide() spots[i].fill:Hide() end
 		for i = 1, GRIDS do grid[i]:Hide() ylab[i]:Hide() rlab[i]:Hide() end
 		for i = 1, 5 do xlab[i]:Hide() end
+		for _, fs in ipairs(levlab) do fs:Hide() end
 		nLines, nDots, nBars, nSpots = 0, 0, 0, 0
 		data = {series = {}, marks = {}, trades = {}, format = opts.format or function(v) return X.Money(v, true) end,
 			barsLabel = opts.barsLabel, span = 0}
@@ -392,6 +399,17 @@ function K.Graph(parent, w, h)
 		if not lo and rlo then
 			lo, hi, rlo, rhi = rlo, rhi, nil, nil
 			for _, s in ipairs(data.series) do s.right = false end
+		end
+		-- flat lines: only next to something else, and they count for the scale
+		data.levels = {}
+		if lo then
+			for _, lv in ipairs(opts.levels or {}) do
+				if lv.v then
+					data.levels[#data.levels + 1] = {v = lv.v, color = lv.color or {1, 1, 1}, label = lv.label}
+					if lv.v < lo then lo = lv.v end
+					if lv.v > hi then hi = lv.v end
+				end
+			end
 		end
 		local barPts = opts.bars and thin(sorted(opts.bars), MAXPTS) or {}
 		local barMax = 0
@@ -481,6 +499,25 @@ function K.Graph(parent, w, h)
 					end
 				end
 			end
+		end
+
+		-- flat lines with their names (left, just above the line)
+		for i, lv in ipairs(data.levels) do
+			local c = lv.color
+			local yy = yOf(lv.v)
+			local l = line({c[1], c[2], c[3], 0.6}, 1)
+			l:SetStartPoint("BOTTOMLEFT", plot, 0, yy)
+			l:SetEndPoint("BOTTOMLEFT", plot, pw, yy)
+			local fs = levlab[i]
+			if not fs then
+				fs = K.Label(plot, "", "GameFontDisableSmall", "LEFT")
+				fs:SetWordWrap(false)
+				levlab[i] = fs
+			end
+			fs:SetText(hex(c) .. (lv.label or "") .. "|r")
+			fs:ClearAllPoints()
+			fs:SetPoint("BOTTOMLEFT", plot, "BOTTOMLEFT", 4, yy + 1)
+			fs:Show()
 		end
 
 		-- your trades: a dot each at its price; the mouse can stop on them too
@@ -898,4 +935,73 @@ function K.TimeBars(parent, w, h)
 		self.text:SetText(table.concat(X.BestTimesText(bt), "\n"))
 	end
 	return f
+end
+
+-- [[ fair prices ]] X.FairPrices(key) -> buy, sell, note, days (nil, nil, note when there is too little history)
+-- From the last 14 days of the item's history (silly prices already left out by X.History):
+--   buy  = a price it is often listed at or under: 1 in 4 of the lowest prices seen was this cheap or cheaper.
+--   sell = what it usually sells around: the middle (median) of its market value, never over the 30-day high.
+-- Every day counts the same, however many scans it had. Kept until the item gets a new price or the hour changes.
+local FAIR_DAYS = 14
+local FAIR_BUY_PART = 0.25
+local fairCache = setmetatable({}, {__mode = "k"})
+
+-- the value below which `part` of the weight lies; list = {{value, weight}, ...}
+local function weightedPart(list, part)
+	if #list == 0 then return nil end
+	table.sort(list, function(a, b) return a[1] < b[1] end)
+	local total = 0
+	for _, e in ipairs(list) do total = total + e[2] end
+	local want, sum = total * part, 0
+	for _, e in ipairs(list) do
+		sum = sum + e[2]
+		if sum >= want - 1e-9 then return e[1] end
+	end
+	return list[#list][1]
+end
+
+function X.FairPrices(key)
+	key = key and tostring(key)
+	local it = key and X.Items()[key]
+	if not it then return nil, nil, "Never seen on the auction house yet.", 0 end
+	local hour = math.floor(X.Now() / 3600)
+	local c = fairCache[it]
+	if c and c.t == (it.cur and it.cur.t) and c.hour == hour then return c.buy, c.sell, c.note, c.days end
+	local hist = X.History(key, X.Now() - FAIR_DAYS * 86400)
+	-- how many points each day has (each day counts the same)
+	local perDay, days = {}, 0
+	for _, p in ipairs(hist) do
+		local d = math.floor(p[1] / 86400)
+		if not perDay[d] then days = days + 1 end
+		perDay[d] = (perDay[d] or 0) + 1
+	end
+	-- lowest prices: the sold-out moments do not count, and a silly low one is left out too
+	local mins = {}
+	for _, p in ipairs(hist) do
+		if p[2] and p[2] > 0 and (p[4] or 1) > 0 then mins[#mins + 1] = p[2] end
+	end
+	local midMin = X.Median(mins)
+	local lows, mkts = {}, {}
+	for _, p in ipairs(hist) do
+		local w = 1 / perDay[math.floor(p[1] / 86400)]
+		if p[2] and p[2] > 0 and (p[4] or 1) > 0 and not X.CrazyPrice(p[2], midMin) then lows[#lows + 1] = {p[2], w} end
+		local m = p[3] or p[2]
+		if m and m > 0 then mkts[#mkts + 1] = {m, w} end
+	end
+	local buy, sell, note
+	if #lows < 3 or #mkts < 3 then
+		note = "Not enough price history yet: a few more scans on different days fill these in."
+	else
+		buy = weightedPart(lows, FAIR_BUY_PART)
+		sell = weightedPart(mkts, 0.5)
+		local st = X.Stats(it)
+		if st and st.high30 and sell > st.high30 then sell = st.high30 end
+		if buy > sell then buy = sell end
+		buy, sell = X.Round(buy), X.Round(sell)
+		note = "Fair to buy: it was listed this cheap or cheaper about 1 time in 4. Fair to sell: its usual market " ..
+			"value. Both from the last " .. (days < FAIR_DAYS and (days .. " day" .. (days == 1 and "" or "s")) or (FAIR_DAYS .. " days")) ..
+			(days < 4 and " - only a rough guide so far." or ".")
+	end
+	fairCache[it] = {t = it.cur and it.cur.t, hour = hour, buy = buy, sell = sell, note = note, days = days}
+	return buy, sell, note, days
 end

@@ -1,5 +1,5 @@
--- The Scan tab: start and watch scans, the last scans, guild price sharing and the price export, every
--- setting, the size of the saved data.
+-- The Settings page (tab key "scan", no tab button: the Settings button in the title bar opens it): start and watch
+-- scans, the last scans, the mailbox button, every setting, the size of the saved data.
 -- Also here: the minimap button, and the small XNAH bar on top of the auction house window.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
@@ -245,80 +245,61 @@ local function buildSettings(p)
 	binds[#binds + 1] = function() hidden:SetText("Never suggested as a buy: " .. #X.IgnoredList()) end
 end
 
--- [[ guild price sharing and the export ]] a box under the last scans
-local function updateShareBox(p)
-	local b = p.shareBox
-	if not b or not X.ShareState then return end
-	local st = X.ShareState()
-	b.check:SetChecked(st.on)
-	local who
-	if not st.on then
-		who = "|cff999999Sharing is off: nothing is sent or taken.|r"
-	elseif not st.inGuild then
-		who = "|cff999999You are not in a guild: sharing waits until you are.|r"
-	elseif st.peers == 0 then
-		who = "Guild members with XNAH: |cff999999none seen yet|r"
+-- [[ the mailbox ]] a box under the last scans: the "Open all auction mail" button (Mail.lua) and what it took last
+local function updateMailBox(p)
+	local b = p.mailBox
+	if not b then return end
+	b.check:SetChecked(X.S().mailButton and true or false)
+	local last = X.MailLast and X.MailLast()
+	if last and last.t then
+		b.last:SetText("|cff999999Last time (" .. X.Ago(last.t) .. "): " .. (last.text or "") .. "|r")
 	else
-		local names = table.concat(st.names, ", ")
-		if #names > 50 then names = names:sub(1, 47) .. "..." end
-		who = "Guild members with XNAH: " .. st.peers .. "  |cff999999(" .. names .. ")|r"
+		b.last:SetText("|cff999999Not used yet.|r")
 	end
-	b.peers:SetText(who)
-	b.stats:SetText("Last sent: " .. X.Ago(st.lastSent) .. "     Last received: " .. X.Ago(st.lastGot) ..
-		"     Prices received: " .. X.Num(st.got))
-	local status
-	if st.on and st.held then status = "|cffffd100Messages held: the game blocks addon messages right now (they go out later).|r"
-	elseif st.on and st.asking then status = "Getting the newest prices from " .. st.asking .. " ..."
-	elseif st.on and (st.answering or st.queued > 0) then status = "Sending prices to the guild (" .. X.Num(st.queued) .. " messages left) ..."
-	else status = "|cff999999Prices newer than yours come from guild members by themselves; yours go to them.|r" end
-	b.status:SetText(status)
 end
 
-local function buildShareBox(p)
+local function buildMailBox(p)
 	local b = K.Panel(p, LEFT_W, 86, {0, 0, 0, 0.25})
 	b:SetPoint("TOPLEFT", 0, -420)
-	p.shareBox = b
-	local title = K.Label(b, "Guild price sharing", "GameFontNormal")
+	p.mailBox = b
+	local title = K.Label(b, "Mailbox", "GameFontNormal")
 	title:SetPoint("TOPLEFT", 10, -8)
-	b.check = K.Check(b, "On", function(on)
-		if X.SetShare then X.SetShare(on) else X.S().share = on end
-		updateShareBox(p)
+	b.check = K.Check(b, "Show \"Open all auction mail\" at the mailbox", function(on)
+		X.S().mailButton = on
+		if X.UpdateMailButton then X.UpdateMailButton() end
 	end)
-	b.check:SetPoint("TOPLEFT", 150, -3)
-	K.Tooltip(b.check, "Guild price sharing", "On: XNAH users of your guild (same realm and faction) hand each other the " ..
-		"prices of their newest full scan. Only prices are sent - nothing else.")
-	b.export = K.Button(b, "Export prices", 120, 22, function(self)
-		self:SetEnabled(false)
-		X.ExportPrices(function(text, shown, total)
-			self:SetEnabled(true)
-			local note = X.Num(shown) .. " items seen in the last 3 days"
-			if total > shown then note = "the first " .. X.Num(shown) .. " of " .. X.Num(total) .. " items (at most " .. X.Num(X.EXPORT_CAP) .. ")" end
-			K.ShowText("Prices: " .. note, text)
-		end)
-	end)
-	b.export:SetPoint("TOPRIGHT", -8, -5)
-	K.Tooltip(b.export, "Export prices", "Text to copy into a spreadsheet: item ID, suffix, name, lowest price, market value, " ..
-		"listed, 7-day and 30-day average, when seen (prices in copper) - every item seen in the last 3 days.")
-	b.peers = K.Label(b, "")
-	b.peers:SetPoint("TOPLEFT", 10, -32)
-	b.peers:SetWidth(LEFT_W - 20)
-	b.peers:SetWordWrap(false)
-	b.stats = K.Label(b, "")
-	b.stats:SetPoint("TOPLEFT", 10, -50)
-	b.stats:SetWidth(LEFT_W - 20)
-	b.stats:SetWordWrap(false)
-	b.status = K.Label(b, "")
-	b.status:SetPoint("TOPLEFT", 10, -68)
-	b.status:SetWidth(LEFT_W - 20)
-	b.status:SetWordWrap(false)
+	b.check:SetPoint("TOPLEFT", 8, -26)
+	K.Tooltip(b.check, "Open all auction mail", "A button next to the game's mail window: it takes the gold and items of " ..
+		"every auction house mail (sold, bought, expired, cancelled), one after the other, and stops when your bags are full. " ..
+		"Other mails are left alone. Everything is written in the ledger (tab Gold).")
+	b.last = K.Label(b, "")
+	b.last:SetPoint("TOPLEFT", 10, -60)
+	b.last:SetWidth(LEFT_W - 20)
+	b.last:SetWordWrap(false)
+	-- hourly prices from the PC tool (Api.lua): how fresh they are
+	p.api = K.Label(p, "", "GameFontHighlightSmall")
+	p.api:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 4, -8)
+	p.api:SetWidth(LEFT_W)
+	p.api:SetWordWrap(false)
 end
 
-X.On("XNAH_SHARE", function()
+X.On("XNAH_MAIL", function()
 	local tab = UI.tabs.scan
-	if tab and tab.panel and tab.panel:IsShown() then updateShareBox(tab.panel) end
+	if tab and tab.panel and tab.panel:IsShown() then updateMailBox(tab.panel) end
 end)
 
--- [[ the tab ]]
+-- guild price sharing and the price export were taken out in v0.7: their saved bits go
+X.On("XNAH_LOGIN", function()
+	local db = X.db
+	if not db then return end
+	db.share = nil
+	if db.settings then db.settings.share = nil end
+	for _, r in pairs(db.realms or {}) do
+		if type(r) == "table" then r.sharedFull = nil end
+	end
+end)
+
+-- [[ the page ]]
 local function refresh(p)
 	updateScanBox(p)
 	for _, f in ipairs(p.binds) do f() end
@@ -327,7 +308,8 @@ local function refresh(p)
 	for i = #scans, math.max(1, #scans - 9), -1 do rows[#rows + 1] = scans[i] end
 	p.scans:SetRows(rows, "No scans on this realm yet.")
 	local items, bytes = X.DataSize()
-	updateShareBox(p)
+	updateMailBox(p)
+	if p.api then p.api:SetText("|cff999999Hourly prices: |r" .. (X.ApiStatus and X.ApiStatus() or "-")) end
 	p.size:SetText("Saved price data: " .. X.Num(items) .. " items (all realms), about " ..
 		X.Num(math.max(1, bytes / 1024)) .. " KB")
 end
@@ -337,7 +319,7 @@ local function build(p)
 	local st = K.Label(p, "Last 10 scans on this realm", "GameFontNormal")
 	st:SetPoint("TOPLEFT", 0, -192)
 	p.scans = K.Table(p, LEFT_W, 10 * 18 + 4, SCAN_COLUMNS)
-	buildShareBox(p)
+	buildMailBox(p)
 	p.scans:SetPoint("TOPLEFT", 0, -228)
 	p.size = K.Label(p, "")
 	p.size:SetPoint("TOPLEFT", 0, -516)
@@ -356,7 +338,8 @@ local function build(p)
 	buildSettings(p)
 end
 
-UI.AddTab("scan", "Scan", build, refresh, 10)
+-- the Settings page has no tab button: the Settings button in the window's title bar opens it
+UI.AddTab("scan", "Settings", build, refresh, 10, true)
 
 -- the scan box follows every step of a scan (the window's own refresh waits until the scan is quiet)
 X.On("XNAH_SCAN", function()
@@ -410,7 +393,7 @@ function UI.UpdateMinimap()
 			end)
 		end)
 		mm:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-		K.Tooltip(mm, "XNAH", "Left-click: open / close the window\nRight-click: scan & settings\nDrag: move this button")
+		K.Tooltip(mm, "XNAH", "Left-click: open / close the window\nRight-click: scans and settings\nDrag: move this button")
 	end
 	placeMinimap()
 	mm:SetShown(not S.minimap.hide)
@@ -449,8 +432,8 @@ local function buildBar()
 	bar.open:SetPoint("LEFT", bar.watch, "RIGHT", 4, 0)
 	bar.next = K.Button(bar, "Next step", 90, 22, function() if X.RoutineNext then X.RoutineNext("button") end updateBar() end)
 	bar.next:SetPoint("LEFT", bar.open, "RIGHT", 4, 0)
-	K.Tooltip(bar.next, "One-key routine", "Each click does the next step: cancel an undercut auction, or post the next item of " ..
-		"your sell list. Your key for it (key bindings, AddOns, XNAH) does the same.")
+	K.Tooltip(bar.next, "One-key routine", "Each click does the next step: cancel an undercut auction, or post the next " ..
+		"ticked item (Sell tab, Worth posting). Your key for it (key bindings, AddOns, XNAH) does the same.")
 	bar.text = K.Label(bar, "")
 	bar.text:SetPoint("LEFT", bar.next, "RIGHT", 8, 0)
 	bar.text:SetPoint("RIGHT", -8, 0)

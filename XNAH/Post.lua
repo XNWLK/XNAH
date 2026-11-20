@@ -43,24 +43,50 @@ function X.ResetPostRule(key)
 	X.Fire("XNAH_POST")
 end
 
--- [[ the sell list ]] the items the one-key routine posts (Routine.lua): XNAHDB.sellList[key] = true
-local function sellList()
-	X.db.sellList = X.db.sellList or {}
-	return X.db.sellList
+-- [[ worth posting, and the ticks ]] Everything in your bags that is worth posting is ticked: the Post next button and
+-- the one-key routine (Routine.lua) post the ticked items. Untick an item to keep it (remembered per item):
+-- XNAHDB.sellTick[key] = false (keep it) or true (post it although XNAH thinks it is not worth it); no entry = ticked
+-- when worth posting. (The sell list of earlier versions, XNAHDB.sellList, is not used any more.)
+X.SELL_MIN = 100 -- 1s: a post that brings less (after the cut and the deposit) is not worth it
+local function ticks()
+	X.db.sellTick = X.db.sellTick or {}
+	return X.db.sellTick
 end
-function X.OnSellList(key)
-	return key ~= nil and sellList()[key] == true
+-- is a bag row (X.SellItems) worth posting? -> worth, info {price, reason, info, qty, deposit, net (what all of it
+-- brings after the cut and the deposits), vendor (what a vendor pays for all of it), why (when not worth it)}
+function X.SellWorth(row)
+	local key = row.key
+	local price, reason, pinfo = X.PostPrice(key)
+	local qty = row.commodity and row.have or 1
+	local vs = X.VendorSell and X.VendorSell(row.id) or nil
+	local vendor = vs and vs * row.have or 0
+	local out = {price = price, reason = reason, info = pinfo, qty = qty, vendor = vendor}
+	if not price then out.why = "no price known yet" return false, out end
+	local deposit = X.PostDeposit(row, X.PostRule(key).duration, qty)
+	out.deposit = deposit
+	local net = X.AfterCut(price * qty) - (deposit or 0)
+	out.net = row.commodity and net or net * row.have
+	if vendor > 0 and vendor >= out.net then out.why = "a vendor pays more" return false, out end
+	if out.net < X.SELL_MIN then out.why = "brings under " .. X.MoneyPlain(X.SELL_MIN) return false, out end
+	return true, out
 end
-function X.SetSellList(key, on)
+-- is it ticked? row = its bag row (needed when there is no choice of yours: then it is ticked when worth posting)
+function X.SellTicked(key, row)
+	local v = key and ticks()[key]
+	if v ~= nil then return v end
+	if not row then return false end
+	return (X.SellWorth(row))
+end
+-- your choice: false = keep it, true = post it; nil = back to "ticked when worth posting"
+function X.SellChoice(key)
+	return key and ticks()[key]
+end
+function X.SetSellTick(key, on, row)
 	if not key then return end
-	sellList()[key] = on and true or nil
+	local worth = row and X.SellWorth(row) or false
+	if on then ticks()[key] = (not worth) and true or nil else ticks()[key] = false end
+	X.Fire("XNAH_SELLTICK", key)
 	X.Fire("XNAH_POST")
-end
-function X.SellListKeys()
-	local out = {}
-	for key in pairs(sellList()) do out[#out + 1] = key end
-	table.sort(out)
-	return out
 end
 
 -- prices in whole silver when the auction house has no copper
@@ -299,6 +325,7 @@ local function judge()
 		if a.undercut then rows[#rows + 1] = a end
 	end
 	c.rows = rows
+	c.at = GetTime()
 	cancelState("done", #rows == 0 and ("None of your " .. #c.all .. " auctions is undercut.") or
 		(#rows .. " of your " .. #c.all .. " auctions are undercut."))
 end
@@ -335,6 +362,28 @@ X.On("OWNED_AUCTIONS_UPDATED", function()
 		end)
 	end
 end)
+-- [[ the check by itself ]] when the auction house opens, XNAH checks your auctions (asking and searching only, never
+-- cancelling): at most every 5 minutes, and never while a full scan runs (then right after it)
+X.CANCEL_EVERY = 300
+local autoPending, lastAuto = false, nil
+function X.CancelAuto()
+	if not autoPending or not X.ahOpen or X.scan.state ~= "idle" then return false end
+	autoPending = false
+	local c = X.cancel
+	if c.state == "asking" or c.state == "checking" then return false end
+	if c.at and GetTime() - c.at < X.CANCEL_EVERY then return false end
+	if lastAuto and GetTime() - lastAuto < X.CANCEL_EVERY then return false end
+	lastAuto = GetTime()
+	return X.CancelScan()
+end
+X.On("XNAH_AH", function(open)
+	autoPending = open and true or false
+	if open then X.After(2, X.CancelAuto) end
+end)
+X.On("XNAH_SCAN", function()
+	if autoPending and X.scan.state == "idle" then X.After(1, X.CancelAuto) end
+end)
+
 -- ONE cancel. Call it only straight from the OnClick of our own button.
 function X.CancelClick(row)
 	if not row or not X.ahOpen or row.cancelling then return false end
