@@ -244,7 +244,12 @@ X.MailStop = function() if run then finish("stopped") end end
 
 local function buildBar()
 	local K = X.K
-	bar = CreateFrame("Frame", "XNAHMailBar", UIParent, "BackdropTemplate")
+	-- a child of the game's mail window: it can never stay when that window closes (Xn saw it stay after walking
+	-- away - the mailbox closed signal does not always come on Forever)
+	bar = CreateFrame("Frame", "XNAHMailBar", MailFrame or UIParent, "BackdropTemplate")
+	if MailFrame and MailFrame.HookScript then
+		MailFrame:HookScript("OnHide", function() X.UpdateMailButton(false) end)
+	end
 	bar:SetSize(384, 50)
 	bar:SetFrameStrata("HIGH")
 	bar:SetClampedToScreen(true)
@@ -287,6 +292,13 @@ end)
 X.On("MAIL_CLOSED", function()
 	readDirty = true
 	X.UpdateMailButton(false)
+end)
+-- walking away from the mailbox closes it through the game's interaction manager
+X.On("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function()
+	if bar and bar:IsShown() and not (MailFrame and MailFrame:IsShown()) then
+		readDirty = true
+		X.UpdateMailButton(false)
+	end
 end)
 X.On("MAIL_INBOX_UPDATE", function()
 	readDirty = true
