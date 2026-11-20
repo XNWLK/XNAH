@@ -211,6 +211,9 @@ T.scene("mail: open all auction mail takes gold and items, logs them, leaves oth
 	W.advance(1)
 	local text = W.screen(mailBar())
 	T.ok("the bar shows what waits", text:find("4 auction house mails", 1, true) ~= nil, text)
+	-- Xn: never automatic - opening the mailbox and waiting takes nothing; only the button does
+	W.advance(30)
+	T.check("opening the mailbox takes nothing", #W.mailTakes, 0)
 	W.click("Open all auction mail")
 	T.check("the first take straight from the click", #W.mailTakes, 1)
 	T.ok("running: the button stops", W.findButton("Stop", mailBar()) ~= nil)
