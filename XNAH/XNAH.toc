@@ -9,7 +9,6 @@
 Init.lua
 Data.lua
 Scan.lua
-Api.lua
 Vendor.lua
 RecipeDB.lua
 Craft.lua

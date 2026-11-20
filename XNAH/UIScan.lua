@@ -276,11 +276,6 @@ local function buildMailBox(p)
 	b.last:SetPoint("TOPLEFT", 10, -60)
 	b.last:SetWidth(LEFT_W - 20)
 	b.last:SetWordWrap(false)
-	-- hourly prices from the PC tool (Api.lua): how fresh they are
-	p.api = K.Label(p, "", "GameFontHighlightSmall")
-	p.api:SetPoint("TOPLEFT", b, "BOTTOMLEFT", 4, -8)
-	p.api:SetWidth(LEFT_W)
-	p.api:SetWordWrap(false)
 end
 
 X.On("XNAH_MAIL", function()
@@ -309,7 +304,6 @@ local function refresh(p)
 	p.scans:SetRows(rows, "No scans on this realm yet.")
 	local items, bytes = X.DataSize()
 	updateMailBox(p)
-	if p.api then p.api:SetText("|cff999999Hourly prices: |r" .. (X.ApiStatus and X.ApiStatus() or "-")) end
 	p.size:SetText("Saved price data: " .. X.Num(items) .. " items (all realms), about " ..
 		X.Num(math.max(1, bytes / 1024)) .. " KB")
 end

@@ -352,10 +352,6 @@ local PAGES = {
 		"(gold is still taken); click it again to stop.",
 		"- The Mailbox box here switches the button on or off and shows what it took last time.",
 		"",
-		h("Hourly prices (optional)"),
-		"With the PC tool Hourly prices (see the README) XNAH gets your whole auction house about once an hour, also " ..
-		"while you are not at the auction house. The line on this page says how fresh it is; new hours come with /reload.",
-		"",
 		h("Settings"),
 		"- Price used for costs and values: market value (best for most), lowest price, or an average (steadier, " ..
 		"but slow to follow a change).",

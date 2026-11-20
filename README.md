@@ -72,28 +72,6 @@ waits until every game window is closed, backs up the files and joins them. Run 
 accounts to be up to date. Optional names for the accounts: `private/sync-accounts.json`
 `{"labels": {"ACCOUNTFOLDER": "main"}}`.
 
-## Hourly prices without visiting the auction house (optional)
-
-`Hourly prices.cmd` (in the XNAH project folder on your PC; needs Node.js) fetches your auction house about once an
-hour from the game's official web API (the Battle.net developer API) and hands it to XNAH through a small extra addon
-folder, `XNAH_Data`, which it writes into your AddOns folder. XNAH reads it at login: new hours arrive with `/reload`
-or a relog (the first time, restart the game). Settings shows how fresh it is.
-
-1. On the official Battle.net developer site, open API Access and create a client. Copy its Client ID and Client
-   Secret - your own, never share them; XNAH never contains a key.
-2. Make the file `private/api.json` in the project folder:
-   `{"clientId": "...", "clientSecret": "...", "region": "eu", "houseId": 111}`.
-3. Find your auction house: note in the game how many of a common item are listed and the price of one rare listing,
-   then run `node tools/api-fetch.js --find-house 2592*1534 13468=33g33s33c` (item ID * count listed, item ID = price
-   of one). It tells you which `houseId` to use.
-4. Double-click `Hourly prices.cmd` and leave its window open.
-
-Data source: Blizzard Entertainment, through the game's official web API. What is kept: on your PC, a few numbers per
-item for each hourly snapshot (lowest price, market value, quantity, auctions) for at most 7 days, then deleted; the
-raw listings are not kept. `XNAH_Data` holds the last 24 hours. XNAH records these as price points in its own history,
-like a full scan. The Forever part of the web API is not officially documented, so it may change or stop without
-notice.
-
 ## Install
 
 Unzip `XNAH-x.y.z.zip` from the [releases](https://github.com/XNWLK/XNAH/releases) into

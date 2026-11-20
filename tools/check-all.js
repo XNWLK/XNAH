@@ -2,7 +2,7 @@
 //   node tools/check-all.js
 const { spawnSync } = require('child_process'), path = require('path');
 let failed = 0;
-for (const script of ['check-lua51.js', 'check-api.js', 'api-test.js', 'test.js']) {
+for (const script of ['check-lua51.js', 'check-api.js', 'test.js']) {
   const r = spawnSync(process.execPath, [path.join(__dirname, script)], { encoding: 'utf8' });
   const out = (r.stdout || '') + (r.stderr || '');
   const last = out.trim().split('\n').slice(-2).join('\n');
