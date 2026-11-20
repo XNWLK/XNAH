@@ -98,15 +98,6 @@ local function build()
 	local guide = K.Button(frame, "Guide", 64, 20, function() if X.ShowGuide then X.ShowGuide() end end)
 	guide:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	K.Tooltip(guide, "Guide", "How every page of XNAH works and how to use it to make gold.")
-	-- back to the simple window (UISimple.lua)
-	local simple = K.Button(frame, "Simple view", 96, 20, function()
-		frame:Hide()
-		X.S().simpleUI = true
-		if X.Simple then X.Simple.Open() end
-	end)
-	simple:SetPoint("RIGHT", guide, "LEFT", -4, 0)
-	K.Tooltip(simple, "Simple view", "The simple XNAH window: what to do, buy, sell, trends and your wealth on one screen.")
-	guide = simple
 	-- quick search (Quick.lua): any item or recipe by name
 	if UI.QuickSearchBox then
 		local box = UI.QuickSearchBox(frame)

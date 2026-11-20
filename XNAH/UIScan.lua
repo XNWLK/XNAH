@@ -211,10 +211,6 @@ local function buildSettings(p)
 	end)
 	get, set = boolSetting("debug")
 	check(10, -290, "Debug messages in chat", get, set)
-	get, set = boolSetting("simpleUI")
-	check(250, -290, "Open the simple window", get, set,
-		"On: /xnah, the key binding and the minimap button open the simple window (To do, Buy, Sell, Trends, Wealth). " ..
-		"Off: they open this full window.")
 
 	title("Item tooltips", -322)
 	get, set = boolSetting("tooltip")

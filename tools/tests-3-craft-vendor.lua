@@ -314,7 +314,6 @@ end)
 
 T.scene("slash: /xnah, scan without the auction house, item names", function()
 	local X = W.start()
-	X.S().simpleUI = false -- the full window here (the simple one: tests-17)
 	local slash = W.env.SlashCmdList.XNAH
 	T.ok("slash command registered", slash ~= nil and W.env.SLASH_XNAH1 == "/xnah")
 	slash("")

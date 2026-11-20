@@ -49,8 +49,3 @@ UIScan.lua
 AHPanel.lua
 Guide.lua
 Quick.lua
-UISimple.lua
-SimpleTrade.lua
-SimpleTodo.lua
-SimpleTrends.lua
-SimpleWealth.lua

@@ -1010,10 +1010,7 @@ local function anyOn()
 	for _, s in ipairs(LIST) do if X.StrategyOn(s.key) then return true end end
 	return false
 end
-function X.StrategyNeeded()
-	local simple = X.Simple and X.Simple.Frame and X.Simple.Frame()
-	return tabShown() or anyOn() or (simple and simple:IsShown()) or false
-end
+function X.StrategyNeeded() return tabShown() or anyOn() end
 -- the tab calls this when shown: works it out again when prices changed or the results are old
 function X.StrategyCheck()
 	if running then return end

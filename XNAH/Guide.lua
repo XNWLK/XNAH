@@ -59,37 +59,6 @@ local PAGES = {
 		"The game lets an addon post, buy, cancel or craft only when you click a button. XNAH never does these by " ..
 		"itself: one click of yours = one step. Everything else (scanning, working out prices, searching) it does alone.")},
 
-	{key = "simple", title = "The simple window", text = lines(
-		"Type /xnah: the simple window opens. It has everything most players need on one screen.",
-		"",
-		h("How it works"),
-		"- Top: your gold on all characters and how it changed today. Find: type any item or recipe name.",
-		"- Left: a list. On To do it is what to do now, best first. Click a line.",
-		"- Right: that line in detail - the price graph of the item (the dotted line is its usual price, green dots are " ..
-		"your own sales), one sentence what to do, one sentence why, and one big button that does it. Skip hides it.",
-		"- Bottom: To do, Buy, Sell, Trends and Wealth. More opens the full window with every page (scans, settings, " ..
-		"crafting, the ledger, strategies and their numbers).",
-		"",
-		h("The pages"),
-		"- To do: the best things to do right now, the most gold first: good buys and sells, mail to collect, expired " ..
-		"items to post again, daily crafts like transmutes, your crafting queue, and a scan when your prices are old. " ..
-		"XNAH cannot always see a craft's waiting time: press Done after you make it.",
-		"- Buy: good buys, best first - your shopping lists, then things listed far under what they usually sell for. " ..
-		"The button first checks the live price, then buys (stackable things ask for a second click with the exact price).",
-		"- Sell: auctions someone sells cheaper (undercut) come first - cancel them and post them again when they are back. " ..
-		"Then things in your bags worth posting, one click per auction; things a vendor pays more for, and your junk, last.",
-		"- Trends: prices going up or down, with enough sold to matter. Going up and you have some: a good time to sell. " ..
-		"Going down: wait before you buy. Watch it puts it on your watch list.",
-		"- Wealth: all your gold and what everything you own is worth, over time; then each character, and your best " ..
-		"sellers this week.",
-		"",
-		h("Good to know"),
-		"- XNAH finds the gold by itself: its strategies run in the background and fill the lists.",
-		"- Buying, posting and cancelling happen only when you click the big button: one click, one step. When the " ..
-		"button says Confirm, click again.",
-		"- The full window has a Simple view button to come back here. To have /xnah open the full window instead, " ..
-		"untick " .. g("Open the simple window") .. " on its Scan page.")},
-
 	{key = "home", title = "Home", tab = "home", text = lines(
 		"Home is the first page: what to do today.",
 		"",

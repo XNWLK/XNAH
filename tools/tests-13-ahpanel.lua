@@ -107,8 +107,8 @@ T.scene("ah panel: follows the item picked in the game's auction house window", 
 	T.ok("max price on the button", W.plain(W.buttonText(p.max)):find("1s 20c", 1, true) ~= nil, W.buttonText(p.max))
 	p.open:Click()
 	W.advance(0.5)
-	T.check("open in XNAH: the item in the simple window", X.Simple.detail.entry and X.Simple.detail.entry.id, "item:2589")
-	T.ok("the simple window shows it", X.Simple.Frame() and X.Simple.Frame():IsShown())
+	T.check("open in XNAH", X.UI.itemKey, "2589")
+	T.ok("XNAH's window on the item page", X.UI.Frame() and X.UI.Frame():IsShown() and X.UI.current == "item")
 
 	-- hide / show again (remembered)
 	p.hide:Click()
