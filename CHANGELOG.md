@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.1
+
+- Fixed: the Open all auction mail bar stayed on screen after walking away from the mailbox. It now belongs to the
+  game's mail window and closes with it. (Mail is still only taken when you press the button - never by itself.)
+
 ## v0.7.0
 
 - The simple window is gone again: the full window is the one window, made simpler. 12 tabs became 8 - Home, Market,
