@@ -33,7 +33,7 @@ local VIEWS = {
 	{"overview", "Overview", "Profit = your sales after the auction house cut, minus your purchases."},
 	{"items", "By item", "What you sold and bought of each item (from the auction house mails)."},
 	{"recent", "Recent", "Every auction house mail XNAH read, newest first."},
-	{"chars", "Characters", "Gold and items of your characters on this realm and faction."},
+	{"chars", "Characters", "Gold and items of your characters on this realm (both factions)."},
 }
 
 X.Default("goldView", "overview")

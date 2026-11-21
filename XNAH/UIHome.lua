@@ -182,7 +182,7 @@ end
 
 local function build(p)
 	p.cards = {
-		card(p, 1, "Gold, all characters", "Gold of all your characters of this realm and faction, and how it changed today " ..
+		card(p, 1, "Gold, all characters", "Gold of all your characters of this realm (both factions), and how it changed today " ..
 			"and over the last 7 days (as far as XNAH has seen it: a character counts from the first time XNAH saw it). Click for tab Gold.", "gold"),
 		card(p, 2, "Sales today", "What your auctions brought today after the auction house cut, and what you spent on " ..
 			"auctions. Read from the auction house mails in your mailbox. Click for tab Gold.", "gold"),

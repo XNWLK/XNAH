@@ -1,5 +1,5 @@
 -- The home page (tab Home, UIHome.lua): the numbers of the day and a to-do list with one button per job.
---   X.HomeNumbers() -> {gold (all characters of this realm and faction), goldToday, goldWeek (changes; nil before XNAH
+--   X.HomeNumbers() -> {gold (all characters of this realm), goldToday, goldWeek (changes; nil before XNAH
 --     has seen the gold), goldDays (days the 7-day change covers), chars, today = {income (sales after the cut), units,
 --     sales (mails), spent, bought, expired, cancelled}, week = the same for the last 7 days (today included),
 --     profitWeek (income - spent), top = {{key, name, income, units}, ...} (best sellers of the last 7 days, at most 5),
@@ -34,7 +34,7 @@ end
 X.HomeDayStart = dayStart
 local function dayOf(t) return math.floor((dayStart(t) + DAY / 2) / DAY) end
 
--- your characters of this realm and faction: {[name] = record}
+-- your characters of this realm (both factions): {[name] = record}
 local function realmChars()
 	local rk = X.realmKey or X.RealmKey()
 	local out = {}

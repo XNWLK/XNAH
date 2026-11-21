@@ -388,14 +388,9 @@ local PAGES = {
 		"- Profits: they assume you sell at the usual price. The market may move before you do.",
 		"- The share of the top seller is a guess when several sell at one price.",
 		"",
-		h("Prices are per realm and faction"),
-		"Alliance and Horde have their own auction house, so XNAH keeps their prices apart. All your characters on " ..
-		"the same realm and faction share one set of prices.",
-		"",
-		h("Neutral auction houses"),
-		"The neutral auction houses (in the goblin towns) keep a bigger cut, about 15%, and ask a higher deposit. " ..
-		"XNAH saves what you scan there with your own faction's prices, so it is best to scan your faction's " ..
-		"auction house. If you trade at a neutral one, set the cut to 15 on the Settings page.",
+		h("One auction house for both factions"),
+		"On Forever, Alliance and Horde share one auction house, so XNAH keeps one set of prices per realm. All your " ..
+		"characters on the same realm - both factions - share it, and the Gold page counts them all.",
 		"",
 		h("Clicks"),
 		"The game allows posting, buying, cancelling and crafting only on a click of yours. XNAH prepares " ..

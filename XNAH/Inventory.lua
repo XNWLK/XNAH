@@ -1,4 +1,4 @@
--- Inventory and net worth of your characters (this realm and faction): what each one has in its bags, bank, mailbox and
+-- Inventory and net worth of your characters (this realm, both factions): what each one has in its bags, bank, mailbox and
 -- on the auction house, and its gold - saved when you log in, open the bank or the mailbox, or look at your auctions.
 --   Characters of your OTHER WoW accounts come from tools/sync-accounts.js (run on the PC with the game closed): their
 --   records carry acct = that account's name and are only read here; XNAHDB.sync = {at, label, accounts} tells when.
@@ -232,7 +232,7 @@ function X.WarbankWorth()
 end
 
 -- X.Chars() -> list of {name, money, worth, at, key, gold, bags, bank, mail, auctions (values), me = true for this one}
--- of this realm and faction, richest first
+-- of this realm (both factions), richest first
 function X.Chars()
 	local d = db()
 	local rk = realmKey()

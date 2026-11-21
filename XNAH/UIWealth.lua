@@ -1,4 +1,4 @@
--- The "Characters" view of the Gold tab (UILedger.lua builds the tab): your characters of this realm and faction -
+-- The "Characters" view of the Gold tab (UILedger.lua builds the tab): your characters of this realm (both factions) -
 -- gold, and what their bags, bank, mailbox and auctions are worth - with the total over time, and for this character
 -- what to do with each thing in the bags.
 -- Layout (940 x 522, under the Gold tab's view buttons): help and "Delete a character" on top; the characters table
