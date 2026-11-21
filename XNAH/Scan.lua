@@ -59,7 +59,7 @@ X.KeyOfItemKey = keyOf
 -- [[ the auction house window ]]
 X.On("AUCTION_HOUSE_SHOW", function()
 	X.ahOpen = true
-	X.realmKey = X.RealmKey()
+	if X.CheckRealm then X.CheckRealm() else X.realmKey = X.RealmKey() end
 	X.Fire("XNAH_AH", true)
 	if X.S().scanOnOpen and X.FullScanReady() then X.After(1, function() if X.ahOpen then X.FullScan() end end) end
 end)

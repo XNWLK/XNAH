@@ -67,19 +67,47 @@ end
 -- On Forever GetRealmName() gives the name of the server SHARD you landed on ("CAMWOW EU5 Realm 4 PvP"), which
 -- changes from login to login; the realm itself is the number GetRealmID() gives. So the key is "Realm 6946" (the
 -- realm name only where there is no ID).
-function X.RealmKey()
+-- Xn, 2026-11-22: "auction house data gets wiped when i update the addon". It was not wiped: right at login the game
+-- sometimes does not know the realm yet (GetRealmID 0, GetRealmName ""), and XNAH filed new scans under a blank realm
+-- name ("" / "-Alliance"), so the history looked empty. Now a realm the game does not give yet is never blank: the
+-- realm of last time (XNAHDB.lastRealm), else the realm in the saved data with the newest scan; the game is asked again
+-- a little later (Core.lua) and anything filed under a guess or a blank name is joined in (X.MigrateRealms).
+local function realmID()
 	local id = GetRealmID and X.Try(GetRealmID)
-	if id and id ~= 0 then return "Realm " .. id end
-	return X.Plain(GetRealmName and GetRealmName()) or "?"
+	if type(id) == "number" and id > 0 then return id end
+	return nil
+end
+X.RealmID = realmID
+-- the "Realm <id>" key in the saved data with the newest full scan (the most items when none has one)
+function X.GuessRealmKey()
+	local best, bestT, bestN
+	for k, r in pairs(X.db and X.db.realms or {}) do
+		local id = type(k) == "string" and k:match("^Realm (%d+)")
+		if id and type(r) == "table" then
+			local t = r.lastFull or 0
+			local n = 0
+			for _ in pairs(r.items or {}) do n = n + 1 if n > 50 then break end end
+			if not best or t > bestT or (t == bestT and n > bestN) then best, bestT, bestN = "Realm " .. id, t, n end
+		end
+	end
+	return best
+end
+function X.RealmKey()
+	local id = realmID()
+	if id then return "Realm " .. id, true end
+	if X.db and type(X.db.lastRealm) == "string" and X.db.lastRealm ~= "" then return X.db.lastRealm, false end
+	local guess = X.GuessRealmKey()
+	if guess then return guess, false end
+	local name = X.Plain(GetRealmName and GetRealmName())
+	if name and name ~= "" then return name, false end
+	return "Realm ?", false
 end
 
 -- one realm's saved data into another: newest price per item, ledgers and scan lists joined, the rest filled in
 local function joinRealm(to, r)
 	to.items = to.items or {}
-	for k, it in pairs(r.items or {}) do
-		local have = to.items[k]
-		if not have or ((it.cur and it.cur.t or 0) > (have.cur and have.cur.t or 0)) then to.items[k] = it end
-	end
+	-- both histories of an item are kept (not just the copy with the newest price: that lost history - Xn, 2026-11-22)
+	for k, it in pairs(r.items or {}) do to.items[k] = X.MergeItem(to.items[k], it) end
 	to.scans = to.scans or {}
 	for _, sc in ipairs(r.scans or {}) do to.scans[#to.scans + 1] = sc end
 	table.sort(to.scans, function(x, y) return (x.t or 0) < (y.t or 0) end)
@@ -126,7 +154,8 @@ function X.MigrateRealms(key)
 	local function old(k)
 		if not k or k == key then return false end
 		if k:match("^Realm " .. id .. "%-") then return true end -- this realm, one faction
-		return not k:find("^Realm %d") -- a server shard name
+		if k == "Realm ?" or k:find("^Realm %?") then return true end -- filed before the game knew the realm
+		return not k:find("^Realm %d") -- a server shard name, or a blank one ("" / "-Alliance": the game did not know)
 	end
 	local moved, factions = 0, 0
 	local olds = {}
@@ -152,8 +181,8 @@ function X.MigrateRealms(key)
 	-- told a little after login, so the line is not lost among the login messages
 	if moved > 0 then
 		local text = factions > 0 and ("Alliance and Horde share one auction house: their prices, sales and characters are " ..
-			"now joined under " .. key) or ("price data of " .. moved .. " server shard" .. (moved > 1 and "s" or "") ..
-			" joined under " .. key)
+			"now joined under " .. key) or ("price data saved under " .. moved .. " other realm name" .. (moved > 1 and "s" or "") ..
+			" (from logins where the game did not know the realm yet) joined under " .. key)
 		if C_Timer then X.After(8, function() X.Print(text) end) else X.Print(text) end
 	end
 	return moved
@@ -450,6 +479,56 @@ function X.Thin(it, today)
 	for i, p in ipairs(out) do parts[i] = packPoint(p[1], p[2], p[3], p[4], p[5]) end
 	it.d = table.concat(parts, ";")
 end
+-- two records of one item (two realm keys joined): the newer current price, every scan point (one per minute) and every
+-- day point of both (a day in both: the two put together, weighted by how many scans each had). Returns the record.
+function X.MergeItem(a, b)
+	if not a then return b end
+	if not b or a == b then return a end
+	local newer = (b.cur and b.cur.t or 0) > (a.cur and a.cur.t or 0)
+	if newer then
+		a.cur = b.cur
+		if b.n and b.n ~= "" then a.n = b.n end
+		if b.q then a.q = b.q end
+	end
+	if not a.n or a.n == "" then a.n = b.n end
+	a.q = a.q or b.q
+	a.qk = a.qk or b.qk
+	a.sfx = a.sfx or b.sfx
+	-- scan points
+	local byT, ts = {}, {}
+	for _, p in ipairs(unpackPoints(a.h)) do if not byT[p[1]] then ts[#ts + 1] = p[1] end byT[p[1]] = p end
+	for _, p in ipairs(unpackPoints(b.h)) do
+		if not byT[p[1]] then ts[#ts + 1] = p[1] byT[p[1]] = p elseif newer then byT[p[1]] = p end
+	end
+	table.sort(ts)
+	local parts = {}
+	for i, t in ipairs(ts) do local p = byT[t] parts[i] = packPoint(p[1], p[2], p[3], p[4], p[5]) end
+	a.h = #parts > 0 and table.concat(parts, ";") or nil
+	-- day points
+	local byD, ds = {}, {}
+	for _, p in ipairs(unpackPoints(a.d)) do if not byD[p[1]] then ds[#ds + 1] = p[1] end byD[p[1]] = p end
+	for _, p in ipairs(unpackPoints(b.d)) do
+		local q = byD[p[1]]
+		if not q then
+			ds[#ds + 1] = p[1]
+			byD[p[1]] = p
+		elseif not (q[2] == p[2] and q[3] == p[3] and q[4] == p[4]) then -- the same day saved twice (synced copies) stays as it is
+			local n1, n2 = q[5] or 1, p[5] or 1
+			q[2] = (q[2] and p[2]) and math.min(q[2], p[2]) or (q[2] or p[2])
+			q[3] = (q[3] and p[3]) and (q[3] * n1 + p[3] * n2) / (n1 + n2) or (q[3] or p[3])
+			q[4] = ((q[4] or 0) * n1 + (p[4] or 0) * n2) / (n1 + n2)
+			q[5] = n1 + n2
+		end
+	end
+	table.sort(ds)
+	parts = {}
+	for i, d in ipairs(ds) do local p = byD[d] parts[i] = packPoint(p[1], p[2], p[3], p[4], p[5]) end
+	a.d = #parts > 0 and table.concat(parts, ";") or nil
+	a.cd, a.ox = nil, nil
+	if X.statsCache then X.statsCache[a] = nil end
+	return a
+end
+
 -- after a full scan: every known item that was not seen is sold out (quantity 0) - the history shows the gap
 function X.RecordGone(key, t)
 	local it = X.Items()[key]

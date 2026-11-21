@@ -55,3 +55,44 @@ T.scene("realm: shard names and both factions join one realm key", function()
 	X = W.reload()
 	T.check("second login: nothing to move", X.MigrateRealms(X.realmKey), 0)
 end)
+
+T.scene("realm: the game does not know the realm at login - nothing is filed under a blank name, history comes back", function()
+	local X = W.start()
+	-- Xn's saved data after v0.7.2: the history under "Realm 6946-Alliance", newer scans under blank names, an alt's
+	-- realm 6940 with an older scan
+	X.realmKey = "Realm 6946-Alliance"
+	X.Record("2589", X.Now() - 3 * 86400, 50, 52, 80, 4, "Linen Cloth", 1)
+	X.Record("2589", X.Now() - 2 * 86400, 51, 53, 80, 4, "Linen Cloth", 1)
+	X.db.realms["Realm 6946-Alliance"].lastFull = X.Now() - 2 * 86400
+	X.realmKey = "-Alliance"
+	X.Record("2589", X.Now() - 86400, 52, 54, 80, 4, "Linen Cloth", 1)
+	X.realmKey = ""
+	X.Record("2770", X.Now() - 3600, 12, 13, 40, 2, "Copper Ore", 1)
+	X.realmKey = "Realm 6940-Alliance"
+	X.Record("2592", X.Now() - 4 * 86400, 30, 31, 60, 3, "Wool Cloth", 1)
+	X.db.realms["Realm 6940-Alliance"].lastFull = X.Now() - 4 * 86400
+	-- next login: the game says nothing about the realm yet
+	W.realmID, W.realm = 0, ""
+	X = W.reload()
+	T.check("the realm with the newest scan is used, never a blank name", X.realmKey, "Realm 6946")
+	local r = X.db.realms["Realm 6946"]
+	T.ok("the history is back", r and r.items["2589"] and #X.History("2589", 0, true) >= 3, r and #X.History("2589", 0, true))
+	T.ok("the scan filed under a blank name came along", r and r.items["2770"] ~= nil)
+	T.check("blank keys gone", X.db.realms[""], nil)
+	T.check("blank faction key gone", X.db.realms["-Alliance"], nil)
+	T.ok("the other realm stays apart", X.db.realms["Realm 6940-Alliance"] ~= nil)
+	T.check("nothing saved as the realm yet (the game did not say)", X.db.lastRealm, nil)
+	-- a little later the game knows: it is remembered for next time
+	W.realmID = 6946
+	W.advance(3)
+	T.check("the game's realm", X.realmKey, "Realm 6946")
+	T.check("remembered for next time", X.db.lastRealm, "Realm 6946")
+	-- a later login where the game is slow again: last time's realm straight away
+	W.realmID = 0
+	X = W.reload()
+	T.check("last time's realm at once", X.realmKey, "Realm 6946")
+	-- new prices go to the right place
+	X.Record("2589", X.Now(), 55, 56, 80, 4, "Linen Cloth", 1)
+	T.check("recorded under the realm", X.db.realms["Realm 6946"].items["2589"].cur.min, 55)
+	T.check("no blank key made", X.db.realms[""], nil)
+end)

@@ -6,13 +6,34 @@ X.On("ADDON_LOADED", function(name)
 	X.InitDB()
 	X.Fire("XNAH_READY")
 end)
+-- the realm: asked at login and again a little later (right at login the game may not know it yet)
+function X.CheckRealm()
+	if not X.db then return end
+	local key, sure = X.RealmKey()
+	if key ~= X.realmKey then
+		X.realmKey = key
+		X.Debug("realm: " .. key .. (sure and "" or " (the game does not say yet)"))
+	end
+	if sure then X.db.lastRealm = key end
+	if X.MigrateRealms(key) > 0 then
+		X.statsCache = setmetatable({}, {__mode = "k"})
+		X.Fire("XNAH_PRICES")
+	end
+	return sure
+end
 X.On("PLAYER_LOGIN", function()
 	if not X.db then X.InitDB() end
-	X.realmKey = X.RealmKey()
-	X.MigrateRealms(X.realmKey)
+	X.CheckRealm()
 	X.Realm()
 	X.Fire("XNAH_LOGIN")
+	local tries = 0
+	local function again()
+		tries = tries + 1
+		if not X.CheckRealm() and tries < 12 then X.After(5, again) end
+	end
+	X.After(2, again)
 end)
+X.On("PLAYER_ENTERING_WORLD", function() if X.db then X.CheckRealm() end end)
 
 local HELP = {
 	"/xnah - open or close the window",
