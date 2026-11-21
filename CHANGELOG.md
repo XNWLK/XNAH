@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.2
+
+- One auction house for both factions: on Forever, Alliance and Horde share the auction house, so XNAH now keeps one
+  set of prices per realm. At your next login it joins the data it kept per faction (prices, sales, scans, characters,
+  daily gold, auction house time); the Gold page and Home count the characters of both factions.
+
 ## v0.7.1
 
 - Fixed: the Open all auction mail bar stayed on screen after walking away from the mailbox. It now belongs to the
