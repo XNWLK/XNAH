@@ -1,9 +1,10 @@
--- Adjust ideas (on the Deals page): the ideas behind the Deals lists (Strategy.lua, plus "Under usual price"), each
--- with how it works, its numbers and what it finds right now.
+-- Adjust ideas (a view of the Buy tab): the ideas behind the lists Best buys (tab Buy), Sell ideas (tab Sell) and Make
+-- ideas (tab Crafting) - Strategy.lua, plus "Under usual price" - each with how it works, its numbers and what it finds
+-- right now.
 --   Left: the ideas, grouped Buy / Sell / Make, with how many items each finds (* = marked on tooltips, grey = left
 --   out of the lists).
 --   Right: how the selected one works, "Use in the lists", "Mark on tooltips", its numbers, what it finds.
--- UI.BuildIdeasAdjust(area, w, h, onChange) builds it inside the Deals page; area:Refresh() draws it again.
+-- UI.BuildIdeasAdjust(area, w, h, onChange) builds it inside the Buy tab; area:Refresh() draws it again.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -162,8 +163,8 @@ function UI.BuildIdeasAdjust(p, W, H, onChange)
 		changed()
 	end)
 	p.use:SetPoint("TOPLEFT", X0 + RW - 260, 2)
-	K.Tooltip(p.use, "Use in the lists", "What this idea finds goes into the Buy, Sell or Make list of the Deals page. " ..
-		"Switch it off to leave it out.")
+	K.Tooltip(p.use, "Use in the lists", "What this idea finds goes into its list: Best buys (tab Buy), Sell ideas (tab " ..
+		"Sell) or Make ideas (tab Crafting). Switch it off to leave it out.")
 	p.mark = K.Check(p, "Mark on tooltips", function(on)
 		if p.sel then X.SetStrategyOn(p.sel.key, on) end
 		changed()

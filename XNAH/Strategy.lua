@@ -1004,7 +1004,8 @@ end
 local function tabShown()
 	local UI = X.UI
 	local f = UI and UI.Frame and UI.Frame()
-	return f and f:IsShown() and UI.current == "deals" or false
+	local tab = UI.current
+	return f and f:IsShown() and (tab == "buy" or tab == "sell" or tab == "craft") or false
 end
 local function anyOn()
 	for _, s in ipairs(LIST) do if X.StrategyOn(s.key) then return true end end

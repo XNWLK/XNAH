@@ -754,6 +754,7 @@ function X.BestTimes(key)
 
 	if cacheN > 40 then cache, cacheN = {}, 0 end
 	if not cache[key] then cacheN = cacheN + 1 end
+	out.key = key
 	cache[key] = {stamp = stamp, out = out}
 	return out
 end
@@ -768,7 +769,17 @@ X.BestPctText = pctText
 -- X.BestTimesText(bt) -> lines (plain sentences) for the best-time view
 function X.BestTimesText(bt)
 	local lines = {}
-	if bt.dayEnough and bt.bestDay then
+	-- the best day to sell (Speed.lua, X.BestDay): the same answer as the item page and the tooltip; the bars below
+	-- show every weekday
+	local bd = bt.key and X.BestDay and X.Try(X.BestDay, bt.key)
+	if bt.key and X.BestDay then
+		if type(bd) == "table" then
+			lines[#lines + 1] = "Best day to sell: |cffffd100" .. bd.name .. "|r (" .. pctText(bd.pct) .. " over the other days)"
+		else
+			lines[#lines + 1] = "Best day to sell: " .. GREY .. "no day clearly better yet (needs 3 weeks of daily prices, " ..
+				"and a day at least 3% higher)|r"
+		end
+	elseif bt.dayEnough and bt.bestDay then
 		local p = bt.days[bt.bestDay].pct
 		lines[#lines + 1] = "Best day: |cffffd100" .. X.DAY_NAMES[bt.bestDay] .. "|r (" .. pctText(p) .. " over the week's average)" ..
 			(p < 1 and (GREY .. " - the weekdays hardly differ|r") or "")

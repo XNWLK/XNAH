@@ -1,5 +1,5 @@
--- The XNAH window: tabs (Market, Item, Deals, Crafting, Trends, Scan), shared pieces for them (a sortable table, item
--- cells, a yes/no question), the key binding.
+-- The XNAH window: tabs (Home, Market, Item, Buy, Sell, Crafting, Gold; Settings from the title bar), shared pieces
+-- for them (a sortable table, item cells, the right-click item menu, a yes/no question), the key binding.
 -- Each tab lives in its own file and registers itself with UI.AddTab; this file is loaded before them.
 local ADDON, X = ...
 local K = X.K
@@ -22,10 +22,18 @@ function UI.AddTab(key, title, build, refresh, order, hidden)
 	table.sort(UI.order, function(a, b) return UI.tabs[a].n < UI.tabs[b].n end)
 end
 
--- pages that were joined into others (v0.7): old names still open the right page
-UI.ALIASES = {trends = "market", strategies = "deals", ledger = "gold", wealth = "gold", settings = "scan"}
+-- pages that were joined into others (v0.7, v0.8: Deals went into Buy, Sell and Crafting): old names still open the
+-- right page
+UI.ALIASES = {trends = "market", strategies = "buy", deals = "buy", ledger = "gold", wealth = "gold", settings = "scan"}
 -- and the view of the new page they open (a setting the page reads when it is shown)
-UI.ALIAS_VIEWS = {ledger = {"goldView", "items"}, wealth = {"goldView", "chars"}}
+UI.ALIAS_VIEWS = {ledger = {"goldView", "items"}, wealth = {"goldView", "chars"}, deals = {"buyView", "best"},
+	strategies = {"buyView", "adjust"}}
+
+-- the page an old or current name opens
+function UI.TabKey(key)
+	if key and not UI.tabs[key] and UI.ALIASES[key] then return UI.ALIASES[key] end
+	return key
+end
 
 local frame
 local function selectTab(key)
@@ -191,7 +199,7 @@ end
 
 function UI.Toggle(tab)
 	if not frame then build() end
-	if frame:IsShown() and (not tab or tab == UI.current) then frame:Hide() return end
+	if frame:IsShown() and (not tab or UI.TabKey(tab) == UI.current) then frame:Hide() return end
 	frame:Show()
 	selectTab(tab or UI.current or X.S().tab or "market")
 end
@@ -236,13 +244,17 @@ function UI.ItemTooltip(owner, key)
 	end
 	GameTooltip:Show()
 end
--- right-click menu on an item row: open, watch / unwatch, search on the auction house
+-- right-click menu on an item row: open, watch / unwatch, price alert, search on the auction house
 function UI.ItemMenu(anchor, key)
 	local items = {
 		{text = X.ItemText(key), isTitle = true},
 		{text = "Open item page", func = function() UI.ShowItem(key) end},
 		{text = X.Watched(key) and "Remove from watch list" or "Add to watch list", func = function() X.SetWatched(key, not X.Watched(key)) end},
 	}
+	-- a chat line and a sound when any scan finds it at or under your price (X.AskAlert asks for that price)
+	if X.AskAlert then
+		items[#items + 1] = {text = "Price alert ...", func = function() X.AskAlert(key) end}
+	end
 	if X.ahOpen then
 		items[#items + 1] = {text = "Search on the auction house now", func = function()
 			X.ShowOnAuctionHouse(key)

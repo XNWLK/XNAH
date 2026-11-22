@@ -9,19 +9,52 @@ local function db()
 	return X.db.queue
 end
 
+-- [[ bought, on the way ]] what you buy on the auction house goes to your mailbox, and XNAH sees the mailbox only when
+-- you open it. Until then a purchase counts as owned here, so the queue (and "keep in stock") does not buy it twice:
+--   XNAHDB.onWay[itemID] = {{n, t, character}, ...}  (t = when it was bought; dropped once that character's mailbox
+--   was read after it)
+local function onWay()
+	X.db.onWay = X.db.onWay or {}
+	return X.db.onWay
+end
+local function charKey() return X.CharKey and X.CharKey() or "?" end
+local function mailReadAt(char)
+	local c = X.db.chars and X.db.chars[char or charKey()]
+	return c and c.mailAt or 0
+end
+function X.QueueOnWay(itemID)
+	local list = itemID and X.db and X.db.onWay and X.db.onWay[itemID]
+	if not list then return 0 end
+	local n = 0
+	for i = #list, 1, -1 do
+		if list[i][2] > mailReadAt(list[i][3]) then n = n + list[i][1] else table.remove(list, i) end
+	end
+	if #list == 0 then X.db.onWay[itemID] = nil end
+	return n
+end
+X.On("XNAH_BOUGHT", function(key, qty)
+	local id = key and X.KeyID(key)
+	if not id or not qty or qty <= 0 then return end
+	local all = onWay()
+	all[id] = all[id] or {}
+	table.insert(all[id], {qty, X.Now(), charKey()})
+	X.Fire("XNAH_QUEUE")
+end)
+
 -- how many of an item you own: every character of this realm (when the inventory part knows them), else this
--- character's bags and bank
+-- character's bags and bank; plus what you bought that is still on its way in the mail
 function X.QueueOwned(itemID)
 	if not itemID then return 0 end
+	local way = X.QueueOnWay(itemID)
 	if X.Owned then
 		local total = X.Try(X.Owned, itemID)
-		if type(total) == "number" then return total end
+		if type(total) == "number" then return total + way end
 	end
 	if C_Item and C_Item.GetItemCount then
 		local n = X.Try(C_Item.GetItemCount, itemID, true, false, true, true)
-		if type(n) == "number" then return n end
+		if type(n) == "number" then return n + way end
 	end
-	return 0
+	return way
 end
 
 function X.QueueGet(rid)
@@ -119,6 +152,64 @@ function X.QueueMaterials(rows)
 		return (a.total or 0) > (b.total or 0)
 	end)
 	return out, totals
+end
+
+-- [[ buying the materials ]] X.QueueBuys() -> what the Next step key and the best buys (Buy.lua) buy for the queue:
+-- {{id, key, buy (how many), max (the most to pay for one), unit (what XNAH counted for one), how}}, the vendor ones
+-- left out. The max price: 115% of what XNAH counted for one when it worked out the recipe's profit, or more while every
+-- queued recipe that uses it keeps at least half of its profit (when that profit is known).
+X.QUEUE_MARGIN = 1.15
+function X.QueueBuys()
+	local rows = X.QueueRows()
+	local mats = X.QueueMaterials(rows)
+	-- per reagent: the most it may cost before a recipe loses half of its profit
+	local room = {}
+	for _, row in ipairs(rows) do
+		local r = X.Recipe(row.rid)
+		if r and row.craft > 0 and row.cost and row.sell and row.missing == 0 then
+			local headroom = (row.makes or 1) * (row.sell - row.cost) -- profit of one craft
+			for _, re in ipairs(r.r or {}) do
+				local per = headroom > 0 and (headroom / 2) / math.max(1, re[2]) or 0
+				if room[re[1]] == nil or per < room[re[1]] then room[re[1]] = per end
+			end
+		end
+	end
+	local out = {}
+	for _, m in ipairs(mats) do
+		if m.buy > 0 and m.how ~= "vendor" then
+			local max
+			if m.unit then
+				max = math.max(m.unit * X.QUEUE_MARGIN, m.unit + (room[m.id] or 0))
+			else
+				max = X.BuyLimit and X.BuyLimit(m.key) or nil
+			end
+			out[#out + 1] = {id = m.id, key = m.key, buy = m.buy, max = max and math.floor(max) or nil, unit = m.unit, how = m.how}
+		end
+	end
+	return out
+end
+
+-- [[ kept for the queue ]] X.QueueKeep(key) -> how many of an item the queue's crafts still use (the one-key routine
+-- does not post those). Worked out again after the queue, the bags or the recipes changed.
+local keep
+for _, e in ipairs({"XNAH_QUEUE", "XNAH_INVENTORY", "XNAH_RECIPES"}) do X.On(e, function() keep = nil end) end
+function X.QueueKeep(key)
+	if not X.db then return 0 end
+	if not keep then
+		keep = {}
+		if next(db()) then
+			for _, row in ipairs(X.QueueRows()) do
+				local r = X.Recipe(row.rid)
+				if r and row.craft > 0 then
+					for _, re in ipairs(r.r or {}) do
+						local k = tostring(re[1])
+						keep[k] = (keep[k] or 0) + re[2] * row.craft
+					end
+				end
+			end
+		end
+	end
+	return keep[tostring(key)] or 0
 end
 
 -- puts every material still to buy (not the vendor ones) on the shopping list "Crafting queue", at most 120% of the

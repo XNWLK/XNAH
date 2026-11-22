@@ -118,7 +118,7 @@ T.scene("home: the to-do list", function()
 	T.ok("deals: a job", #deals == 0 or dj ~= nil, #deals)
 	if dj then
 		T.check("deals: the same count as tab Deals", dj.count, #deals)
-		T.check("deals: opens tab Deals", dj.tab, "deals")
+		T.check("deals: opens tab Buy (the Deals tab is part of Buy)", dj.tab, "buy")
 	end
 	T.note("home: " .. #deals .. " deals in the test market")
 	-- a watched item under its max price
@@ -204,7 +204,7 @@ T.scene("home: the tab - first tab, opens on Home each session, buttons", functi
 	W.advance(1)
 	T.check("the window opens on Home", X.UI.current, "home")
 	local frame = X.UI.Frame()
-	T.ok("shows the to-do list", W.screen(frame):find("What to do today", 1, true) ~= nil)
+	T.ok("shows the checklist", W.screen(frame):find("Scan prices", 1, true) ~= nil)
 	T.ok("shows the cards", W.screen(frame):find("Gold, all characters", 1, true) ~= nil)
 	-- the scan job's button opens tab Scan (auction house closed)
 	W.click("Scan", X.UI.tabs.home.panel)
@@ -214,7 +214,7 @@ T.scene("home: the tab - first tab, opens on Home each session, buttons", functi
 	X.UI.Select("home")
 	W.advance(0.5)
 	-- another tab used last; a reload: Home again (the setting is on)
-	X.UI.Select("deals")
+	X.UI.Select("market")
 	W.advance(0.5)
 	X = W.reload()
 	W.advance(5)
@@ -223,13 +223,13 @@ T.scene("home: the tab - first tab, opens on Home each session, buttons", functi
 	T.check("after a reload: Home again", X.UI.current, "home")
 	-- the setting off: the page used last
 	X.S().homeFirst = false
-	X.UI.Select("deals")
+	X.UI.Select("market")
 	W.advance(0.5)
 	X = W.reload()
 	W.advance(5)
 	X.UI.Toggle() -- the full window (/xnah opens the simple one)
 	W.advance(1)
-	T.check("setting off: the page used last", X.UI.current, "deals")
+	T.check("setting off: the page used last", X.UI.current, "market")
 	-- with the auction house open: Scan now starts a scan from the home page
 	X.S().homeFirst = true
 	W.makeMarket(9, 20, {uncached = 0})

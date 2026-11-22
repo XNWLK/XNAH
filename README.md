@@ -7,33 +7,43 @@ gold in it - deals, vendor flips, crafting profits, rising and falling markets. 
 
 ## What it does
 
-Eight pages (`/xnah`), plus Settings behind a button:
+Seven pages (`/xnah`), plus Settings behind a button:
 
-- **Home**: what to do today - your gold and sales today and this week, and a to-do list (expired and undercut
-  auctions, deals, watched items under your price, crafting queue) with one button per job.
+- **Home**: what to do today - your gold and sales today and this week, a **Today** checklist (scan, take your mail,
+  cancel undercut auctions, post, buy your shopping list, craft your queue) with a tick for every step done, and one
+  big **Next step** button.
 - **Market**: every item ever seen on your auction house - lowest price, market value, trend, how many are listed,
   how many sell a day, and a small line of its price over the last 7 days. Filters: watch list, listed now, can be
   crafted, quality, **Rising** and **Falling**.
 - **Item**: everything about one item in ten plain numbers - including a **fair price to buy** and a **fair price to
   sell** worked out from its history - a graph (your own sales and buys as dots, a second item to compare, the best
-  weekday and hour to sell), its recipe and every recipe it goes into, and a **Buy** button.
-- **Deals**: everything worth buying right now in one list, best first, each with the idea that found it, why, and a
-  **Buy** button (check the price, buy, confirm). Sell ideas and make ideas next to it; Adjust ideas for the numbers.
-  The ideas: listed under what a vendor pays, far under the usual price, undercut gaps, resets, momentum, disenchanting,
-  vendor flips, cycles of the day and the week, recipes worth learning, cooldown crafts, what to gather and more.
-- **Buy**: your best buys, shopping lists with max prices, a sniper for watched items, and a **Next buy** key that
-  steps through the best buys.
+  weekday and hour to sell, the **best day to sell**), its recipe and every recipe it goes into, a **Buy** button and a
+  **price alert**.
+- **Buy**: **Best buys** - everything worth buying right now in one list, best first: your shopping lists, your crafting
+  queue's materials and watched items under your price, then what the ideas found, each with why, profit, sales speed,
+  risk and a **Buy** button (check the price, buy, confirm). Shopping lists (buy N in all, or **keep N in stock**
+  counting what all your characters own), **price alerts** (a chat line and a sound when any scan finds an item at or
+  under your price), a sniper, and Adjust ideas. The ideas: listed under what a vendor pays, far under the usual price,
+  undercut gaps, resets, momentum, disenchanting, vendor flips, cycles of the day and the week, recipes worth learning,
+  cooldown crafts, what to gather and more.
 - **Sell**: **Worth posting** - your undercut auctions first, then everything in your bags worth posting, ticked; one
   **Post next** button (or key) cancels and posts one step per press at XNAH's price. XNAH checks your auctions by
-  itself when the auction house opens. Posting by hand with price rules (undercut, floor, ceiling).
+  itself when the auction house opens. The best day of the week to sell each item. Posting by hand with price rules
+  (undercut, floor, ceiling). Sell ideas: sell now or hold.
 - **Crafting**: every recipe of the game is built in; the cost to make every item (each reagent at its cheapest:
-  vendor, auction house or crafted), what it sells for after the cut, profit and margin, who knows the recipe, and a
-  crafting queue.
+  vendor, auction house or crafted), what it sells for after the cut, profit and margin, who knows the recipe, a
+  crafting queue (the Next step key buys its materials and crafts it) and make ideas.
 - **Gold**: profit per week, your best and worst flips, gold per hour of auction house time, every sale and purchase
   (read from the auction house mails), and the gold and items of all your characters.
 
 Also:
 
+- **One key for everything** (Next step): each press does the next step where you are - craft the next recipe of
+  your queue at the profession window, take the next auction mail at a mailbox, and at the auction house finish a
+  purchase, cancel an undercut auction, post the next item, buy your list and the best buys. The game allows these only
+  on a click or key press, so it is one step per press.
+- **Welcome back**: at login, how many of your auctions ran out and how much gold waits in your mailboxes; at the
+  mailbox, what sold, came back or was bought since you were last there.
 - **Full scan** of the whole auction house in seconds (the server allows one about every 15 minutes), plus everything
   you look at while using the auction house normally, plus a quick **watch list scan** of starred items any time.
 - **Price history** for every item: every scan for 7 days, a summary per day for 60 days, then one per week for a year.

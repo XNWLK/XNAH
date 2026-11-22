@@ -1,9 +1,14 @@
--- The Home tab (the first tab): what to do today. Numbers and jobs come from Home.lua.
+-- The Home tab (the first tab): what to do today. Numbers and the checklist come from Home.lua.
 -- Layout (940 x 550): five number cards on top (gold of all characters, sales today, sales of the last 7 days, net
--- worth, the last full scan) - a click opens the tab with the details. Below on the left the to-do list, most urgent
--- first, one button per job (it opens the right tab, or does a safe thing like starting a scan; it never buys, posts
--- or cancels). On the right the best sellers of the last 7 days and today's trading; at the bottom a check box: open
--- the window on this page the first time each session.
+-- worth, the last full scan) - a click opens the tab with the details. Below on the left "Today": one big Next step
+-- button (the same as the Next step key, Next.lua) and the checklist of the day - scan, mail, cancel, post, buy,
+-- craft - each with a green tick when done, the first open one lit up, and its own button (it opens the right tab, or
+-- does a safe thing like starting a scan; only the big button buys, posts, cancels, crafts or takes mail). On the right
+-- the best sellers of the last 7 days and today's trading; at the bottom a check box: open the window on this page the
+-- first time each session.
+--   UI.DoNextButton(parent, w, h) -> the big Next step button for any page: its label is what the next press does
+--     (X.DoNextPeek); a click does that ONE step, and only that: when the next step changed since the label was drawn,
+--     the click only shows the new one.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -12,16 +17,75 @@ local GREY = "|cff999999"
 local NONE = "|cff666666-|r"
 local CARD_W, CARD_H, GAP = 180, 76, 10
 local TOP = CARD_H + 12        -- where the lower half starts
-local JOB_W = 600              -- the to-do list
-local JOB_H = 40               -- one job
-local MAX_JOBS = 10
+local JOB_W = 600              -- the checklist
+local NEXT_H = 40              -- the big Next step button
+local LIST_TOP = TOP + 22 + NEXT_H + 26 -- where the checklist starts
+local STEP_H = 46              -- one step of the checklist
+local MAX_STEPS = 7
 local RX = JOB_W + 20          -- the right column
 local RW = W - RX              -- 320
 local WHITE = "Interface\\Buttons\\WHITE8x8"
+local TICK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:18:18|t"
 
 -- refresh when Home.lua or parts the window does not watch changed
-for _, e in ipairs({"XNAH_HOME", "XNAH_STRATEGY", "XNAH_CANCEL", "XNAH_SNIPE", "XNAH_POSTED"}) do
+for _, e in ipairs({"XNAH_HOME", "XNAH_STRATEGY", "XNAH_CANCEL", "XNAH_SNIPE", "XNAH_POSTED", "XNAH_QUEUE", "XNAH_SHOP", "XNAH_MAIL"}) do
 	X.On(e, function() if UI.current == "home" then UI.Refresh() end end)
+end
+
+-- [[ the Next step button for any page ]]
+local nextButtons = setmetatable({}, {__mode = "k"})
+local function updateNext(btn)
+	local p = X.DoNextPeek()
+	btn.shownText = p.text
+	btn:SetText(p.text or "Next step")
+	btn:SetEnabled(p.act == true)
+end
+function UI.UpdateNextButtons()
+	for btn in pairs(nextButtons) do
+		if btn:IsVisible() then
+			local ok, err = pcall(updateNext, btn)
+			if not ok then X.OnError(err) end
+		end
+	end
+end
+for _, e in ipairs({"XNAH_NEXT", "XNAH_BUY", "XNAH_ROUTINE", "XNAH_POST", "XNAH_CANCEL", "XNAH_SCAN", "XNAH_QUEUE", "XNAH_BUYIDEAS",
+	"XNAH_LIVE", "XNAH_AH", "PLAYER_MONEY"}) do
+	X.On(e, function() if next(nextButtons) then X.Debounce("xnah-next-buttons", 0.15, UI.UpdateNextButtons) end end)
+end
+-- the key set for the Next step key, as text (nil = none)
+function UI.NextKeyText()
+	local key = GetBindingKey and GetBindingKey("XNAH_NEXT")
+	return key and tostring(key) or nil
+end
+
+function UI.DoNextButton(parent, w, h)
+	local btn = K.Button(parent, "Next step", w or 300, h or NEXT_H)
+	nextButtons[btn] = true
+	local fs = btn:GetFontString()
+	if fs then
+		fs:SetWidth((w or 300) - 16)
+		fs:SetWordWrap(true)
+	end
+	btn:SetScript("OnClick", function(self)
+		X.DoNext("button", self.shownText) -- the game allows buying, posting, crafting only from a click: this is it
+		updateNext(self)
+		UI.Refresh()
+	end)
+	btn:SetScript("OnShow", function(self) updateNext(self) end)
+	btn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine("Next step")
+		GameTooltip:AddLine("Does what the button says: one step per click. At your profession window it crafts your queue, " ..
+			"at a mailbox it takes the next auction house mail, at the auction house it finishes a purchase, cancels your " ..
+			"undercut auctions, posts what is worth posting, then buys your lists and the queue's materials.", 1, 1, 1, true)
+		local key = UI.NextKeyText()
+		GameTooltip:AddLine(key and ("Your Next step key: " .. key) or
+			"Set a key for it: the game's key bindings, AddOns, XNAH, Next step.", 0.6, 0.6, 0.6, true)
+		GameTooltip:Show()
+	end)
+	btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	updateNext(btn)
+	return btn
 end
 
 -- "+12g" green, "-3g" red, "0" grey
@@ -61,7 +125,7 @@ local function card(p, i, title, tip, tab)
 	return c
 end
 
--- [[ one job of the to-do list ]]
+-- [[ one step of the checklist ]] its button does what the to-do job did: open a tab, or a safe action
 local function doJob(job)
 	if not job then return end
 	if job.action then
@@ -70,7 +134,7 @@ local function doJob(job)
 	end
 	if job.tab then
 		UI.Open(job.tab)
-		local tab = UI.tabs[job.tab]
+		local tab = UI.tabs[UI.TabKey and UI.TabKey(job.tab) or job.tab]
 		if job.view then
 			local ok, err = pcall(job.view, tab and tab.panel)
 			if not ok then X.OnError(err) end
@@ -80,9 +144,9 @@ local function doJob(job)
 		UI.Refresh()
 	end
 end
-local function jobRow(p, i)
-	local r = K.Panel(p, JOB_W, JOB_H - 4, {1, 1, 1, 0.04})
-	r:SetPoint("TOPLEFT", 0, -(TOP + 22 + (i - 1) * JOB_H))
+local function stepRow(p, i)
+	local r = K.Panel(p, JOB_W, STEP_H - 4, {1, 1, 1, 0.04})
+	r:SetPoint("TOPLEFT", 0, -(LIST_TOP + (i - 1) * STEP_H))
 	K.Backdrop(r, {1, 1, 1, 0.04}, {0, 0, 0, 0})
 	local bar = r:CreateTexture(nil, "ARTWORK")
 	bar:SetTexture(WHITE)
@@ -91,15 +155,18 @@ local function jobRow(p, i)
 	bar:SetWidth(3)
 	bar:SetVertexColor(K.colors.accent[1], K.colors.accent[2], K.colors.accent[3], 0.9)
 	r.bar = bar
+	r.mark = K.Label(r, "", "GameFontNormal", "CENTER")
+	r.mark:SetPoint("LEFT", 8, 0)
+	r.mark:SetWidth(22)
 	r.text = K.Label(r, "", "GameFontHighlight")
-	r.text:SetPoint("TOPLEFT", 12, -4)
+	r.text:SetPoint("TOPLEFT", 36, -5)
 	r.why = K.Label(r, "", "GameFontDisableSmall")
-	r.why:SetPoint("TOPLEFT", 12, -21)
+	r.why:SetPoint("TOPLEFT", 36, -23)
 	for _, fs in ipairs({r.text, r.why}) do
-		fs:SetWidth(JOB_W - 150)
+		fs:SetWidth(JOB_W - 170)
 		fs:SetWordWrap(false)
 	end
-	r.button = K.Button(r, "", 110, 22, function(self) doJob(self:GetParent().job) end)
+	r.button = K.Button(r, "", 110, 22, function(self) doJob(self:GetParent().step and self:GetParent().step.job) end)
 	r.button:SetPoint("RIGHT", -8, 0)
 	r:Hide()
 	return r
@@ -114,6 +181,54 @@ local TOP_COLS = {
 local function onTopRow(row, button, rowFrame)
 	if not row.key then return end
 	if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
+end
+
+local function refreshToday(p)
+	local steps = X.HomeToday()
+	local _, first = X.HomeTodayNext()
+	local done, all = 0, 0
+	for _, s in ipairs(steps) do
+		if not s.optional then
+			all = all + 1
+			if s.done then done = done + 1 end
+		end
+	end
+	p.todayTitle:SetText("Today" .. GREY .. "  (" .. done .. " of " .. all .. " done)|r")
+	for i, r in ipairs(p.steps) do
+		local s = steps[i]
+		r.step = s
+		r:SetShown(s ~= nil)
+		if s then
+			local lit = i == first
+			if s.done then
+				r.mark:SetText(TICK)
+				r.text:SetText(GREY .. s.text .. "|r")
+				r.why:SetText(GREY .. (s.detail or "") .. "|r")
+			elseif s.optional then
+				r.mark:SetText(GREY .. "-|r")
+				r.text:SetText(s.text)
+				r.why:SetText(s.detail or "")
+			else
+				r.mark:SetText((lit and "|cffffd100" or GREY) .. i .. ".|r")
+				r.text:SetText(lit and ("|cffffd100" .. s.text .. "|r") or s.text)
+				r.why:SetText(s.detail or "")
+			end
+			r.bar:SetShown(lit)
+			K.Backdrop(r, lit and {K.colors.accent[1], K.colors.accent[2], K.colors.accent[3], 0.12} or {1, 1, 1, 0.04}, {0, 0, 0, 0})
+			local job = s.job
+			r.button:SetShown(job ~= nil and job.button ~= nil and not s.done)
+			if job then r.button:SetText(job.button or "Open") end
+		end
+	end
+	if not first then
+		p.allDone:SetText("|cff4ade80All done for today.|r" .. GREY .. " Come back after your next visit to the auction house or the mailbox.|r")
+	else
+		p.allDone:SetText("")
+	end
+	local key = UI.NextKeyText()
+	p.keyText:SetText(key and (GREY .. "Your Next step key:|r |cffffd100" .. key .. "|r" .. GREY .. " - one press, one step (the same as the button).|r") or
+		(GREY .. "Tip: set a key for Next step in the game's key bindings (AddOns, XNAH) - then one key does it all.|r"))
+	updateNext(p.next)
 end
 
 local function refresh(p)
@@ -146,22 +261,8 @@ local function refresh(p)
 	end
 	c[5].sub2:SetText(n.ahOpen and "|cff4ade80Auction house open|r" or (GREY .. "Auction house closed|r"))
 
-	-- the to-do list
-	local jobs = X.HomeTodo()
-	p.jobTitle:SetText("What to do today" .. GREY .. "  (" .. units(#jobs == 1 and jobs[1].id == "nothing" and 0 or #jobs, "job", "jobs") .. ")|r")
-	for i, r in ipairs(p.jobs) do
-		local job = jobs[i]
-		r.job = job
-		r:SetShown(job ~= nil)
-		if job then
-			r.text:SetText(job.text or "")
-			r.why:SetText(job.why or "")
-			r.button:SetText(job.button or "Open")
-			r.button:SetShown(job.button ~= nil)
-			if job.id == "nothing" then r.bar:SetVertexColor(0.3, 0.8, 0.4, 0.9)
-			else r.bar:SetVertexColor(K.colors.accent[1], K.colors.accent[2], K.colors.accent[3], 0.9) end
-		end
-	end
+	-- today's checklist and the Next step button
+	refreshToday(p)
 
 	-- best sellers and today
 	p.top:SetRows(n.top or {}, "No sales in the last 7 days. XNAH reads sales from your mailbox.")
@@ -193,17 +294,27 @@ local function build(p)
 		card(p, 5, "Last full scan", "When XNAH last read every auction, and when the server allows the next full scan. " ..
 			"Click for Settings.", "scan"),
 	}
-	p.jobTitle = K.Label(p, "", "GameFontNormal")
-	p.jobTitle:SetPoint("TOPLEFT", 2, -(TOP + 2))
-	p.jobs = {}
-	for i = 1, MAX_JOBS do p.jobs[i] = jobRow(p, i) end
+	p.todayTitle = K.Label(p, "Today", "GameFontNormal")
+	p.todayTitle:SetPoint("TOPLEFT", 2, -(TOP + 2))
+	p.next = UI.DoNextButton(p, JOB_W, NEXT_H)
+	p.next:SetPoint("TOPLEFT", 0, -(TOP + 20))
+	p.keyText = K.Label(p, "", "GameFontHighlightSmall")
+	p.keyText:SetPoint("TOPLEFT", 2, -(TOP + 20 + NEXT_H + 6))
+	p.keyText:SetWidth(JOB_W - 4)
+	p.keyText:SetWordWrap(false)
+	p.steps = {}
+	for i = 1, MAX_STEPS do p.steps[i] = stepRow(p, i) end
+	p.allDone = K.Label(p, "", "GameFontHighlightSmall")
+	p.allDone:SetPoint("TOPLEFT", 2, -(LIST_TOP + MAX_STEPS * STEP_H + 4))
+	p.allDone:SetWidth(JOB_W - 4)
+	p.allDone:SetWordWrap(false)
 
 	local title = K.Label(p, "Best sellers, last 7 days", "GameFontNormal")
 	title:SetPoint("TOPLEFT", RX, -(TOP + 2))
 	p.top = K.Table(p, RW, 5 * 18 + 6, TOP_COLS, onTopRow)
 	p.top:SetPoint("TOPLEFT", RX, -(TOP + 38))
 	p.top:SortBy(3, true)
-	local tTitle = K.Label(p, "Today", "GameFontNormal")
+	local tTitle = K.Label(p, "Today's trading", "GameFontNormal")
 	tTitle:SetPoint("TOPLEFT", RX, -(TOP + 150))
 	p.today = K.Label(p, "", "GameFontHighlightSmall")
 	p.today:SetPoint("TOPLEFT", RX + 2, -(TOP + 170))

@@ -70,11 +70,11 @@ T.scene("guide: every part, Previous / Next, Open this page", function()
 			type(p.text) == "string" and #p.text > 200, p.key)
 		T.ok("part " .. i .. " text is plain ASCII", not p.text:find("[\128-\255]"), p.key)
 	end
-	for _, k in ipairs({"welcome", "home", "scanning", "market", "tooltips", "deals", "craft", "sell", "buy",
+	for _, k in ipairs({"welcome", "home", "scanning", "market", "tooltips", "ideas", "craft", "sell", "buy",
 		"gold", "settings", "good"}) do
 		T.ok("part " .. k .. " is there", keys[k] ~= nil)
 	end
-	T.check("deals page belongs to its tab", pages[keys.deals].tab, "deals")
+	T.check("the ideas part belongs to the Buy tab", pages[keys.ideas].tab, "buy")
 
 	-- every part opens (by number and by key)
 	local f = guide()

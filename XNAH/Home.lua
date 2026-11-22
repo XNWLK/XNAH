@@ -7,6 +7,8 @@
 --     (seconds until the server allows the next full scan), scanReady, scanning, ahOpen}
 --   X.HomeTodo() -> the jobs, most urgent first: {{id, text, why, button, tab, view = function(panel) (after the tab
 --     opened: picks a view there), action = function() (a safe action instead; never buys, posts or cancels), count}}
+--   X.HomeToday() -> the same as a short checklist of the day, in order: scan, mail, cancel, post, buy, craft (and the
+--     deals and strategy finds as an optional line), each ticked when done; X.HomeTodayNext() -> the first open step
 -- Gold of the day: XNAH notes each character's gold the first time it sees it on a day:
 --   X.Realm().homeGold = {[day] = {[character] = copper}}  (15 days kept; day = your local calendar day)
 -- "Today" = gold now minus that; "7 days" = gold now minus the oldest note of the last 7 days.
@@ -379,7 +381,7 @@ local function computeTodo()
 		add({id = "deals", count = deals.n, text = plural(deals.n, "deal") .. " listed now" ..
 			(best and (" - the best makes " .. X.Money(best.profit, true)) or ""),
 			why = "Listed far under their usual price" .. (best and (" (best: " .. X.ItemText(best.key) .. ")") or "") .. ".",
-			button = "Deals", tab = "deals"})
+			button = "Buy", tab = "buy"})
 	end
 
 	-- the strategies you follow
@@ -397,7 +399,7 @@ local function computeTodo()
 		if total > 0 then
 			add({id = "strategies", count = total, text = "Your strategies found " .. plural(total, "item"),
 				why = table.concat(parts, ", ", 1, math.min(3, #parts)) .. (#parts > 3 and ", ..." or ""),
-				button = "Deals", tab = "deals"})
+				button = "Buy", tab = "buy"})
 		end
 	end
 
@@ -413,13 +415,13 @@ local function computeTodo()
 			if X.QueueMaterials then
 				for _, m in ipairs((X.QueueMaterials(rows))) do if (m.buy or 0) > 0 then toBuy = toBuy + 1 end end
 			end
-			local job = {id = "queue", count = crafts, button = "Queue", tab = "craft", view = openView("craftView", "queue")}
+			local job = {id = "queue", count = crafts, toBuy = toBuy, button = "Queue", tab = "craft", view = openView("craftView", "queue")}
 			if toBuy == 0 then
 				job.text = plural(crafts, "craft") .. " ready in your queue"
-				job.why = "You have every material. Open your profession window and press Craft next in tab Crafting."
+				job.why = "You have every material. Open your profession window and press your Next step key (or Craft next in tab Crafting)."
 			else
 				job.text = plural(crafts, "craft") .. " in your queue, " .. plural(toBuy, "material") .. " to buy"
-				job.why = "Tab Crafting, view Queue, puts the materials on a shopping list."
+				job.why = "At the auction house your Next step key buys them (tab Crafting, view Queue, shows the list)."
 			end
 			add(job)
 		end
@@ -474,6 +476,119 @@ function X.HomeTodo()
 		end
 	end
 	return todo
+end
+
+-- [[ today's checklist ]] X.HomeToday() -> the steps of a day at the auction house, in order, each ticked when done
+-- (or when there is nothing to do for it): {{id, text, detail, done, optional, area (the Next step key's part, Next.lua),
+-- job (a to-do job above: its button), count}}. Made from the to-do jobs, so it costs nothing more.
+local function scanStep(s, n, byId)
+	local today = n.lastFull and n.lastFull >= dayStart() or false
+	s.done = today and not n.scanning
+	s.job = byId.scan
+	if n.scanning then
+		s.detail = "Scanning now ..."
+	elseif today then
+		s.detail = "Full scan " .. X.Ago(n.lastFull)
+	else
+		s.detail = n.lastFull and ("Last full scan " .. X.Ago(n.lastFull) .. " - not today yet") or "No full scan yet"
+		if not s.job then
+			if n.ahOpen and n.scanReady then
+				s.job = {id = "scan", button = "Scan now", action = function() X.FullScan() end}
+			else
+				s.job = {id = "scan", button = "Scan", tab = "scan"}
+			end
+		end
+		if n.ahOpen and not n.scanReady then s.detail = s.detail .. " (the server allows the next one in " .. X.Clock(n.scanLeft) .. ")" end
+	end
+end
+local function texts(list)
+	local out = {}
+	for _, j in ipairs(list) do if j then out[#out + 1] = j.text end end
+	return table.concat(out, "; ")
+end
+local function myAuctionCount()
+	local me = X.CharKey and X.db.chars and X.db.chars[X.CharKey()]
+	local n = 0
+	for _ in pairs((me and me.auctions) or {}) do n = n + 1 end
+	return n
+end
+local function computeToday(jobs)
+	local byId = {}
+	for _, j in ipairs(jobs) do byId[j.id] = j end
+	local n = X.HomeNumbers()
+	local steps = {}
+	local function step(id, text, area, optional)
+		local s = {id = id, text = text, area = area, optional = optional}
+		steps[#steps + 1] = s
+		return s
+	end
+	scanStep(step("scan", "Scan prices"), n, byId)
+
+	local s = step("mail", "Take your mail", "mail")
+	s.job = byId.mailGold or byId.expiredMail
+	s.done = s.job == nil
+	s.detail = s.done and "Nothing waiting" or texts({byId.mailGold, byId.expiredMail})
+
+	s = step("cancel", "Cancel undercut auctions", "cancel")
+	local c = X.cancel
+	s.job = byId.undercut or byId.checkUndercut
+	if byId.undercut then
+		s.detail, s.count = byId.undercut.text, byId.undercut.count
+	elseif c and c.state == "done" then
+		s.done, s.detail = true, "None of your auctions is undercut"
+	else
+		local up = myAuctionCount()
+		if up == 0 then
+			s.done, s.detail = true, "No auctions up"
+		else
+			s.detail = "Check your " .. plural(up, "auction") .. " at the auction house"
+			s.job = s.job or {id = "checkUndercut", button = "Sell", tab = "sell"}
+		end
+	end
+
+	s = step("post", "Post what is worth posting", "post")
+	s.job = byId.bags or byId.expiredBags
+	s.done = s.job == nil
+	s.detail = s.done and "Nothing worth posting in your bags" or texts({byId.bags, byId.expiredBags})
+
+	s = step("buy", "Buy your shopping list and queue materials", "buy")
+	local q = byId.queue
+	local parts = {}
+	if byId.shop then parts[#parts + 1] = byId.shop.text end
+	if q and (q.toBuy or 0) > 0 then parts[#parts + 1] = plural(q.toBuy, "material") .. " to buy for your crafting queue" end
+	if byId.watch then parts[#parts + 1] = byId.watch.text end
+	s.done = #parts == 0
+	s.detail = s.done and "Nothing on your lists" or table.concat(parts, "; ")
+	s.job = byId.shop or byId.watch or ((not s.done) and {id = "buy", button = "Buy", tab = "buy"} or nil)
+
+	s = step("craft", "Craft your queue", "craft")
+	s.job = q
+	s.done = q == nil
+	s.detail = q and (q.text .. ((q.toBuy or 0) > 0 and " (buy them first)" or "")) or "Nothing in your queue"
+	s.count = q and q.count
+
+	s = step("ideas", "Deals and strategy finds (if you like)", "buy", true)
+	local d, st = byId.deals, byId.strategies
+	s.job = d or st
+	s.detail = (d or st) and texts({d, st}) or "None right now"
+	s.done = false
+	return steps
+end
+local today, todayFor = nil, nil
+function X.HomeToday()
+	local jobs = X.HomeTodo()
+	if not today or todayFor ~= jobs then
+		today = computeToday(jobs)
+		todayFor = jobs
+	end
+	return today
+end
+-- the first step not done yet (optional ones left out), or nil when the day is done
+function X.HomeTodayNext()
+	for i, s in ipairs(X.HomeToday()) do
+		if not s.done and not s.optional then return s, i end
+	end
+	return nil
 end
 
 -- [[ when to work things out again ]]

@@ -1,4 +1,4 @@
--- XNAH test scenes, part 11: strategies (Strategy.lua) and Adjust ideas on the Deals page (UIStrategies.lua). A 10-day market
+-- XNAH test scenes, part 11: strategies (Strategy.lua) and Adjust ideas on the Buy tab (UIStrategies.lua). A 10-day market
 -- (plus a few items with longer or finer history) where each strategy must find the item made for it and leave out
 -- the look-alikes; marks; numbers saved across a reload; the tab and its buttons; a 2,000-item market in slices.
 
@@ -319,13 +319,13 @@ T.scene("strategies: sliced runs, marks, numbers saved", function()
 	T.check("tab closed, no marks: nothing worked out", fired, 0)
 end)
 
-T.scene("strategies: Adjust ideas on the Deals page, and the buttons of the buy list", function()
+T.scene("strategies: Adjust ideas on the Buy tab, and the buttons of the best buys", function()
 	local X = W.start()
 	market(X)
 	X.UI.Toggle() -- the full window (/xnah opens the simple one)
-	X.UI.Open("deals")
+	X.UI.Open("buy")
 	W.advance(3)
-	local p = X.UI.tabs.deals.panel
+	local p = X.UI.tabs.buy.panel
 	W.click("Adjust ideas", p)
 	W.advance(0.3)
 	local text = W.screen(p)
@@ -376,30 +376,34 @@ T.scene("strategies: Adjust ideas on the Deals page, and the buttons of the buy 
 	end
 	W.click("Work out again", p)
 	W.advance(3)
-	-- back to the buy list: shopping list and sniper (bought on the auction house only)
-	W.click("Buy ideas", p)
+	-- back to the best buys: shopping list and sniper (bought on the auction house only)
+	W.click("Best buys", p)
 	W.advance(0.3)
 	X.UI.Refresh(true)
 	local row
-	for _, r in ipairs(p.tables.buy.items or {}) do if r.key == key("dip") then row = r end end
-	T.ok("buy list: the steady herb", row ~= nil)
+	for _, r in ipairs(p.bestList.items or {}) do if r.key == key("dip") then row = r end end
+	T.ok("best buys: the steady herb", row ~= nil)
 	W.click("Add to shopping list", p)
 	local list = X.ShopList and X.ShopList("Deals")
 	T.ok("shopping list made", list ~= nil and #list.items > 0)
 	local e = X.ShopEntry and X.ShopEntry("Deals", key("dip"))
 	if row then
-		T.check("shopping: max = price now + half the profit", e and e.max, math.floor(row.now + row.profit / 2))
+		T.check("shopping: max = price now + half the profit", e and e.max, math.floor(row.now + row.each / 2))
+		T.check("shopping: the same max as its Buy button", e and e.max, row.max)
 		W.click("Snipe at this price", p)
 		T.check("sniper: max price", X.WatchMax(key("dip")), X.Round(row.now))
 	end
-	for _, r in ipairs(p.tables.buy.items or {}) do T.ok("buy list: no sell or make rows", r.action ~= "Hold" and r.action ~= "Craft", r.key) end
-	-- sell ideas: no shopping list, no sniper
-	W.click("Sell ideas", p)
+	for _, r in ipairs(p.bestList.items or {}) do T.ok("best buys: no sell or make rows", r.action ~= "Hold" and r.action ~= "Craft", r.key) end
+	-- sell ideas (tab Sell): no shopping list, no sniper
+	X.UI.Open("sell")
 	W.advance(0.3)
-	T.ok("sell ideas: no shopping button", W.findButton("Add to shopping list", p) == nil)
-	T.ok("sell ideas: the flooded leather", W.screen(p):find("Flooded Leather", 1, true) ~= nil, W.screen(p))
+	local sp = X.UI.tabs.sell.panel
+	W.click("Sell ideas", sp)
+	W.advance(0.3)
+	T.ok("sell ideas: no shopping button", W.findButton("Add to shopping list", sp) == nil)
+	T.ok("sell ideas: the flooded leather", W.screen(sp):find("Flooded Leather", 1, true) ~= nil, W.screen(sp))
 	-- searching what is shown
-	W.click("Buy ideas", p)
+	X.UI.Open("buy")
 	W.advance(0.3)
 	W.click("Search these on the AH", p)
 	T.ok("search started", X.scan.state ~= "idle")
@@ -407,9 +411,9 @@ T.scene("strategies: Adjust ideas on the Deals page, and the buttons of the buy 
 	-- an empty start: says what is needed
 	X = W.start()
 	X.UI.Toggle() -- the full window (/xnah opens the simple one)
-	X.UI.Open("deals")
+	X.UI.Open("buy")
 	W.advance(3)
-	p = X.UI.tabs.deals.panel
+	p = X.UI.tabs.buy.panel
 	W.click("Adjust ideas", p)
 	W.advance(0.3)
 	T.ok("empty: says a scan is needed", W.screen(p):find("Full scan", 1, true) ~= nil, W.screen(p))

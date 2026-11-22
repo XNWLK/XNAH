@@ -238,3 +238,99 @@ end)
 
 -- for the tests and /dump: forget the previous scan of this session
 function X.SpeedForget() prev = nil end
+
+-- [[ best day to sell ]] X.BestDay(key) -> nil (not enough history, or no day clearly better) or
+--   {day = 1..7 (1 = Sunday, as date("*t").wday), name = "Tuesday", short = "Tue", pct = how much higher than the
+--   average day (8 = +8%), weeks = weeks of history looked at}
+-- From the item's day prices of the last 60 days (older ones are kept one per week). Each day is compared with a
+-- straight line through the days around it (3 before, 3 after, itself left out), so a price that simply rises or
+-- falls over the weeks does not make a weekday look good. Per weekday (your computer's clock) the average of those
+-- comparisons; a day is named only when it is at least 3% over the average of the seven, the history covers 3 weeks
+-- and every weekday was compared at least twice. Worked out once per item per day (and again when a price comes in).
+local BEST_DAYS = 60
+local BEST_WEEKS = 3
+local BEST_EACH = 2
+local BEST_PCT = 3
+local WDAYS = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+local bestCache, bestN = {}, 0
+
+-- the day's price against the straight line through its neighbours (nil when they are not on both sides)
+local function againstNeighbours(byDay, d)
+	local n, sx, sy, sxx, sxy, before, after = 0, 0, 0, 0, 0, false, false
+	for k = d - 3, d + 3 do
+		local v = k ~= d and byDay[k]
+		if v then
+			local x = k - d
+			n, sx, sy, sxx, sxy = n + 1, sx + x, sy + v, sxx + x * x, sxy + x * v
+			if x < 0 then before = true else after = true end
+		end
+	end
+	if n < 3 or not before or not after then return nil end
+	local den = n * sxx - sx * sx
+	if den == 0 then return nil end
+	local slope = (n * sxy - sx * sy) / den
+	local fit = (sy - slope * sx) / n -- the line at the day itself
+	if fit <= 0 then return nil end
+	return byDay[d] / fit
+end
+
+local function bestDay(it, today)
+	local pts = X.UnpackPoints(it.d)
+	local vals, list = {}, {}
+	for _, p in ipairs(pts) do
+		local v = p[3] or p[2]
+		if p[1] and p[1] > today - BEST_DAYS and v and v > 0 then
+			list[#list + 1] = {p[1], v}
+			vals[#vals + 1] = v
+		end
+	end
+	if #list < BEST_WEEKS * 7 - 7 then return nil end
+	local typical = X.Median(vals)
+	local byDay = {}
+	for _, p in ipairs(list) do
+		if not X.CrazyPrice(p[2], typical) then byDay[p[1]] = p[2] end
+	end
+	local sum, cnt = {0, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0}
+	local first, last
+	for _, p in ipairs(list) do
+		local d = p[1]
+		local r = byDay[d] and againstNeighbours(byDay, d)
+		if r then
+			local t = date("*t", d * 86400 + 43200)
+			local w = t and t.wday
+			if w and sum[w] then
+				sum[w], cnt[w] = sum[w] + r, cnt[w] + 1
+				if not first or d < first then first = d end
+				if not last or d > last then last = d end
+			end
+		end
+	end
+	if not first or last - first + 1 < BEST_WEEKS * 7 then return nil end
+	local avg, best = 0, nil
+	for w = 1, 7 do
+		if cnt[w] < BEST_EACH then return nil end
+		sum[w] = sum[w] / cnt[w]
+		avg = avg + sum[w] / 7
+		if not best or sum[w] > sum[best] then best = w end
+	end
+	if avg <= 0 then return nil end
+	local pct = (sum[best] / avg - 1) * 100
+	if pct < BEST_PCT then return nil end
+	return {day = best, name = WDAYS[best], short = WDAYS[best]:sub(1, 3), pct = math.floor(pct * 10 + 0.5) / 10,
+		weeks = math.floor((last - first + 1) / 7)}
+end
+
+function X.BestDay(key)
+	if not key then return nil end
+	key = tostring(key)
+	local it = X.Items()[key]
+	if not it or not it.d or it.d == "" then return nil end
+	local stamp = X.Day() .. "/" .. #it.d .. "/" .. (it.d:sub(-12))
+	local c = bestCache[key]
+	if c and c.stamp == stamp then return c.out end
+	local out = bestDay(it, X.Day())
+	if bestN > 3000 then bestCache, bestN = {}, 0 end
+	if not c then bestN = bestN + 1 end
+	bestCache[key] = {stamp = stamp, out = out}
+	return out
+end

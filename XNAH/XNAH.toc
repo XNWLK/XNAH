@@ -27,6 +27,7 @@ Shop.lua
 Routine.lua
 Queue.lua
 Home.lua
+Next.lua
 Tooltip.lua
 Core.lua
 UIKit.lua

@@ -58,8 +58,9 @@ local function openMenu()
 	end
 end
 
--- uses everything in one tab; returns counts
-local function exercise(X, key, stats)
+-- uses everything in one tab; returns counts. view (optional): {name, set = function()} - a view of the tab that is put
+-- back after each click (a click on another view button would hide this one's buttons)
+local function exercise(X, key, stats, view)
 	local UI = X.UI
 	UI.Select(key)
 	W.advance(0.5)
@@ -73,7 +74,9 @@ local function exercise(X, key, stats)
 		if UI.current ~= key then UI.Select(key) W.advance(0.3) end
 		local f = UI.Frame and UI.Frame()
 		if f and not f:IsShown() then UI.Open(key) W.advance(0.3) end
+		if view and view.set() then UI.Refresh(true) W.advance(0.1) end
 	end
+	if view then back() end
 	-- buttons, check boxes, rows, column headers
 	local clicks = 0
 	for _, f in ipairs(under(tab.panel, isClickable)) do
@@ -150,11 +153,13 @@ local function exercise(X, key, stats)
 		s:SetValue(hi) s:SetValue(lo)
 	end
 	W.advance(0.5)
-	stats[#stats + 1] = string.format("%s: %d clicks, %d menu entries, %d typed, %d hovered", key, clicks, menus, typed, hovers)
+	stats[#stats + 1] = string.format("%s: %d clicks, %d menu entries, %d typed, %d hovered", view and (key .. "/" .. view.name) or key,
+		clicks, menus, typed, hovers)
 end
 
 T.scene("ui: every tab, every button, with a 10-day market", function()
 	local X = W.start()
+	W.ahWindow() -- the auction house window as the game has it (its search bar is reached by "Search on the auction house")
 	tenDays(X)
 	T.ok("tabs registered", #X.UI.order > 0, #X.UI.order)
 	-- with the auction house open
@@ -168,6 +173,29 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 		X.UI.ShowItem("2589")
 		exercise(X, key, stats)
 	end
+	-- every view of the tabs with views (v0.8: Buy has Best buys, lists and Adjust ideas; Sell has Sell ideas, Crafting
+	-- has Make ideas), each kept shown while it is used
+	local function viewsOf(X, open)
+		local function setting(name, value)
+			return {name = value, set = function()
+				if X.S()[name] == value then return false end
+				X.S()[name] = value
+				return true
+			end}
+		end
+		for _, v in ipairs({"best", "lists", "adjust"}) do exercise(X, "buy", stats, setting("buyView", v)) end
+		for _, v in ipairs({"recipes", "queue", "make"}) do exercise(X, "craft", stats, setting("craftView", v)) end
+		for _, v in ipairs({"worth", "cancel", "sell", "ideas"}) do
+			exercise(X, "sell", stats, {name = v, set = function()
+				local p = X.UI.tabs.sell.panel
+				if not p or p.view == v then return false end
+				p.view = v
+				return true
+			end})
+		end
+		T.note("ui views with the auction house " .. (open and "open" or "closed") .. " done")
+	end
+	viewsOf(X, true)
 	-- the item page for a sword with a suffix and for an item with no prices at all
 	X.UI.ShowItem("15210:-19")
 	W.advance(0.5)
@@ -187,6 +215,7 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	W.closeAH()
 	X.UI.Open("market")
 	for _, key in ipairs(X.UI.order) do exercise(X, key, stats) end
+	viewsOf(X, false)
 	-- Escape closes it (the window is in UISpecialFrames)
 	T.ok("the window closes with Escape", X.Contains(W.env.UISpecialFrames, "XNAHFrame") ~= nil)
 	-- a reload with the window state saved

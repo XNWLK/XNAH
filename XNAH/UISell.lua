@@ -3,8 +3,9 @@
 -- to keep (XNAH remembers it per item). One big "Post next" button (or your key for it) does the next step of the
 -- one-key routine (Routine.lua): cancel an undercut auction, or post the next ticked item - one per press, as the game
 -- allows. Your auctions are checked by themselves when the auction house opens (Post.lua).
--- The other views: "Undercut auctions" (your auctions someone sells cheaper, one Cancel click each) and "Post by hand"
--- (one item: your own price, amount, duration, and its price rules - floor, ceiling, undercut, normal price).
+-- The other views: "Undercut auctions" (your auctions someone sells cheaper, one Cancel click each), "Post by hand"
+-- (one item: your own price, amount, duration, and its price rules - floor, ceiling, undercut, normal price) and
+-- "Sell ideas" (what to do with what you have: sell now or hold - UI.IdeasView in UIDeals.lua).
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -59,9 +60,21 @@ local CANCEL_COLUMNS = {
 		sort = function(r) return r.timeLeftSeconds or r.timeLeft end, desc = false},
 	{"Cancel cost", 80, "RIGHT", text = function(r) return r.cost and UI.MoneyCell(r.cost) or "-" end, sort = field("cost")},
 }
--- the Worth posting list (its own rows: each has a tick box)
-local WORTH_COLUMNS = {{"", 24, "LEFT"}, {"Item", 176, "LEFT"}, {"Have", 44, "RIGHT"}, {"Lowest now", 78, "RIGHT"},
-	{"XNAH price", 78, "RIGHT"}, {"Brings", 74, "RIGHT"}, {"Step", 104, "LEFT"}}
+-- the Worth posting list (its own rows: each has a tick box); widths add up to 580, the room a 600 wide list has
+local WORTH_COLUMNS = {{"", 24, "LEFT"}, {"Item", 154, "LEFT"}, {"Have", 44, "RIGHT"}, {"Lowest now", 72, "RIGHT"},
+	{"XNAH price", 72, "RIGHT"}, {"Brings", 70, "RIGHT"}, {"Best day", 48, "LEFT"}, {"Step", 96, "LEFT"}}
+
+-- the weekday an item sells dearest (X.BestDay: nil while there is not enough price history)
+local function bestDay(key)
+	if not X.BestDay then return nil end
+	local d = X.Try(X.BestDay, key)
+	if type(d) ~= "table" or not d.short then return nil end
+	return d
+end
+local function bestDayCell(key)
+	local d = bestDay(key)
+	return d and d.short or (GREY .. "-|r")
+end
 
 -- [[ the Worth posting rows ]] undercut auctions first, then the ticked bag items (most valuable first), then the rest
 local function worthRows()
@@ -279,6 +292,10 @@ local function refresh(p)
 	p.viewWorth:SetSelected(view == "worth")
 	p.viewCancel:SetSelected(view == "cancel")
 	p.viewSell:SetSelected(view == "sell")
+	p.viewIdeas:SetSelected(view == "ideas")
+	p.ideasView:SetShown(view == "ideas")
+	p.status:SetShown(view ~= "ideas")
+	p.hint:SetShown(view ~= "ideas")
 	p.worthList:SetShown(view == "worth")
 	p.sellTable:SetShown(view == "sell")
 	p.cancelTable:SetShown(view == "cancel")
@@ -302,6 +319,8 @@ local function refresh(p)
 		p.status:SetText(blocked and ("|cffff8888" .. blocked .. ":|r prices from the last scan; posting needs the auction house.") or
 			"Click an item: it is searched for the live lowest price. Prices in grey are from the last scan.")
 		refreshSell(p)
+	elseif view == "ideas" then
+		if p.ideasView.Refresh then p.ideasView:Refresh() end
 	else
 		p.cancelTable:SetRows(X.cancel.rows, cs == "done" and "None of your auctions is undercut." or
 			"XNAH checks your auctions by itself when the auction house opens (or press Check auctions).")
@@ -359,7 +378,7 @@ local function buildWorth(p)
 			priceText = UI.MoneyCell(w.price)
 			bringText = w.net and ((r.ticked and "" or GREY) .. X.MoneyPlain(math.floor(w.net)) .. (r.ticked and "" or "|r")) or (GREY .. "-|r")
 		end
-		row:SetCols("", UI.ItemCell(r.key), haveText, lowText, priceText, bringText, stepOf(r, p.peek or {}))
+		row:SetCols("", UI.ItemCell(r.key), haveText, lowText, priceText, bringText, bestDayCell(r.key), stepOf(r, p.peek or {}))
 		row:SetSelected(r.id == p.selWorth)
 		if not row.check then
 			row.check = K.Check(row, "", function(on)
@@ -379,7 +398,18 @@ local function buildWorth(p)
 			p.selWorth = r.id
 			refresh(p)
 		end)
-		row:SetScript("OnEnter", function(self) UI.ItemTooltip(self, r.key) end)
+		row:SetScript("OnEnter", function(self)
+			UI.ItemTooltip(self, r.key)
+			local d = bestDay(r.key)
+			if d and X.KeyID(r.key) then
+				GameTooltip:AddLine(" ")
+				local more = ""
+				if tonumber(d.pct) then more = string.format(" (%+.0f%% over the average day)", d.pct) end
+				if tonumber(d.weeks) then more = more .. " - " .. d.weeks .. (d.weeks == 1 and " week" or " weeks") .. " of prices" end
+				GameTooltip:AddLine("Best day to sell: " .. (d.name or d.short) .. more, 1, 0.82, 0, true)
+				GameTooltip:Show()
+			end
+		end)
 		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	end, WORTH_COLUMNS)
 	p.worthList:SetPoint("TOPLEFT", 0, -TOP)
@@ -445,6 +475,9 @@ local function build(p)
 	p.viewWorth = viewButton(p, "Worth posting", 0, "worth")
 	p.viewCancel = viewButton(p, "Undercut auctions", 154, "cancel")
 	p.viewSell = viewButton(p, "Post by hand", 308, "sell")
+	p.viewIdeas = viewButton(p, "Sell ideas", 462, "ideas")
+	K.Tooltip(p.viewIdeas, "Sell ideas", "What to do with what you have on all your characters: sell now while the price " ..
+		"is good, or hold while it is low.")
 	p.cancelScan = K.Button(p, "Check auctions", 120, 22, function()
 		p.selAuction = nil
 		X.CancelScan()
@@ -481,6 +514,16 @@ local function build(p)
 	p.cancelTable:SetPoint("TOPLEFT", 0, -TOP)
 	local hint = K.Label(p, GREY .. "Click a row to pick it.  Right click: menu.|r")
 	hint:SetPoint("BOTTOMLEFT", 0, 2)
+	p.hint = hint
+
+	-- [[ Sell ideas ]] (UIDeals.lua)
+	if UI.IdeasView then
+		p.ideasView = UI.IdeasView(p, W, H - 30, "sell")
+	else
+		p.ideasView = CreateFrame("Frame", nil, p)
+	end
+	p.ideasView:SetPoint("TOPLEFT", 0, -30)
+	p.ideasView:Hide()
 
 	-- [[ right: posting by hand ]]
 	local b = K.Panel(p, RW, H - 52)
@@ -626,4 +669,4 @@ local function build(p)
 	cb:Hide()
 end
 
-UI.AddTab("sell", "Sell", build, refresh, 5)
+UI.AddTab("sell", "Sell", build, refresh, 4)

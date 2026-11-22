@@ -27,7 +27,11 @@ local function step(fn, ...)
 	local ok, e = pcall(fn, ...)
 	local dt = os.clock() - t0
 	if W.stepRows > W.maxStepRows then W.maxStepRows = W.stepRows end
-	if dt > W.maxStepTime then W.maxStepTime = dt end
+	if dt > W.maxStepTime then
+		W.maxStepTime = dt
+		local info = debug and debug.getinfo and debug.getinfo(fn, "S")
+		W.maxStepWhere = info and (tostring(info.short_src) .. ":" .. tostring(info.linedefined)) or "?"
+	end
 	if not ok then W.err(e) end
 	return ok
 end

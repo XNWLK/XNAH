@@ -209,6 +209,9 @@ local function buildSettings(p)
 		X.S().minimap.hide = not on
 		UI.UpdateMinimap()
 	end)
+	get, set = boolSetting("alertSound")
+	check(250, -266, "Sound with price alerts", get, set,
+		"A sound when a scan or search finds a watched item at or under your alert price (right-click an item: Price alert).")
 	get, set = boolSetting("debug")
 	check(10, -290, "Debug messages in chat", get, set)
 	check(250, -290, "All my characters are on one realm", function() return X.S().oneRealm end, function(on)
@@ -245,6 +248,10 @@ local function buildSettings(p)
 		K.Menu(self, items)
 	end)
 	hidden:SetPoint("TOPLEFT", 10, -470)
+	get, set = boolSetting("awayLine")
+	check(290, -470, "Welcome back lines", get, set,
+		"A chat line when you log in after a while (your auctions that ran out, gold in mailboxes) and at the mailbox " ..
+		"(what sold, came back or was bought since you were last there).")
 	K.Tooltip(hidden, "Items never suggested", "Items you right-clicked and chose Never suggest buying this. Grey items are never " ..
 		"suggested as buys anyway (except to sell to a vendor).")
 	binds[#binds + 1] = function() hidden:SetText("Never suggested as a buy: " .. #X.IgnoredList()) end
@@ -408,10 +415,14 @@ local function updateBar()
 	bar.full:SetEnabled(fullScanAllowed())
 	bar.watch:SetEnabled(X.ahOpen == true and X.scan.state == "idle")
 	bar.text:SetText(X.scan.text or "|cff999999Full scan: every auction at once.  Watch list: your starred items.|r")
-	-- the one-key routine (Routine.lua): what the next press does
-	if X.routine and X.routine.state ~= "off" and X.RoutinePeek and X.scan.state == "idle" then
-		local peek = X.Try(X.RoutinePeek)
-		if peek and peek.text then bar.text:SetText(peek.text) end
+	-- the Next step key (Next.lua): what the next press does
+	bar.shownPeek = nil
+	if X.DoNextPeek and X.scan.state == "idle" then
+		local peek = X.Try(X.DoNextPeek)
+		if peek and peek.text then
+			bar.text:SetText(peek.text)
+			bar.shownPeek = peek.text
+		end
 	end
 end
 local function buildBar()
@@ -429,10 +440,14 @@ local function buildBar()
 	K.Tooltip(bar.watch, "Scan the watch list", "Searches your starred items one by one (any time).")
 	bar.open = K.Button(bar, "XNAH", 60, 22, function() X.Toggle() end)
 	bar.open:SetPoint("LEFT", bar.watch, "RIGHT", 4, 0)
-	bar.next = K.Button(bar, "Next step", 90, 22, function() if X.RoutineNext then X.RoutineNext("button") end updateBar() end)
+	bar.next = K.Button(bar, "Next step", 90, 22, function()
+		-- only what the text next to it says (when things changed since, this press only shows the new step)
+		if X.DoNext then X.DoNext("button", bar.shownPeek) end
+		updateBar()
+	end)
 	bar.next:SetPoint("LEFT", bar.open, "RIGHT", 4, 0)
-	K.Tooltip(bar.next, "One-key routine", "Each click does the next step: cancel an undercut auction, or post the next " ..
-		"ticked item (Sell tab, Worth posting). Your key for it (key bindings, AddOns, XNAH) does the same.")
+	K.Tooltip(bar.next, "Next step", "Each click does what the text next to it says: buy, confirm, cancel an undercut " ..
+		"auction or post the next ticked item. Your Next step key (key bindings, AddOns, XNAH) does the same.")
 	bar.text = K.Label(bar, "")
 	bar.text:SetPoint("LEFT", bar.next, "RIGHT", 8, 0)
 	bar.text:SetPoint("RIGHT", -8, 0)

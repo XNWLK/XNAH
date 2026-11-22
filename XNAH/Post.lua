@@ -75,6 +75,8 @@ function X.SellTicked(key, row)
 	local v = key and ticks()[key]
 	if v ~= nil then return v end
 	if not row then return false end
+	-- everything of it is still needed by your crafting queue: kept (unless you ticked it yourself)
+	if X.QueueKeep and (X.Try(X.QueueKeep, key) or 0) >= (row.have or 0) then return false end
 	return (X.SellWorth(row))
 end
 -- your choice: false = keep it, true = post it; nil = back to "ticked when worth posting"

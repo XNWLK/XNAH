@@ -3,7 +3,8 @@
 --   Characters of your OTHER WoW accounts come from tools/sync-accounts.js (run on the PC with the game closed): their
 --   records carry acct = that account's name and are only read here; XNAHDB.sync = {at, label, accounts} tells when.
 --   XNAHDB.chars[character] = {realm = "Realm-Faction", money, bags = {[item key] = count}, bank = {...}, mail = {...},
---     mailMoney, auctions = {...}, bound = {[item key] = true} (soulbound), at, bagsAt, bankAt, mailAt, aucAt}
+--     mailMoney, auctions = {...}, bound = {[item key] = true} (soulbound), at, bagsAt, bankAt, mailAt, aucAt,
+--     aucEnds = {time, ...} (when each of your auctions runs out, as last seen), seen (logout time), awayTold}
 --   XNAHDB.warbank = {items = {[item key] = count}, bound = {...}, at}  the account bank (shared by all characters)
 --   XNAHDB.worth[character] = "day,copper;..."  net worth once a day (base 36, a year kept)
 --   XNAHDB.worthTotal["Realm-Faction"] = "day,copper;..."  all characters of the realm and the account bank together
@@ -20,6 +21,8 @@ local SLICE = 200 -- slots read per frame
 
 local bankOpen = false
 local ownedCache = {}
+-- the most seconds a time-left band can mean (0 short, 1 medium, 2 long, 3 very long), when the game gives no seconds
+local BAND_SECS = {[0] = 1800, [1] = 7200, [2] = 43200, [3] = 172800}
 
 local function db()
 	local d = X.db
@@ -161,10 +164,15 @@ local function scanAuctions()
 	if not (C_AuctionHouse and C_AuctionHouse.GetOwnedAuctions) then return end
 	local list = X.Try(C_AuctionHouse.GetOwnedAuctions)
 	if type(list) ~= "table" then return end
-	local items = {}
+	local items, ends = {}, {}
+	local now = X.Now()
 	for _, a in ipairs(list) do
 		local status = X.Plain(a.status)
 		if status == nil or status == 0 then
+			-- when it runs out (for the line at login): the seconds left, else the longest its time band can mean
+			local secs = X.Plain(a.timeLeftSeconds)
+			if type(secs) ~= "number" then secs = BAND_SECS[X.Plain(a.timeLeft) or -1] end
+			if secs then ends[#ends + 1] = now + math.floor(secs) end
 			local key = X.KeyFromLink(X.Plain(a.itemLink))
 			local ik = a.itemKey
 			if not key and ik and ik.itemID then
@@ -175,15 +183,74 @@ local function scanAuctions()
 	end
 	local c = me()
 	c.auctions = items
+	table.sort(ends)
+	c.aucEnds = ends
 	c.aucAt = X.Now()
 	c.at = c.aucAt
 	changed()
 end
 X.InventoryScan = {bags = scanBags, bank = scanBank, mail = scanMail, auctions = scanAuctions, money = scanMoney}
 
+-- [[ "Welcome back" ]] about 10 s after login (after the other login lines): how long you were away, how many of the
+-- auctions you left up have run out of time since, the gold waiting in your mailboxes. Nothing after a short break or
+-- when there is nothing to say. Setting awayLine (Ledger.lua).
+local AWAY_MIN = 30 * 60 -- away at least this long
+local function span(s)
+	local d, h, m = math.floor(s / 86400), math.floor((s % 86400) / 3600), math.floor((s % 3600) / 60)
+	local function u(n, w) return n .. " " .. w .. (n == 1 and "" or "s") end
+	if d > 0 then return u(d, "day") .. (h > 0 and (" " .. u(h, "hour")) or "") end
+	if h > 0 then return u(h, "hour") end
+	return u(m, "minute")
+end
+-- the line for: seen (when you logged out), ends (end times of your auctions then), now; nil when nothing to say
+function X.AwayLoginText(seen, ends, now)
+	now = now or X.Now()
+	if not seen or now - seen < AWAY_MIN then return nil end
+	local up, ended = 0, 0
+	for _, t in ipairs(ends or {}) do
+		if t > seen then
+			up = up + 1
+			if t <= now then ended = ended + 1 end
+		end
+	end
+	local mailMoney = 0
+	local rk = realmKey()
+	for _, c in pairs(db().chars) do
+		if c.realm == rk then mailMoney = mailMoney + (c.mailMoney or 0) end
+	end
+	if ended == 0 and mailMoney == 0 then return nil end
+	local parts = {"Welcome back - you were away " .. span(now - seen) .. "."}
+	if up > 0 and ended == 0 then
+		parts[#parts + 1] = "Your " .. X.Num(up) .. " auction" .. (up == 1 and " is" or "s are") .. " still running."
+	elseif up == 1 then
+		parts[#parts + 1] = "The auction you left up has run out of time by now."
+	elseif ended == up then
+		parts[#parts + 1] = "All " .. X.Num(up) .. " auctions you left up have run out of time by now."
+	elseif up > 0 then
+		parts[#parts + 1] = "Of the " .. X.Num(up) .. " auctions you left up, " .. X.Num(ended) ..
+			(ended == 1 and " has" or " have") .. " run out of time by now."
+	end
+	if mailMoney > 0 then parts[#parts + 1] = X.Money(mailMoney, true) .. " waiting in your mailboxes." end
+	parts[#parts + 1] = "Open the mailbox to see what sold."
+	return table.concat(parts, " ")
+end
+
+X.On("PLAYER_LOGOUT", function()
+	if not X.db then return end
+	local c = me()
+	c.seen = X.Now()
+end)
+
 X.On("XNAH_LOGIN", function()
 	ownedCache = {}
-	me()
+	local c = me()
+	-- read before anything of this login changes them
+	local seen, ends = c.seen or c.at, c.aucEnds
+	X.After(10, function()
+		if not X.S().awayLine then return end
+		local text = X.AwayLoginText(seen, ends)
+		if text then X.Print(text) end
+	end)
 	X.After(3, function()
 		scanMoney()
 		scanBags()

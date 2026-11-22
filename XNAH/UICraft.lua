@@ -2,8 +2,10 @@
 -- for its reagents (and a button that searches them all on the auction house, and one that puts it in the queue).
 -- The second view, "Queue": the crafting queue (Queue.lua) - targets, crafts to do, profit, the materials to buy and a
 -- "Craft next" button for the open profession window.
+-- The third view, "Make ideas": crafting for profit, recipes worth learning, cooldowns, what to gather (UI.IdeasView in
+-- UIDeals.lua; until v0.7 on the Deals tab).
 -- Choices remembered in the settings: craftMine (only recipes your characters know; nil = on when any are known),
--- craftProf (one profession; nil = all), craftView ("recipes" / "queue").
+-- craftProf (one profession; nil = all), craftView ("recipes" / "queue" / "make").
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -212,6 +214,14 @@ local function refreshQueue(p)
 		q.mode:SetText("Mode")
 		q.numberFor = nil
 	end
+	if X.DoNext then
+		local key = GetBindingKey and GetBindingKey("XNAH_NEXT")
+		q.nextLine:SetText("|cffffd100Tip:|r |cffbbbbbbyour Next step key" .. (key and (" (|cffffd100" .. key .. "|r|cffbbbbbb)") or "") ..
+			" does this queue too, one step per press: it buys the materials on the auction house, then crafts at the " ..
+			"profession window.|r")
+	else
+		q.nextLine:SetText("")
+	end
 	-- craft next
 	local row, count = X.CraftNextTarget()
 	q.craft:SetEnabled(row ~= nil)
@@ -323,7 +333,7 @@ local function buildQueue(p)
 	q.shop:SetPoint("TOPRIGHT", 0, -254)
 	K.Tooltip(q.shop, "Send to shopping list", "Puts every reagent still to buy (not the vendor ones) on the shopping list \"" ..
 		X.QUEUE_LIST .. "\", with a highest price of 120% of its current price.")
-	local matsH = QH - 290 - 40
+	local matsH = QH - 290 - 58
 	q.mats = K.Table(q, W, matsH, MAT_COLUMNS, function(m, button, rowFrame)
 		if button == "RightButton" then UI.ItemMenu(rowFrame, m.key) else UI.ShowItem(m.key) end
 	end)
@@ -332,25 +342,38 @@ local function buildQueue(p)
 	q.vendors:SetPoint("TOPLEFT", 0, -(290 + matsH + 6))
 	q.vendors:SetWidth(W)
 	q.vendors:SetWordWrap(true)
+	-- the Next step key (Next.lua) does this queue too: buys the materials, then crafts
+	q.nextLine = K.Label(q, "")
+	q.nextLine:SetPoint("BOTTOMLEFT", 0, 2)
+	q.nextLine:SetWidth(W)
+	q.nextLine:SetWordWrap(false)
 	q:Hide()
 end
 
 -- [[ the tab ]]
+local VIEW_OK = {recipes = true, queue = true, make = true}
 local function setView(p, view)
+	if not VIEW_OK[view] then view = "recipes" end
 	X.S().craftView = view
-	local queue = view == "queue"
-	for _, f in ipairs(p.recipeParts) do f:SetShown(not queue) end
-	p.queue:SetShown(queue)
-	p.viewRecipes:SetSelected(not queue)
-	p.viewQueue:SetSelected(queue)
+	p.shownView = view
+	for _, f in ipairs(p.recipeParts) do f:SetShown(view == "recipes") end
+	p.queue:SetShown(view == "queue")
+	p.make:SetShown(view == "make")
+	p.viewRecipes:SetSelected(view == "recipes")
+	p.viewQueue:SetSelected(view == "queue")
+	p.viewMake:SetSelected(view == "make")
 end
 
 local function refresh(p)
-	local queue = X.S().craftView == "queue"
-	if (p.queue:IsShown() and true or false) ~= queue then setView(p, queue and "queue" or "recipes") end
+	local view = X.S().craftView
+	if not VIEW_OK[view] then view = "recipes" end
+	if p.shownView ~= view then setView(p, view) end
 	p.viewQueue:SetLabel("Queue (" .. X.QueueCount() .. ")")
-	if queue then
+	if view == "queue" then
 		refreshQueue(p)
+		return
+	elseif view == "make" then
+		if p.make.Refresh then p.make:Refresh() end
 		return
 	end
 	p.mine:SetChecked(mineOn())
@@ -388,22 +411,28 @@ local function build(p)
 		K.Menu(self, items)
 	end))
 	p.prof:SetPoint("TOPLEFT", 345, 0)
-	-- the two views
+	-- the three views
 	p.viewRecipes = K.Flat(p, 90, 22)
-	p.viewRecipes:SetPoint("TOPLEFT", 560, 0)
+	p.viewRecipes:SetPoint("TOPLEFT", 530, 0)
 	p.viewRecipes:SetLabel("Recipes")
 	p.viewRecipes.label:SetJustifyH("CENTER")
 	p.viewRecipes:SetScript("OnClick", function() setView(p, "recipes") refresh(p) end)
-	p.viewQueue = K.Flat(p, 110, 22)
-	p.viewQueue:SetPoint("TOPLEFT", 654, 0)
+	p.viewQueue = K.Flat(p, 100, 22)
+	p.viewQueue:SetPoint("TOPLEFT", 624, 0)
 	p.viewQueue:SetLabel("Queue")
 	p.viewQueue.label:SetJustifyH("CENTER")
 	p.viewQueue:SetScript("OnClick", function() setView(p, "queue") refresh(p) end)
 	K.Tooltip(p.viewQueue, "Crafting queue", "What to craft: restock targets, crafts to do, the profit, the materials to buy, " ..
 		"and a Craft next button.")
+	p.viewMake = K.Flat(p, 100, 22)
+	p.viewMake:SetPoint("TOPLEFT", 728, 0)
+	p.viewMake:SetLabel("Make ideas")
+	p.viewMake.label:SetJustifyH("CENTER")
+	p.viewMake:SetScript("OnClick", function() setView(p, "make") refresh(p) end)
+	K.Tooltip(p.viewMake, "Make ideas", "Crafting for profit, recipes worth learning, cooldown crafts and what to gather.")
 	p.count = part(K.Label(p, "", "GameFontDisableSmall", "RIGHT"))
 	p.count:SetPoint("TOPRIGHT", 0, -5)
-	p.count:SetWidth(150)
+	p.count:SetWidth(100)
 
 	local help = part(K.Label(p, "Cost to make = the reagents bought the cheapest way (vendor, auction house or crafted). " ..
 		"Profit = the sale after the cut, minus that cost.", "GameFontHighlight"))
@@ -486,10 +515,14 @@ local function build(p)
 	d.parts:SetPoint("TOPLEFT", 8, -62)
 
 	buildQueue(p)
-	setView(p, X.S().craftView == "queue" and "queue" or "recipes")
+	-- Make ideas (UIDeals.lua)
+	p.make = UI.IdeasView and UI.IdeasView(p, W, H - 28, "make") or CreateFrame("Frame", nil, p)
+	p.make:SetPoint("TOPLEFT", 0, -28)
+	p.make:Hide()
+	setView(p, X.S().craftView)
 end
 
-UI.AddTab("craft", "Crafting", build, refresh, 4)
+UI.AddTab("craft", "Crafting", build, refresh, 5)
 
 -- the queue changed (or bags, or the profession window): the tab follows while it is shown
 X.On("XNAH_QUEUE", function()

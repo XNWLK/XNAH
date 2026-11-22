@@ -289,14 +289,15 @@ T.scene("analysis: the Deals and Market pages show it", function()
 	X.SetStrategyParam("reset", "minTotal", 0)
 	X.UI.Toggle()
 	local frame = X.UI.Frame()
-	X.UI.Open("deals")
+	X.UI.Open("deals") -- the old name: opens Buy, Best buys
 	W.advance(3) -- the ideas are worked out in slices
 	X.UI.Refresh(true)
-	local panel = X.UI.tabs.deals.panel
+	T.check("deals opens the Buy tab", X.UI.current, "buy")
+	local panel = X.UI.tabs.buy.panel
 	local text = W.screen(panel)
-	T.ok("deals: sells a day column", text:find("Sells a day", 1, true) ~= nil)
+	T.ok("best buys: sells a day column", text:find("Sells a day", 1, true) ~= nil)
 	-- one list of buy ideas: the gear under its disenchanting value, the linen reset
-	local rows = panel.tables.buy.items or {}
+	local rows = panel.bestList.items or {}
 	local blue, linen
 	for _, r in ipairs(rows) do
 		if r.key == tostring(G.blue) then blue = r end
@@ -310,11 +311,14 @@ T.scene("analysis: the Deals and Market pages show it", function()
 	W.click("Hide items that sell under", panel)
 	W.advance(0.3)
 	T.check("filter switched on", X.S().dealSpeedHide, true)
-	for _, r in ipairs(panel.tables.buy.items or {}) do T.ok("filter: no known slow seller", r.rate == nil, r.key) end
+	for _, r in ipairs(panel.bestList.items or {}) do T.ok("filter: no known slow seller", r.rate == nil, r.key) end
 	W.click("Hide items that sell under", panel)
 	W.advance(0.3)
 	T.check("filter switched off", X.S().dealSpeedHide, false)
-	-- the best time to post (the old Trends page): on the sell ideas
+	-- the best time to post (the old Trends page): on the sell ideas (tab Sell)
+	X.UI.Open("sell")
+	W.advance(0.3)
+	panel = X.UI.tabs.sell.panel
 	W.click("Sell ideas", panel)
 	W.advance(0.3)
 	text = W.screen(panel)
@@ -331,13 +335,13 @@ T.scene("analysis: the Deals and Market pages show it", function()
 	-- an empty start: every view says something
 	X = W.start()
 	X.UI.Toggle()
-	X.UI.Open("deals")
-	W.advance(0.3)
-	local p = X.UI.tabs.deals.panel
-	for _, n in ipairs({"Buy ideas", "Sell ideas", "Make ideas"}) do
-		W.click(n, p)
+	for _, v in ipairs({{"buy", "Best buys"}, {"sell", "Sell ideas"}, {"craft", "Make ideas"}}) do
+		X.UI.Open(v[1])
 		W.advance(0.3)
-		T.ok("deals / " .. n .. ": empty text", W.screen(p):find("No prices yet", 1, true) ~= nil)
+		local p = X.UI.tabs[v[1]].panel
+		W.click(v[2], p)
+		W.advance(0.3)
+		T.ok(v[1] .. " / " .. v[2] .. ": empty text", W.screen(p):find("No prices yet", 1, true) ~= nil)
 	end
 	T.ok("window", frame ~= nil)
 end)
@@ -351,8 +355,26 @@ T.scene("analysis: scale - two full scans of 30,000 auctions compared in slices"
 	W.advance(3600)
 	-- the next hour: a new day's listings (most of the earlier ones gone, many with a long time left: lots of "sales")
 	W.marketDay(1)
+	-- every job slice timed on the real clock (which job a slow step was)
+	local worst, worstName = 0, nil
+	local origJob = X.Job
+	X.Job = function(name, step, finish)
+		return origJob(name, function()
+			local t0 = os.clock()
+			local r = step()
+			local d = os.clock() - t0
+			if d > worst then worst, worstName = d, name end
+			return r
+		end, finish and function()
+			local t0 = os.clock()
+			finish()
+			local d = os.clock() - t0
+			if d > worst then worst, worstName = d, name .. " (finish)" end
+		end)
+	end
 	T.ok("second scan", T.fullScan(X))
 	W.maxStepTime = 0
+	worst, worstName = 0, nil
 	local ticks, c0 = W.ticks, os.clock()
 	W.advance(5)
 	T.ok("compared", X.speedInfo ~= nil and X.speedInfo.items > 1000, X.speedInfo and X.speedInfo.items)
@@ -360,5 +382,6 @@ T.scene("analysis: scale - two full scans of 30,000 auctions compared in slices"
 	for _ in pairs(X.Realm().shape or {}) do n = n + 1 end
 	T.note(string.format("analysis scale: %d auctions, %d items compared, %d units seen sold, %d shape entries; %.1f s here, slowest step %.0f ms here (fengari)",
 		#W.ah, X.speedInfo.items, X.speedInfo.units, n, os.clock() - c0, W.maxStepTime * 1000))
-	T.ok("no step slower than 400 ms here", W.maxStepTime < 0.4, W.maxStepTime)
+	X.Job = origJob
+	T.ok("no step slower than 400 ms here", W.maxStepTime < 0.4, tostring(W.maxStepTime) .. " at " .. tostring(W.maxStepWhere) .. ", slowest job slice " .. tostring(worstName) .. " " .. string.format("%.3f", worst))
 end)

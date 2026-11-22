@@ -458,7 +458,7 @@ function X.ShowOnAuctionHouse(key)
 		end
 		tries = tries + 1
 		if tries < 4 then X.After(0.3, open) return end -- the game is still loading the item
-		if name and name ~= "" and f.SearchBar and f.SearchBar.StartSearch then X.Try(f.SearchBar.StartSearch, f.SearchBar) end
+		if name and name ~= "" and type(f.SearchBar) == "table" and f.SearchBar.StartSearch then X.Try(f.SearchBar.StartSearch, f.SearchBar) end
 	end
 	open()
 	return true

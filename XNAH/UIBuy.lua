@@ -1,7 +1,10 @@
--- The Buy tab. It opens on "Best buys": the best buys right now (X.BuyIdeas in Buy.lua: your shopping lists and
--- watched items under your max price first, then the strategies' ideas and the deals), each with a Buy button, and the
--- "Next buy" box: one key (or its big button) does the next step of the best buy. The second view keeps the shopping
--- lists, the purchase panel and the sniper.
+-- The Buy tab (since v0.8 also the old Deals tab's buy ideas and Adjust ideas). Its views:
+--   Best buys: everything worth buying right now in one list - your shopping lists, the crafting queue's materials and
+--     watched items under your max price first, then the best buys of the Next buy key (X.BuyIdeas in Buy.lua), then every other buy idea
+--     (X.DealIdeas("buy") in UIDeals.lua: disenchanting, buying from a vendor, smaller or riskier buys) - each with a
+--     Buy button. Above it the Next buy box: one key (or its big button) does the next step of the best buy.
+--   Shopping lists and sniper: the shopping lists, the purchase panel and the sniper.
+--   Adjust ideas (UIStrategies.lua): which ideas go into the lists, their numbers, how each one works.
 -- Buying is always a click on our button (or a key press): stackable items take two (the first asks the server for the
 -- exact price, the second buys), other items one per auction.
 --
@@ -18,8 +21,23 @@ local CH = H - VIEW_H       -- height of a view (522)
 local TOP = 70
 local LEFT_W = 560
 local RX, RW = 572, 368
-local BEST_W = 620          -- the best buys list
-local BX, BW = 628, 312     -- the Next buy box
+local NEXT_H = 84           -- the Next buy box above the best buys
+local BEST_TOP = 132        -- where the best buys list starts (its column titles sit just above)
+local BUY_W = 130           -- the Buy button in each row (its label says the next step: "Confirm 5 for 2g 10s")
+local MAX = 50              -- rows used by the buttons under the best buys
+
+X.Default("buyView", "best")
+-- "hide items that sell under N a day" (best buys)
+X.Default("dealSpeedHide", false)
+X.Default("dealSpeedMin", 1)
+
+local GREY = "|cff999999"
+local VIEWS = {
+	{key = "best", title = "Best buys", w = 120},
+	{key = "lists", title = "Shopping lists and sniper", w = 200},
+	{key = "adjust", title = "Adjust ideas", w = 120},
+}
+local VIEW_OK = {best = true, lists = true, adjust = true}
 
 for _, e in ipairs({"XNAH_BUY", "XNAH_SHOP", "XNAH_SNIPE", "XNAH_LIVE", "XNAH_BUYIDEAS", "XNAH_STRATEGY"}) do
 	X.On(e, function() UI.Refresh() end)
@@ -110,6 +128,7 @@ function UI.BuyButton(parent, w, h)
 end
 
 local function field(name) return function(r) return r[name] end end
+local function money(name) return function(r) return UI.MoneyCell(r[name]) end end
 local function itemName(r) return (X.ItemName(r.key)) end
 local function itemCell(r) return UI.ItemCell(r.key) end
 local function lowestOf(key)
@@ -118,10 +137,14 @@ local function lowestOf(key)
 	return X.Price(key, "min"), true
 end
 
+-- shopping list entries: "keep" ones keep that many in stock (Need = what is missing), the others buy that many once
 local SHOP_COLUMNS = {
-	{"Item", 180, "LEFT", text = itemCell, sort = itemName, desc = false},
+	{"Item", 166, "LEFT", text = itemCell, sort = itemName, desc = false},
 	{"Need", 45, "RIGHT", text = function(e) return X.Num(X.ShopNeed(e)) end, sort = function(e) return X.ShopNeed(e) end},
-	{"Bought", 50, "RIGHT", text = function(e) return X.Num(e.bought or 0) .. "/" .. X.Num(e.qty) end, sort = field("bought")},
+	{"Bought", 64, "RIGHT", text = function(e)
+		if e.keep then return "|cff9db4ffkeep " .. X.Num(e.qty) .. "|r" end
+		return X.Num(e.bought or 0) .. "/" .. X.Num(e.qty)
+	end, sort = field("bought")},
 	{"Max", 80, "RIGHT", text = function(e) return e.max and UI.MoneyCell(e.max) or "|cff999999any|r" end, sort = field("max")},
 	{"Lowest now", 80, "RIGHT", text = function(e) local v, old = lowestOf(e.key) return UI.MoneyCell(v, old) end,
 		sort = function(e) return (lowestOf(e.key)) end, desc = false},
@@ -142,10 +165,90 @@ local HIT_COLUMNS = {
 	{"Qty", 40, "RIGHT", text = function(h) return X.Num(h.qty) end, sort = field("qty")},
 	{"Seen", 50, "RIGHT", text = function(h) return X.Ago(h.t) end, sort = field("t")},
 }
--- the best buys list (its own rows: each has a Buy button)
-local BEST_COLUMNS = {{"Item", 166, "LEFT"}, {"Why", 110, "LEFT"}, {"Qty", 40, "RIGHT"}, {"Price now", 72, "RIGHT"},
-	{"You make", 72, "RIGHT"}, {"", 140, "LEFT"}}
-local RISK = {Low = "", Medium = "", High = " |cfff87171(risky)|r"}
+
+-- [[ the best buys ]] one row per item: {key, kind (list / queue / watch / deal / idea), idea, ideaName, more, action, now,
+-- target, each, qty, total, rate, risk, why, vendor, max, source, tag}
+local function pos(v) return (v and v > 0) and v or nil end
+-- rows of things you asked for (not ideas): your shopping lists, the crafting queue, watched items
+local MINE = {list = true, queue = true, watch = true}
+local function rateOf(key) return X.SaleRate and X.Try(X.SaleRate, key) or nil end
+local function bestRows()
+	local out, seen, ideas = {}, {}, {}
+	local all = X.DealIdeas and X.DealIdeas("buy") or {}
+	for _, d in ipairs(all) do ideas[d.key] = ideas[d.key] or d end
+	-- what the Next buy key buys, in its order (lists, the crafting queue and watched items first)
+	for _, b in ipairs(X.BuyIdeas(40)) do
+		if not seen[b.key] then
+			seen[b.key] = true
+			local d = ideas[b.key]
+			local row = {key = b.key, kind = b.kind, action = b.action, now = b.price, target = b.target, each = pos(b.each),
+				qty = b.qty, total = pos(b.profit), max = b.max, source = b.source, tag = b.tag}
+			if b.kind == "list" then
+				row.ideaName = "Shopping list"
+				row.why = "on your list " .. tostring(b.tag) .. (b.max and (", at most " .. plain(b.max) .. " each") or "")
+			elseif b.kind == "queue" then
+				row.ideaName = "Crafting queue"
+				row.why = "material for your crafting queue" .. (b.max and (", at most " .. plain(b.max) .. " each") or "")
+			elseif b.kind == "watch" then
+				row.ideaName = "Watched"
+				row.why = "listed under your max price of " .. plain(b.max)
+			else
+				row.idea = d and d.idea or (b.kind == "deal" and "usual" or nil)
+				row.ideaName = d and d.ideaName or (b.kind == "deal" and "Under usual price" or b.from)
+				row.more = d and d.more
+				row.why = d and d.why
+				if not row.why and b.target and b.target > 0 and b.price then
+					row.why = string.format("%.0f%% of what it sells for", b.price / b.target * 100)
+				end
+				row.risk = b.risk or (d and d.risk)
+			end
+			row.rate = (d and d.rate) or rateOf(b.key)
+			if not row.risk and (b.kind == "deal" or b.kind == "idea") then
+				local it = X.Items()[b.key]
+				row.risk = UI.IdeaRisk(it and X.Stats(it), row.rate)
+			end
+			out[#out + 1] = row
+		end
+	end
+	-- then every other buy idea (best first): disenchanting, buying from a vendor, smaller or riskier buys
+	for _, d in ipairs(all) do
+		if not seen[d.key] then
+			seen[d.key] = true
+			out[#out + 1] = {key = d.key, kind = "idea", idea = d.idea, ideaName = d.ideaName, more = d.more, action = d.action,
+				now = d.now, target = d.target, each = pos(d.profit), qty = d.qty, total = pos(d.total), rate = d.rate,
+				risk = d.risk, why = d.why, vendor = d.vendor,
+				-- the most to pay for one: the price now plus half the profit (still half the profit left)
+				max = (d.now and not d.vendor) and math.floor(d.now + math.max(0, d.profit or 0) / 2) or nil,
+				-- source and tag as the Next buy key uses them: one purchase whichever starts it
+				source = "idea", tag = "idea:" .. d.key}
+		end
+	end
+	-- the speed filter (items known to sell slower than N a day are left out; unknown speed and what you asked for: shown)
+	local S = X.S()
+	if not S.dealSpeedHide then return out end
+	local kept = {}
+	for _, r in ipairs(out) do
+		if MINE[r.kind] or not r.rate or r.rate >= (S.dealSpeedMin or 0) then kept[#kept + 1] = r end
+	end
+	return kept
+end
+
+-- the best buys list (widths add up to 920: what a 940 wide list has room for next to its scroll bar)
+local IC = UI.IdeaCells
+local BUY_COL = 11
+local BEST_COLUMNS = {
+	{"Item", 166, "LEFT", text = itemCell, sort = itemName, desc = false},
+	{"Idea", 96, "LEFT", text = IC.idea, sort = field("ideaName"), desc = false},
+	{"Price now", 66, "RIGHT", text = money("now"), sort = field("now"), desc = false},
+	{"Sells for", 66, "RIGHT", text = money("target"), sort = field("target")},
+	{"Profit each", 66, "RIGHT", text = money("each"), sort = field("each")},
+	{"Qty", 34, "RIGHT", text = IC.qty, sort = field("qty")},
+	{"Profit in all", 72, "RIGHT", text = money("total"), sort = field("total")},
+	{"Sells a day", 56, "RIGHT", text = function(r) return UI.RateText(r.rate) end, sort = field("rate")},
+	{"Risk", 44, "LEFT", text = IC.risk, sort = IC.riskSort, desc = false},
+	{"Why", 120, "LEFT", text = IC.why},
+	{"", BUY_W + 4, "LEFT", text = function(r) return r.vendor and (GREY .. " at a vendor|r") or "" end},
+}
 
 local function currentList(p)
 	local names = X.ShopLists()
@@ -223,6 +326,8 @@ local function refreshLists(p)
 	p.entryBox:SetShown(e ~= nil)
 	if e then
 		p.entryLabel:SetText(X.ItemText(e.key) .. ":")
+		p.keepCheck:SetChecked(e.keep and true or false)
+		p.qtyLabel:SetText(e.keep and "Keep" or "Buy in all")
 		if not p.qtyBox:HasFocus() then p.qtyBox:SetText(tostring(e.qty)) end
 		if not p.emaxBox:HasFocus() then p.emaxBox:SetText(e.max and X.MoneyPlain(e.max) or "") end
 	end
@@ -234,20 +339,30 @@ end
 
 -- [[ best buys + the Next buy box ]]
 local NEXT_ON = {check = true, buy = true, confirm = true, poor = true}
-local function selectedIdea(p)
-	for _, r in ipairs(p.ideas or {}) do if r.id == p.selIdea then return r end end
-	return nil
+-- the rows in the order shown, at most MAX, bought on the auction house (ideas only: not your lists, queue or watched items)
+local function shownBuys(p, any)
+	local out = {}
+	for _, r in ipairs(p.bestList.items or {}) do
+		if #out >= MAX then break end
+		if not r.vendor and (any or not MINE[r.kind]) then out[#out + 1] = r end
+	end
+	return out
 end
 local function refreshBest(p)
-	local rows = X.BuyIdeas(40)
-	p.ideas = rows
-	local empty
-	if X.Realm().lastFull == nil and #rows == 0 then empty = "Nothing to buy yet: XNAH needs prices. Do a full scan at the auction house."
-	elseif X.BuyIdeasBusy() then empty = "Looking for good buys ..."
-	else empty = "Nothing worth buying right now. XNAH looks again when prices change." end
-	p.bestList:SetItems(rows, empty)
-	p.bestStatus:SetText(X.ahOpen and "Best first: your shopping lists and watched items under your max price, then the best ideas and deals." or
-		"|cffff8888The auction house is closed:|r prices are from the last scan. Open it to buy.")
+	if X.StrategyCheck then X.StrategyCheck() end -- works the ideas out again when prices changed or they are old
+	local S = X.S()
+	local rows = bestRows()
+	p.bestList:SetRows(rows, (next(X.Items()) ~= nil and X.BuyIdeasBusy()) and "Looking for good buys ..." or UI.IdeasEmptyText("buy"))
+	local count = #rows == 1 and "1 item" or (X.Num(#rows) .. " items")
+	if X.BuyIdeasBusy() then count = count .. ", working ..." end
+	p.bestStatus:SetText(X.ahOpen and ("Your shopping lists, crafting queue and watched items first, then every buy idea.  " .. GREY .. count .. "|r") or
+		("|cffff8888The auction house is closed:|r prices are from the last scan. Open it to buy.  " .. GREY .. count .. "|r"))
+	if not p.speedBox:HasFocus() then p.speedBox:SetText(tostring(S.dealSpeedMin)) end
+	p.speedCheck:SetChecked(S.dealSpeedHide and true or false)
+	local ideas = #shownBuys(p)
+	p.search:SetEnabled(X.ahOpen == true and X.scan.state == "idle" and #shownBuys(p, true) > 0)
+	p.shop:SetEnabled(X.ShopAdd ~= nil and ideas > 0)
+	p.snipe:SetEnabled(ideas > 0)
 	-- the Next buy box
 	local box = p.nextBox
 	local peek = X.NextBuyPeek()
@@ -262,24 +377,31 @@ local function refreshBest(p)
 		box.line1:SetText("To buy: " .. X.Num(b.need or 0) .. "   at most " .. (b.max and X.Money(b.max) or "any price") .. " each" ..
 			((b.bought or 0) > 0 and ("   |cff4ade80bought " .. X.Num(b.bought) .. " for " .. X.MoneyPlain(b.spent) .. "|r") or ""))
 	else
-		box.item:SetText("|cff999999No purchase going on.|r")
+		box.item:SetText(GREY .. "No purchase going on.|r")
 		box.line1:SetText("")
 	end
 	box.state:SetText("|cffaaaaaa" .. (b.text or "") .. "|r")
 	local s = b.state
 	p.skipButton:SetEnabled(s ~= "buying" and (b.key ~= nil or peek.idea ~= nil))
 	p.cancelBuy:SetEnabled(s == "quoting" or s == "confirm" or s == "toohigh")
-	local idea = selectedIdea(p) or peek.idea
-	box.why:SetText(idea and ("|cffffd100" .. (X.ItemName(idea.key) or "") .. ":|r " .. (idea.why or "")) or "")
+	local idea = peek.idea
+	box.why:SetText(idea and ("|cffffd100Next: " .. (X.ItemName(idea.key) or "") .. ":|r " .. (idea.why or "")) or "")
 end
 
 local function refresh(p)
-	local view = p.view
-	p.viewBest:SetSelected(view == "best")
-	p.viewLists:SetSelected(view == "lists")
+	local view = X.S().buyView
+	if not VIEW_OK[view] then view = "best" X.S().buyView = view end
+	p.view = view
+	for key, b in pairs(p.viewButtons) do b:SetSelected(key == view) end
 	p.bestView:SetShown(view == "best")
 	p.listsView:SetShown(view == "lists")
-	if view == "best" then refreshBest(p) else refreshLists(p) end
+	p.adjustView:SetShown(view == "adjust")
+	if view == "best" then refreshBest(p)
+	elseif view == "lists" then refreshLists(p)
+	else
+		if X.StrategyCheck then X.StrategyCheck() end
+		if p.adjustView.Refresh then p.adjustView:Refresh() end
+	end
 end
 
 local function listMenu(p, anchor)
@@ -328,96 +450,173 @@ local function addItem(p)
 		end, "Add")
 end
 
--- the best buys view: the list with Buy buttons, and the Next buy box
-local function buildBest(p, c)
-	p.bestStatus = K.Label(c, "", "GameFontHighlightSmall")
-	p.bestStatus:SetPoint("TOPLEFT", 0, -2)
-	p.bestStatus:SetWidth(BEST_W)
-	p.bestStatus:SetWordWrap(false)
-	p.bestList = K.List(c, BEST_W, CH - 64, 22, function(row, r)
-		row:SetCols(UI.ItemCell(r.key), "|cffaaaaaa" .. (r.from or "") .. "|r" .. (RISK[r.risk or "Low"] or ""), X.Num(r.qty or 1),
-			UI.MoneyCell(r.price), (r.profit and r.profit > 0) and ("|cff4ade80" .. X.MoneyPlain(math.floor(r.profit)) .. "|r") or "|cff999999-|r", "")
-		row:SetSelected(r.id == p.selIdea)
-		if not row.buy then
-			row.buy = UI.BuyButton(row, 136, 19)
-			row.buy:SetPoint("RIGHT", -2, 0)
+-- [[ the Buy button in each row of the best buys ]] set again only for another item (a purchase under way keeps its
+-- step when the list is drawn again)
+local function drawButtons(tbl)
+	for i, rowFrame in ipairs(tbl.rows) do
+		local r = tbl.items[i + tbl.offset]
+		if r and not r.vendor and rowFrame.cols then
+			local b = rowFrame.buyButton
+			if not b then
+				b = UI.BuyButton(rowFrame, BUY_W, 16)
+				b:SetPoint("LEFT", rowFrame.cols[BUY_COL], "LEFT", 0, 0)
+				rowFrame.buyButton = b
+			end
+			local id = r.key .. ":" .. tostring(r.qty) .. ":" .. tostring(r.max) .. ":" .. tostring(r.tag)
+			if b.bestId ~= id then
+				b.bestId = id
+				b:SetItem(r.key, r.qty, r.max, r.source, r.tag)
+			end
+			b:Show()
+		elseif rowFrame.buyButton then
+			rowFrame.buyButton:Hide()
+			rowFrame.buyButton.bestId = nil
 		end
-		row.buy:SetItem(r.key, r.qty, r.max, r.source, r.tag)
-		row:SetScript("OnClick", function(self, button)
-			if button == "RightButton" then UI.ItemMenu(self, r.key) return end
-			p.selIdea = r.id
-			refresh(p)
-		end)
-		row:SetScript("OnEnter", function(self) UI.ItemTooltip(self, r.key) end)
-		row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	end, BEST_COLUMNS)
-	p.bestList:SetPoint("TOPLEFT", 0, -40)
-	local hint = K.Label(c, "|cff999999Click a row for why it is a good buy.  Right click: menu (Never suggest buying this).|r")
-	hint:SetPoint("BOTTOMLEFT", 0, 2)
+		-- the mouse over a row: the item, and why it is a good buy (the Why column is short)
+		if r and r.key then
+			rowFrame:SetScript("OnEnter", function(self)
+				UI.ItemTooltip(self, r.key)
+				if X.KeyID(r.key) then
+					GameTooltip:AddLine(" ")
+					GameTooltip:AddLine((r.ideaName or "Buy") .. ((r.more or 0) > 0 and (" (and " .. r.more .. " more)") or ""), 1, 0.82, 0)
+					local why = IC.whyText(r)
+					if why ~= "" then GameTooltip:AddLine(why, 1, 1, 1, true) end
+					GameTooltip:Show()
+				end
+			end)
+		end
+	end
+end
 
-	local box = K.Panel(c, BW, CH)
-	box:SetPoint("TOPLEFT", BX, 0)
+-- the best buys view: the Next buy box on top, the list with Buy buttons, the buttons under it
+local function buildBest(p, c)
+	-- [[ the Next buy box ]] left: what it is and your key; middle: the big button; right: the purchase going on
+	local box = K.Panel(c, W, NEXT_H)
+	box:SetPoint("TOPLEFT", 0, 0)
 	p.nextBox = box
 	local title = K.Label(box, "Next buy", "GameFontNormal")
-	title:SetPoint("TOPLEFT", 10, -10)
-	local intro = K.Label(box, "Each press of your Next buy key (or of the big button) does one step of the best buy: check " ..
-		"its price, buy, confirm. Then it moves on to the next one. Nothing is bought without a press.")
-	intro:SetPoint("TOPLEFT", 10, -30)
-	intro:SetWidth(BW - 20)
-	intro:SetHeight(56)
-	intro:SetJustifyV("TOP")
-	intro:SetWordWrap(true)
+	title:SetPoint("TOPLEFT", 10, -8)
 	box.keyText = K.Label(box, "")
-	box.keyText:SetPoint("TOPLEFT", 10, -90)
-	box.keyText:SetWidth(BW - 20)
-	box.keyText:SetHeight(28)
+	box.keyText:SetPoint("TOPLEFT", 10, -28)
+	box.keyText:SetWidth(226)
+	box.keyText:SetHeight(48)
 	box.keyText:SetJustifyV("TOP")
 	box.keyText:SetWordWrap(true)
-	p.nextButton = K.Button(box, "Next buy", BW - 20, 48, function()
+	p.nextButton = K.Button(box, "Next buy", 300, 40, function()
 		X.NextBuy("button")
 		refresh(p)
 	end)
-	p.nextButton:SetPoint("TOPLEFT", 10, -122)
+	p.nextButton:SetPoint("TOPLEFT", 246, -8)
 	local nfs = p.nextButton:GetFontString()
 	if nfs then
-		nfs:SetWidth(BW - 36)
+		nfs:SetWidth(284)
 		nfs:SetWordWrap(true)
 	end
-	K.Tooltip(p.nextButton, "Next buy", "Does what the button says: one step per press. Your Next buy key does the same " ..
-		"while the auction house is open.")
-	box.item = K.Label(box, "", "GameFontNormal")
-	box.item:SetPoint("TOPLEFT", 10, -182)
-	box.item:SetWidth(BW - 20)
-	box.item:SetWordWrap(false)
-	box.line1 = K.Label(box, "")
-	box.line1:SetPoint("TOPLEFT", 10, -202)
-	box.line1:SetWidth(BW - 20)
-	box.line1:SetWordWrap(false)
-	box.state = K.Label(box, "")
-	box.state:SetPoint("TOPLEFT", 10, -220)
-	box.state:SetWidth(BW - 20)
-	box.state:SetHeight(30)
-	box.state:SetJustifyV("TOP")
-	box.state:SetWordWrap(true)
+	K.Tooltip(p.nextButton, "Next buy", "Each press of your Next buy key (or of this button) does one step of the best buy: " ..
+		"check its price, buy, confirm - then it moves on to the next one. Nothing is bought without a press. Stackable " ..
+		"items take two presses: the first asks the server for the exact price, the second buys.")
 	p.skipButton = K.Button(box, "Skip this buy", 110, 22, function() X.NextBuySkip() refresh(p) end)
-	p.skipButton:SetPoint("TOPLEFT", 10, -256)
+	p.skipButton:SetPoint("TOPLEFT", 246, -54)
 	K.Tooltip(p.skipButton, "Skip this buy", "Leaves this buy out for 10 minutes and goes on to the next one.")
 	p.cancelBuy = K.Button(box, "Cancel", 80, 22, function() X.BuyCancel() refresh(p) end)
 	p.cancelBuy:SetPoint("LEFT", p.skipButton, "RIGHT", 6, 0)
 	K.Tooltip(p.cancelBuy, "Cancel", "Stops a purchase that asked for its price (nothing is bought).")
+	local RXB, RWB = 560, W - 570
+	box.item = K.Label(box, "", "GameFontNormal")
+	box.item:SetPoint("TOPLEFT", RXB, -8)
+	box.item:SetWidth(RWB)
+	box.item:SetWordWrap(false)
+	box.line1 = K.Label(box, "")
+	box.line1:SetPoint("TOPLEFT", RXB, -28)
+	box.line1:SetWidth(RWB)
+	box.line1:SetWordWrap(false)
+	box.state = K.Label(box, "")
+	box.state:SetPoint("TOPLEFT", RXB, -44)
+	box.state:SetWidth(RWB)
+	box.state:SetWordWrap(false)
 	box.why = K.Label(box, "")
-	box.why:SetPoint("TOPLEFT", 10, -292)
-	box.why:SetWidth(BW - 20)
-	box.why:SetHeight(84)
+	box.why:SetPoint("TOPLEFT", RXB, -60)
+	box.why:SetWidth(RWB)
+	box.why:SetHeight(22)
 	box.why:SetJustifyV("TOP")
 	box.why:SetWordWrap(true)
-	local note = K.Label(box, "|cff999999Stackable items take two presses: the first asks the server for the exact price, the " ..
-		"second buys. Buys you skip come back after 10 minutes.|r")
-	note:SetPoint("BOTTOMLEFT", 10, 10)
-	note:SetWidth(BW - 20)
-	note:SetHeight(42)
-	note:SetJustifyV("BOTTOM")
-	note:SetWordWrap(true)
+
+	-- [[ under the box: status, and hide slow sellers ]]
+	p.bestStatus = K.Label(c, "", "GameFontHighlightSmall")
+	p.bestStatus:SetPoint("TOPLEFT", 0, -(NEXT_H + 12))
+	p.bestStatus:SetWidth(610)
+	p.bestStatus:SetWordWrap(false)
+	p.speedCheck = K.Check(c, "Hide items that sell under", function(on)
+		X.S().dealSpeedHide = on
+		refresh(p)
+	end)
+	p.speedCheck:SetPoint("TOPLEFT", 624, -(NEXT_H + 6))
+	K.Tooltip(p.speedCheck, "Hide slow sellers",
+		"Leaves out of this list items known to sell fewer than this many a day (your shopping lists, crafting queue " ..
+		"and watched items stay). The sales speed is an estimate from two full scans up to 4 hours apart (cancelled auctions look like " ..
+		"sales, so it can be high). Items whose speed is not known yet stay in the list.")
+	p.speedBox = K.Edit(c, 36)
+	p.speedBox:SetPoint("LEFT", p.speedCheck.label, "RIGHT", 8, 0)
+	p.speedBox:SetScript("OnEditFocusLost", function(self)
+		local v = tonumber(X.Trim(self:GetText()))
+		if v and v >= 0 then X.S().dealSpeedMin = v end
+		self:SetText(tostring(X.S().dealSpeedMin))
+		refresh(p)
+	end)
+	local aDay = K.Label(c, "a day")
+	aDay:SetPoint("LEFT", p.speedBox, "RIGHT", 4, 0)
+
+	-- [[ the list ]] click: item page, right click: menu
+	p.bestList = K.Table(c, W, CH - BEST_TOP - 28, BEST_COLUMNS, function(r, button, rowFrame)
+		if not r.key then return end
+		if button == "RightButton" then UI.ItemMenu(rowFrame, r.key) else UI.ShowItem(r.key) end
+	end)
+	p.bestList:SetPoint("TOPLEFT", 0, -BEST_TOP)
+	local baseRefresh = p.bestList.Refresh
+	function p.bestList:Refresh()
+		baseRefresh(self)
+		drawButtons(self)
+	end
+
+	-- [[ under the list: search, shopping list, sniper (the first rows shown, bought on the auction house) ]]
+	p.search = K.Button(c, "Search these on the AH", 166, 22, function()
+		local keys = {}
+		for _, r in ipairs(shownBuys(p, true)) do keys[#keys + 1] = r.key end
+		if #keys > 0 and X.ahOpen and X.scan.state == "idle" then X.ScanItems(keys, "best buys") end
+	end)
+	p.search:SetPoint("BOTTOMLEFT", 0, 0)
+	K.Tooltip(p.search, "Search these on the auction house",
+		"Searches the first " .. MAX .. " items of this list one by one, in the order shown, for their live prices " ..
+		"(the list can be out of date: someone may have bought them already). Needs the auction house open.")
+	p.shop = K.Button(c, "Add to shopping list", 150, 22, function()
+		if not X.ShopAdd then return end
+		local name, n = "Deals", 0
+		for _, r in ipairs(shownBuys(p)) do
+			if X.ShopAdd(name, r.key, r.qty or 1, r.max) then n = n + 1 end
+		end
+		X.Print(n .. " items put on the shopping list \"" .. name .. "\" (tab Buy), each with a top price of its price now " ..
+			"plus half the profit.")
+	end)
+	p.shop:SetPoint("LEFT", p.search, "RIGHT", 6, 0)
+	K.Tooltip(p.shop, "Add to shopping list", "Puts the first " .. MAX .. " ideas of this list on the shopping list \"Deals\", " ..
+		"with the quantity shown and a top price of the price now plus half the profit (not your lists, queue or watched items).")
+	p.snipe = K.Button(c, "Snipe at this price", 140, 22, function()
+		local n = 0
+		for _, r in ipairs(shownBuys(p)) do
+			if r.now then
+				X.SetWatchMax(r.key, X.Round(r.now))
+				n = n + 1
+			end
+		end
+		X.Print(n .. " items on the watch list with a top price (the sniper looks for them: Shopping lists and sniper).")
+	end)
+	p.snipe:SetPoint("LEFT", p.shop, "RIGHT", 6, 0)
+	K.Tooltip(p.snipe, "Snipe at this price", "Puts the first " .. MAX .. " ideas of this list on the watch list with their " ..
+		"price now as the most to pay: the sniper tells you when one is listed at or under it.")
+	local hint = K.Label(c, GREY .. "Click: item page.  Mouse over: why.  Right-click: menu.  +1 = another idea found it too.|r", nil, "RIGHT")
+	hint:SetPoint("BOTTOMRIGHT", 0, 4)
+	hint:SetWidth(W - 480)
+	hint:SetWordWrap(false)
 end
 
 -- the lists view: shopping lists on the left, the purchase panel and the sniper on the right
@@ -443,7 +642,7 @@ local function buildLists(p, c)
 	p.status:SetPoint("TOPLEFT", 0, -30)
 	p.status:SetWidth(LEFT_W)
 	p.status:SetWordWrap(false)
-	p.shopTable = K.Table(c, LEFT_W, CH - TOP - 50, SHOP_COLUMNS, function(e, button, rowFrame)
+	p.shopTable = K.Table(c, LEFT_W, CH - TOP - 54, SHOP_COLUMNS, function(e, button, rowFrame)
 		if button == "RightButton" then
 			K.Menu(rowFrame, {
 				{text = X.ItemText(e.key), isTitle = true},
@@ -457,25 +656,33 @@ local function buildLists(p, c)
 		refresh(p)
 	end)
 	p.shopTable:SetPoint("TOPLEFT", 0, -TOP)
-	-- the picked entry: how many and the max price
+	-- the picked entry (two lines under the list): its name; keep in stock, how many, the max price
 	local eb = CreateFrame("Frame", nil, c)
 	eb:SetPoint("BOTTOMLEFT", 0, 0)
-	eb:SetSize(LEFT_W, 24)
+	eb:SetSize(LEFT_W, 48)
 	p.entryBox = eb
 	p.entryLabel = K.Label(eb, "")
-	p.entryLabel:SetPoint("LEFT", 0, 0)
-	p.entryLabel:SetWidth(200)
+	p.entryLabel:SetPoint("TOPLEFT", 0, -4)
+	p.entryLabel:SetWidth(LEFT_W)
 	p.entryLabel:SetWordWrap(false)
-	local lq = K.Label(eb, "Buy in all")
-	lq:SetPoint("LEFT", 206, 0)
+	p.keepCheck = K.Check(eb, "Keep in stock", function(on)
+		if p.selKey then X.ShopSet(p.list, p.selKey, "keep", on) end
+		refresh(p)
+	end)
+	p.keepCheck:SetPoint("TOPLEFT", 0, -24)
+	K.Tooltip(p.keepCheck, "Keep in stock", "Ticked: XNAH keeps this many in stock. It counts what all your characters have " ..
+		"(bags, bank, mail, the auction house) and buys only what is missing - again whenever you run low.\n" ..
+		"Not ticked: buys this many in all, once.")
+	p.qtyLabel = K.Label(eb, "Buy in all")
+	p.qtyLabel:SetPoint("TOPLEFT", 116, -29)
 	p.qtyBox = K.Edit(eb, 50, function(text)
 		local n = tonumber(X.Trim(text))
 		if n and n >= 1 and p.selKey then X.ShopSet(p.list, p.selKey, "qty", n) end
 		refresh(p)
 	end)
-	p.qtyBox:SetPoint("LEFT", 266, 0)
+	p.qtyBox:SetPoint("TOPLEFT", 176, -25)
 	local lm = K.Label(eb, "Max each")
-	lm:SetPoint("LEFT", 330, 0)
+	lm:SetPoint("TOPLEFT", 240, -29)
 	p.emaxBox = K.Edit(eb, 100, function(text)
 		if p.selKey then
 			local v = X.ParseMoney(text)
@@ -484,9 +691,9 @@ local function buildLists(p, c)
 		end
 		refresh(p)
 	end)
-	p.emaxBox:SetPoint("LEFT", 390, 0)
-	local hint = K.Label(eb, "|cff999999then Enter|r")
-	hint:SetPoint("LEFT", 496, 0)
+	p.emaxBox:SetPoint("TOPLEFT", 300, -25)
+	local hint = K.Label(eb, GREY .. "then Enter|r")
+	hint:SetPoint("TOPLEFT", 408, -29)
 
 	-- [[ right, top: the purchase panel ]]
 	local box = K.Panel(c, RW, 196)
@@ -562,28 +769,37 @@ local function buildLists(p, c)
 	p.hitTable:SetPoint("TOPLEFT", 8, -212)
 end
 
-local function viewButton(p, text, x, view)
-	local b = K.Flat(p, 190, 22)
-	b:SetPoint("TOPLEFT", x, 0)
-	b:SetLabel(text)
-	b.label:SetJustifyH("CENTER")
-	b:SetScript("OnClick", function() p.view = view refresh(p) end)
-	return b
-end
-
 local function build(p)
-	p.view = "best"
-	p.viewBest = viewButton(p, "Best buys", 0, "best")
-	p.viewLists = viewButton(p, "Shopping lists and sniper", 194, "lists")
-	p.bestView = CreateFrame("Frame", nil, p)
-	p.bestView:SetPoint("TOPLEFT", 0, -VIEW_H)
-	p.bestView:SetSize(W, CH)
+	p.viewButtons = {}
+	local x = 0
+	for _, v in ipairs(VIEWS) do
+		local b = K.Flat(p, v.w, 22)
+		b:SetPoint("TOPLEFT", x, 0)
+		b:SetLabel(v.title)
+		b.label:SetJustifyH("CENTER")
+		b:SetScript("OnClick", function() X.S().buyView = v.key refresh(p) end)
+		p.viewButtons[v.key] = b
+		x = x + v.w + 4
+	end
+	K.Tooltip(p.viewButtons.adjust, "Adjust ideas", "Which ideas go into the lists (here, Sell ideas on tab Sell, Make " ..
+		"ideas on tab Crafting), their numbers, and how each one works.")
+	-- the views below the buttons (same place, one shown)
+	local function area()
+		local f = CreateFrame("Frame", nil, p)
+		f:SetPoint("TOPLEFT", 0, -VIEW_H)
+		f:SetSize(W, CH)
+		f:Hide()
+		return f
+	end
+	p.bestView = area()
 	buildBest(p, p.bestView)
-	p.listsView = CreateFrame("Frame", nil, p)
-	p.listsView:SetPoint("TOPLEFT", 0, -VIEW_H)
-	p.listsView:SetSize(W, CH)
+	p.listsView = area()
 	buildLists(p, p.listsView)
-	p.listsView:Hide()
+	p.adjustView = area()
+	if UI.BuildIdeasAdjust then
+		local ok, err = pcall(UI.BuildIdeasAdjust, p.adjustView, W, CH, function() UI.Ideas.changed() end)
+		if not ok then X.OnError(err) end
+	end
 end
 
-UI.AddTab("buy", "Buy", build, refresh, 4)
+UI.AddTab("buy", "Buy", build, refresh, 3)

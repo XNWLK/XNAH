@@ -360,11 +360,12 @@ X.On("AUCTION_HOUSE_SHOW_ERROR", function()
 end)
 
 -- [[ the best buys right now ]] X.BuyIdeas(limit) -> rows, best first:
---   1. your shopping lists and watched items with a max price, when they are listed at or under that price now
+--   1. your shopping lists, the crafting queue's materials (Queue.lua, X.QueueBuys) and watched items with a max price,
+--      when they are listed at or under that price now
 --   2. good buys from the buy-side strategies' last results and the deals (listed far under the usual price), one per
 --      item, the profit worked out again from today's cheapest price, after the auction house cut; risky ones only when
 --      the profit is big. Items you said never to suggest and grey items are left out of these (X.BuyIdea).
--- row = {id, key, kind = "list" / "watch" / "idea" / "deal", from (short text: where it comes from), why, action,
+-- row = {id, key, kind = "list" / "queue" / "watch" / "idea" / "deal", from (short text: where it comes from), why, action,
 --   qty, max (the most to pay for one), price (cheapest now), each (profit each), profit (in all), target, risk,
 --   source, tag (for X.BuyStart / UI.BuyButton)}
 local MIN_TOTAL = 5000        -- 50s: a smaller buy is not worth the clicks
@@ -453,7 +454,7 @@ local function dealsCheck()
 end
 X.On("XNAH_PRICES", function() dealsDirty = true version = version + 1 end)
 X.On("XNAH_IGNORE", function() dealsDirty = true version = version + 1 end)
-for _, ev in ipairs({"XNAH_STRATEGY", "XNAH_SHOP", "XNAH_WATCH", "XNAH_BOUGHT", "XNAH_LIVE"}) do
+for _, ev in ipairs({"XNAH_STRATEGY", "XNAH_SHOP", "XNAH_WATCH", "XNAH_BOUGHT", "XNAH_LIVE", "XNAH_QUEUE", "XNAH_INVENTORY"}) do
 	X.On(ev, function() version = version + 1 end)
 end
 -- still looking (the deals pass or the strategies are being worked out)
@@ -494,7 +495,8 @@ local function buildCandidates()
 	return out
 end
 
--- your shopping lists and your watch list (things you asked for), when they can be had at or under your max price
+-- your shopping lists, the crafting queue and your watch list (things you asked for), when they can be had at or
+-- under your max price
 local function wishes(out, seen)
 	for _, list in ipairs(X.ShopLists and X.ShopLists() or {}) do
 		local l = X.ShopList(list)
@@ -507,6 +509,18 @@ local function wishes(out, seen)
 					why = "Still " .. X.Num(need) .. " to buy on your shopping list " .. list ..
 						(se.max and (", at most " .. plain(se.max) .. " each.") or "."),
 					action = "Buy", qty = need, max = se.max, price = price, profit = 0, source = "shop", tag = list}
+			end
+		end
+	end
+	-- the crafting queue's materials still to buy (Queue.lua: at a max price that keeps the crafts worth it)
+	if X.QueueBuys then
+		for _, q in ipairs(X.QueueBuys()) do
+			local price = priceNow(q.key)
+			if price and (not q.max or price <= q.max) and not seen[q.key] then
+				seen[q.key] = true
+				out[#out + 1] = {id = "queue:" .. q.key, key = q.key, kind = "queue", from = "craft queue",
+					why = "Still " .. X.Num(q.buy) .. " to buy for your crafting queue" .. (q.max and (", at most " .. plain(q.max) .. " each.") or "."),
+					action = "Buy", qty = q.buy, max = q.max, price = price, profit = 0, source = "queue", tag = "queue:" .. q.key}
 			end
 		end
 	end
@@ -677,7 +691,7 @@ function X.NextBuySkip()
 end
 
 -- [[ the key binding ]] (Bindings.xml; the key is set in the game's key bindings, under AddOns)
-BINDING_NAME_XNAH_NEXTBUY = "Next buy: next step"
+BINDING_NAME_XNAH_NEXTBUY = "Next buy: next step (buying only)"
 function XNAH_NextBuy()
 	X.NextBuy("key")
 end

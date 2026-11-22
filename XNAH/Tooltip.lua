@@ -50,6 +50,11 @@ function X.TooltipLines(key, count)
 			local rate = X.SaleRate(key)
 			if rate then lines[#lines + 1] = {"  Sells per day", GREY .. "about|r " .. X.Rate(rate)} end
 		end
+		-- the weekday it sells highest on (only when the history shows one clearly)
+		if S.tipHistory and X.BestDay then
+			local bd = X.BestDay(key)
+			if bd then lines[#lines + 1] = {"  Best day to sell", bd.name .. " " .. GREY .. "(|r" .. X.Pct(bd.pct) .. GREY .. ")|r"} end
+		end
 	end
 	if S.tipLedger and X.LedgerItem then
 		local l = X.LedgerItem(key)

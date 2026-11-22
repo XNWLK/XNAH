@@ -2,6 +2,17 @@
 -- then posts the ticked items (everything worth posting, unless you unticked it) at XNAH's price; a price warning needs a
 -- second press; failed steps are skipped; nothing that posts or cancels ever runs outside a press
 -- (tools/world-auction.lua + world-routine.lua make those calls throw outside one).
+-- Since v0.8 the key (XNAH_NEXT) is the Next step key (Next.lua, tests-27-next.lua), which also buys after the routine:
+-- these scenes press the routine's own step inside a key press, X.RoutineNext("key").
+
+-- a key press that runs the routine's step (a hardware event, like the key binding)
+local function press()
+	local was = W.hardware
+	W.hardware = true
+	local ok, e = pcall(W.X.RoutineNext, "key")
+	W.hardware = was
+	if not ok then error(e, 0) end
+end
 
 local function history(X, key, usual, days)
 	for d = days or 5, 1, -1 do X.Record(key, X.Now() - d * 86400, usual, usual, 50, 5) end
@@ -48,20 +59,20 @@ T.scene("routine: cancels first, then posts, one action per press", function()
 	T.check("off before the first press", X.routine.state, "off")
 	T.check("peek: start", X.RoutinePeek().what, "start")
 	-- the first press only starts (asks for your auctions, searches prices in the background)
-	W.pressKey()
+	press()
 	T.check("first press: started", X.routine.state, "on")
 	T.check("first press: nothing restricted", #W.restrictedCalls, 0)
 	T.ok("chat says it is checking", #W.said("checking your auctions") == 1, W.lastSaid())
-	T.check("a press while it prepares does nothing restricted", (function() W.pressKey() return #W.restrictedCalls end)(), 0)
+	T.check("a press while it prepares does nothing restricted", (function() press() return #W.restrictedCalls end)(), 0)
 	T.ok("prepared", ready(X))
 	T.check("no restricted call while preparing", #W.restrictedCalls, 0)
 	T.check("the steps: cancels first, then the most valuable posts", kinds(X),
 		"cancel 2589, post 15210:-19, post 15210:-19, post 2589, post 2592")
 	T.check("peek: the cancel", X.RoutinePeek().text, "Next: cancel Linen Cloth x10 (undercut by 5c)")
 	-- 1: the cancel
-	W.pressKey()
+	press()
 	T.check("press 1: one cancel", calls(), "CancelAuction")
-	W.pressKey()
+	press()
 	T.check("a press before the answer does nothing", calls(), "CancelAuction")
 	W.advance(1)
 	T.check("cancelled", #myAuctions(2589), 0)
@@ -69,14 +80,14 @@ T.scene("routine: cancels first, then posts, one action per press", function()
 	T.check("the other auction stays", #myAuctions(2592), 1)
 	-- 2 + 3: the swords, one auction each
 	T.check("peek: a sword", X.RoutinePeek().text, "Next: post 1 x Raider Shortsword of the Bear at 4g 99s 99c")
-	W.pressKey()
+	press()
 	W.advance(1)
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("both swords posted", #myAuctions(15210), 2)
 	-- 4: Linen, all 20 in one auction, undercut by 1c
 	T.check("peek: post Linen", X.RoutinePeek().text, "Next: post 20 x Linen Cloth at 89c each")
-	W.pressKey()
+	press()
 	W.advance(1)
 	local mine = myAuctions(2589)
 	T.check("Linen posted", #mine, 1)
@@ -85,7 +96,7 @@ T.scene("routine: cancels first, then posts, one action per press", function()
 	T.check("Linen bags empty", bagCount(2589), 0)
 	-- 5: Wool
 	T.check("peek: post Wool", X.RoutinePeek().text, "Next: post 10 x Wool Cloth at 59c each")
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("Wool posted", #myAuctions(2592), 2)
 	T.check("restricted calls, one per press", calls(), "CancelAuction,PostItem,PostItem,PostCommodity,PostCommodity")
@@ -95,7 +106,7 @@ T.scene("routine: cancels first, then posts, one action per press", function()
 	T.check("silk (no price: not worth posting) stays in the bags", bagCount(4306), 5)
 	T.check("nothing bought", #W.won, 0)
 	-- after done, a press starts a new round (nothing restricted on that press)
-	W.pressKey()
+	press()
 	T.check("new round", X.routine.state, "on")
 	T.ok("new round prepared", ready(X))
 	T.check("new round: nothing undercut, nothing worth posting", X.routine.state, "done")
@@ -117,12 +128,12 @@ T.scene("routine: a price warning needs a second press; failed steps are skipped
 	W.putBag(0, 3, 2996, 5)
 	W.putBag(0, 4, 2841, 3)              -- no price known at all: left out (not a step)
 	W.openAH()
-	W.pressKey()
+	press()
 	T.ok("prepared", ready(X))
 	T.check("steps (most valuable first)", kinds(X), "cancel 2770, post 2589, post 2996, post 2592")
 	-- the cancel is refused: skipped with a reason
 	W.cancelRefuse = true
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("cancel tried once", calls(), "CancelAuction")
 	T.check("cancel skipped", X.routine.steps[1].status, "skipped")
@@ -130,7 +141,7 @@ T.scene("routine: a price warning needs a second press; failed steps are skipped
 	T.check("auction still up", #myAuctions(2770), 1)
 	-- Linen: the auction house warns -> a second press confirms
 	W.warnNextPost = true
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("not posted yet", #myAuctions(2589), 0)
 	local peek = X.RoutinePeek()
@@ -138,20 +149,20 @@ T.scene("routine: a price warning needs a second press; failed steps are skipped
 	T.ok("confirm text", peek.text:find("Next: confirm the post of 20 x Linen Cloth", 1, true), peek.text)
 	W.advance(30)
 	T.check("the warning waits for you (no time-out)", X.RoutinePeek().what, "confirm")
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("posted after the second press", #myAuctions(2589), 1)
 	T.check("calls", calls(), "CancelAuction,PostCommodity,ConfirmPostCommodity")
 	-- Bolt: the auction house says no -> skipped, on to the next
 	W.postErrorNext = true
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("bolt tried once", calls(), "CancelAuction,PostCommodity,ConfirmPostCommodity,PostCommodity")
 	T.check("bolt skipped", X.routine.steps[3].status, "skipped")
 	T.check("bolt still in the bags", bagCount(2996), 5)
 	-- Wool: gone from the bags before its press -> skipped (nothing restricted)
 	W.bags[0][2] = nil
-	W.pressKey()
+	press()
 	T.check("wool skipped", X.routine.steps[4] and X.routine.steps[4].status, "skipped")
 	T.ok("wool reason", (X.routine.steps[4] and X.routine.steps[4].why or ""):find("not in your bags", 1, true))
 	T.check("no call for skipped steps", #W.restrictedCalls, 4)
@@ -163,11 +174,11 @@ T.scene("routine: a price warning needs a second press; failed steps are skipped
 	-- Skip: a price warning answered with Skip this step
 	W.putBag(0, 1, 2592, 10)
 	X.S().routineCancel = false
-	W.pressKey()
+	press()
 	T.ok("prepared again", ready(X))
 	T.check("steps of the new round", kinds(X), "post 2592")
 	W.warnNextPost = true
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("warning", X.RoutinePeek().what, "confirm")
 	X.RoutineSkip()
@@ -184,7 +195,7 @@ T.scene("routine: nothing restricted happens outside a press", function()
 	W.list(2589, 90, 20, 3, "Ann")
 	W.putBag(0, 1, 2589, 20)
 	-- the key with the auction house closed: a chat line, nothing else
-	W.pressKey()
+	press()
 	T.ok("closed: says so", #W.said("only while the auction house is open") == 1, W.lastSaid())
 	T.check("closed: not started", X.routine.state, "off")
 	W.openAH()
@@ -220,7 +231,7 @@ T.scene("routine: ticks change the steps while a round is on", function()
 	W.putBag(0, 2, 2592, 10)
 	W.openAH()
 	X.S().routineCancel = false
-	W.pressKey()
+	press()
 	T.ok("prepared", ready(X))
 	T.check("both worth posting", kinds(X), "post 2589, post 2592")
 	-- untick Linen: its step goes, remembered
@@ -234,9 +245,9 @@ T.scene("routine: ticks change the steps while a round is on", function()
 	W.fire("BAG_UPDATE_DELAYED")
 	W.advance(3)
 	T.check("new in the bags: added", kinds(X), "post 2592, post 2996")
-	W.pressKey()
+	press()
 	W.advance(1)
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("done", X.routine.state, "done")
 	-- tick Linen again: the round goes on with it
@@ -245,7 +256,7 @@ T.scene("routine: ticks change the steps while a round is on", function()
 	T.check("ticked again: back on", X.routine.state, "on")
 	T.check("its step", kinds(X), "post 2592, post 2996, post 2589")
 	T.check("the choice is not kept (worth posting = ticked anyway)", X.db.sellTick["2589"], nil)
-	W.pressKey()
+	press()
 	W.advance(1)
 	T.check("posted", #myAuctions(2589), 1)
 	T.check("calls", calls(), "PostCommodity,PostCommodity,PostCommodity")

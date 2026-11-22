@@ -393,6 +393,17 @@ local function build(panel)
 		X.S().itemMore = not X.S().itemMore
 		refresh(panel)
 	end)
+	-- price alert: a chat line and a sound when any scan or search finds it at or under this price
+	panel.alert = K.Flat(nums, 156, 18)
+	panel.alert:SetPoint("BOTTOMRIGHT", -8, 6)
+	panel.alert.label:SetJustifyH("CENTER")
+	panel.alert:SetScript("OnClick", function()
+		if UI.itemKey and X.AskAlert then X.AskAlert(UI.itemKey) end
+	end)
+	K.Tooltip(panel.alert, "Price alert", "Click to set the price: when any scan or search finds this item listed at or " ..
+		"under it, XNAH says so in chat with a sound, and it shows in the Hits list on the Buy tab (buy it there). " ..
+		"Nothing is bought by itself. Leave the box empty to remove the alert. Same price as the watch list's highest " ..
+		"price to pay.")
 
 	buildGraph(panel, body)
 
@@ -559,7 +570,7 @@ local function plainRows(s)
 		own = s.owned > 0 and (X.Num(s.owned) .. (s.ownedBags and s.ownedBags > 0 and s.ownedBags < s.owned and
 			(GREY .. "  (" .. X.Num(s.ownedBags) .. " in your bags)|r") or "")) or (GREY .. "none|r")
 	end
-	return {
+	local rows = {
 		{"Lowest now", low},
 		{"Usually sells for", M(s.usual)},
 		{"Fair price to buy", s.fairBuy and (M(s.fairBuy) .. GREY .. "  or less|r") or (GREY .. "not known yet|r")},
@@ -572,6 +583,11 @@ local function plainRows(s)
 		{"You own", own},
 		{"Seen", cur and cur.t and (X.Ago(cur.t) .. (stale and (GREY .. "  (old - search again)|r") or "")) or (GREY .. "never|r")},
 	}
+	-- only when the history shows a weekday clearly higher than the rest (X.BestDay)
+	if s.bestDay then
+		table.insert(rows, 6, {"Best day to sell", s.bestDay.name .. GREY .. " (|r" .. X.Pct(s.bestDay.pct) .. GREY .. ")|r"})
+	end
+	return rows
 end
 
 -- every number ("More numbers")
@@ -896,6 +912,7 @@ refresh = function(panel)
 	if X.DEValue then s.de = X.DEValue(key) end
 	if X.LedgerItem then s.ledger = X.LedgerItem(key) end
 	if X.StrategyMarks then s.marks = X.StrategyMarks(key) end
+	if X.BestDay then s.bestDay = X.BestDay(key) end
 	if X.Owned then
 		local total, parts = X.Owned(key)
 		s.owned, s.ownedBags = total, parts and parts.bags
@@ -914,6 +931,8 @@ refresh = function(panel)
 	end
 	panel.sub:SetText(GREY .. sub .. "|r")
 	local wmax = X.WatchMax(key)
+	panel.alert:SetLabel(wmax and ("Alert under " .. X.MoneyPlain(wmax)) or "Alert me under ...")
+	panel.alert:SetShown(X.AskAlert ~= nil)
 	panel.lists:SetText(X.Watched(key) and (wmax and ("Watched, max " .. X.MoneyPlain(wmax)) or "Watched") or "Watch list")
 	panel.ah:SetEnabled(X.scan and X.scan.state == "idle")
 	-- Buy: set again only when the item or the price changes (it walks its own steps: buy, confirm)

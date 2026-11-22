@@ -4,6 +4,8 @@
 -- allows posting and cancelling only on a click or a key press, one action each, so this is as automatic as it is
 -- allowed to be. Everything that is NOT restricted (asking for your auctions, searching prices about one a second) runs
 -- in the background as soon as the routine starts, so each press can act at once. It never buys anything.
+-- The key is the Next step key (Next.lua), which does these steps at the auction house. What your crafting queue still
+-- uses (its materials) is not posted, unless you ticked the item yourself.
 --   X.RoutineStart()    start a round (not restricted; the first press does this, and the Sell tab when it is shown)
 --   X.RoutineAuto()     start a round if none is going on and you did not stop it (the Sell tab calls it)
 --   X.RoutineNext(src)  ONE step. Call it only straight from a click or a key press (src "key" = the key binding).
@@ -49,12 +51,18 @@ local function doneText()
 end
 
 -- [[ the plan ]]
+-- what of an item may be posted: all you have, minus what your crafting queue still uses (Queue.lua) unless you ticked
+-- the item yourself
+local function postable(row)
+	local keep = (X.QueueKeep and X.SellChoice(row.key) ~= true) and X.QueueKeep(row.key) or 0
+	return math.max(0, row.have - keep), keep
+end
 -- post steps for the items in your bags you did not untick (looked at once per round), most valuable first: stackable
 -- items in one auction (all of them), other items one auction per piece. Their price is searched first ("wait").
 local function addPostSteps(rows, only)
 	local list = {}
 	for _, row in ipairs(rows) do
-		if X.SellChoice(row.key) ~= false and not R.looked[row.key] and (not only or only == row.key) then
+		if X.SellChoice(row.key) ~= false and not R.looked[row.key] and (not only or only == row.key) and postable(row) > 0 then
 			R.looked[row.key] = true
 			local _, w = X.SellWorth(row)
 			list[#list + 1] = {row = row, value = w.net or 0}
@@ -67,8 +75,9 @@ local function addPostSteps(rows, only)
 	local added = {}
 	for _, x in ipairs(list) do
 		local row = x.row
-		for _ = 1, row.commodity and 1 or row.have do
-			R.steps[#R.steps + 1] = {kind = "post", key = row.key, qty = row.commodity and row.have or 1, status = "wait"}
+		local n = postable(row)
+		for _ = 1, row.commodity and 1 or n do
+			R.steps[#R.steps + 1] = {kind = "post", key = row.key, qty = row.commodity and n or 1, status = "wait"}
 		end
 		added[#added + 1] = row.key
 	end
@@ -258,7 +267,9 @@ local function checkPost(s, rows)
 	if not row then return nil, "not in your bags any more" end
 	local unit, why = X.PostPrice(s.key)
 	if not unit then return nil, why or "no price known" end
-	local qty = row.commodity and row.have or 1
+	local n = postable(row)
+	if n <= 0 then return nil, "kept for your crafting queue" end
+	local qty = row.commodity and n or 1
 	local duration = X.PostRule(s.key).duration
 	local deposit = X.PostDeposit(row, duration, qty)
 	if deposit and money() < deposit then return nil, "not enough money for the deposit" end
@@ -458,9 +469,4 @@ X.On("AUCTION_HOUSE_CLOSED", function()
 	end
 	changed()
 end)
-
--- [[ the key binding ]] (Bindings.xml; the key is set in the game's key bindings, under AddOns)
-BINDING_NAME_XNAH_NEXT = "One-key routine: next step"
-function XNAH_Next()
-	X.RoutineNext("key")
-end
+-- (its key binding, XNAH_NEXT, is now the Next step key of Next.lua: at the auction house it does these steps)

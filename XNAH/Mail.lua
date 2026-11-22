@@ -139,49 +139,55 @@ local function finish(why)
 	updateBar(text)
 end
 
--- one take: the first auction house mail with something left. Returns "took", "wait" (nothing to do yet), "bags" (only
--- items are left and the bags are full) or "done"
-local function takeOne()
-	local r = run
+-- one take: the first auction house mail with something left (r = the run: the Open-all run, or the one-at-a-time
+-- state of X.MailTakeOne). Returns "took", "wait" (nothing to do yet), "bags" (only items are left and the bags are
+-- full) or "done". r.last = what this take asked for: {money = copper} or {name, count}
+local function takeOne(r)
 	if readDirty and X.LedgerReadMail then
 		readDirty = false
 		X.LedgerReadMail() -- every mail is in the ledger before it goes
 	end
 	local n = X.Try(GetInboxNumItems) or 0
 	local onlyItemsLeft = false
-	for i = 1, n do
-		local ok, money, items, id = auctionMail(i)
-		if ok and not r.skip[id] and (money > 0 or items > 0) then
-			if money > 0 then
-				r.tries[id] = (r.tries[id] or 0) + 1
-				if r.tries[id] > TRIES then r.skip[id] = true
+	-- r.moneyFirst (one take per call): first the gold of every mail, then the items; Open all goes mail by mail
+	for pass = r.moneyFirst and 1 or 2, 2 do
+		for i = 1, n do
+			local ok, money, items, id = auctionMail(i)
+			if ok and not r.skip[id] and (money > 0 or (pass == 2 and items > 0)) then
+				if money > 0 then
+					r.tries[id] = (r.tries[id] or 0) + 1
+					if r.tries[id] > TRIES then r.skip[id] = true
+					else
+						if not r.seen[id] then r.seen[id] = true r.mails = r.mails + 1 end
+						r.lastAdd = 0
+						r.last = {money = money}
+						TakeInboxMoney(i)
+						return "took"
+					end
+				elseif freeSlots() <= 0 then
+					onlyItemsLeft = true
 				else
-					if not r.seen[id] then r.seen[id] = true r.mails = r.mails + 1 end
-					r.lastAdd = 0
-					TakeInboxMoney(i)
-					return "took"
-				end
-			elseif freeSlots() <= 0 then
-				onlyItemsLeft = true
-			else
-				for a = 1, ATTACH do
-					local link = GetInboxItemLink and X.Try(GetInboxItemLink, i, a)
-					local has = (HasInboxItem and X.Try(HasInboxItem, i, a)) or link
-					local itemID = GetInboxItem and select(2, X.Try(GetInboxItem, i, a))
-					if has and not (itemID and r.failed[itemID]) then
-						local key = id .. "#" .. a
-						r.tries[key] = (r.tries[key] or 0) + 1
-						if r.tries[key] > TRIES then
-							r.skip[id] = true
-						else
-							if not r.seen[id] then r.seen[id] = true r.mails = r.mails + 1 end
-							local count = GetInboxItem and select(4, X.Try(GetInboxItem, i, a))
-							r.lastAdd = tonumber(X.Plain(count)) or 1
-							r.items = r.items + r.lastAdd
-							TakeInboxItem(i, a)
-							return "took"
+					for a = 1, ATTACH do
+						local link = GetInboxItemLink and X.Try(GetInboxItemLink, i, a)
+						local has = (HasInboxItem and X.Try(HasInboxItem, i, a)) or link
+						local itemID = GetInboxItem and select(2, X.Try(GetInboxItem, i, a))
+						if has and not (itemID and r.failed[itemID]) then
+							local key = id .. "#" .. a
+							r.tries[key] = (r.tries[key] or 0) + 1
+							if r.tries[key] > TRIES then
+								r.skip[id] = true
+							else
+								if not r.seen[id] then r.seen[id] = true r.mails = r.mails + 1 end
+								local iname, _, _, count
+								if GetInboxItem then iname, _, _, count = X.Try(GetInboxItem, i, a) end
+								r.lastAdd = tonumber(X.Plain(count)) or 1
+								r.items = r.items + r.lastAdd
+								r.last = {name = X.Plain(iname), count = r.lastAdd}
+								TakeInboxItem(i, a)
+								return "took"
+							end
+							break
 						end
-						break
 					end
 				end
 			end
@@ -204,7 +210,7 @@ step = function()
 		schedule(STEP)
 		return
 	end
-	local what = takeOne()
+	local what = takeOne(run)
 	if not run then return end -- the game blocked the take (see ADDON_ACTION_BLOCKED below)
 	if what == "took" then
 		run.waitUntil = X.Now() + WAIT_MAX
@@ -241,6 +247,37 @@ local function start()
 end
 X.MailOpenAll = start
 X.MailStop = function() if run then finish("stopped") end end
+
+-- [[ one take per call ]] X.MailTakeOne() -> ok, text. For the next-step key (Next.lua): call it straight from a key
+-- press or a click, never from a timer. Takes ONE thing out of the first auction house mail with something in it
+-- (gold before items; the same mails as Open all: sold, bought, expired, cancelled, outbid - never mail from players,
+-- cash on delivery or Game Masters); the ledger reads the mailbox first. ok = false (and why) when the mailbox is
+-- closed, Open all is running, the server is still busy with the last take, the bags are full or nothing is left.
+local single -- the one-at-a-time state while the mailbox is open: {tries, skip, failed, seen, items, mails}
+function X.MailTakeOne()
+	if not (GetInboxNumItems and TakeInboxMoney and TakeInboxItem) then return false, "Taking mail is not possible on this client." end
+	if not (MailFrame and MailFrame:IsShown()) then return false, "Open your mailbox first." end
+	if run then return false, "Open all is already taking the auction house mail." end
+	if C_Mail and C_Mail.IsCommandPending and X.Try(C_Mail.IsCommandPending) then
+		return false, "The mailbox is still busy with the last mail - press again in a moment."
+	end
+	if not single then single = {items = 0, mails = 0, tries = {}, skip = {}, failed = {}, seen = {}, moneyFirst = true} end
+	single.last = nil
+	local what = takeOne(single)
+	if what == "took" then
+		local l = single.last or {}
+		local text
+		if l.money then
+			text = "took " .. X.MoneyPlain(l.money) .. " from an auction house mail"
+		else
+			text = "took " .. (l.count and l.count > 1 and (l.count .. " x ") or "") .. (l.name or "an item") .. " from an auction house mail"
+		end
+		X.Fire("XNAH_MAIL")
+		return true, text
+	end
+	if what == "bags" then return false, "Your bags are full: the other items wait in the mailbox." end
+	return false, "No auction house mail with gold or items left."
+end
 
 local function buildBar()
 	local K = X.K
@@ -287,10 +324,12 @@ end
 
 X.On("MAIL_SHOW", function()
 	readDirty = true
+	single = nil
 	X.After(0.2, function() X.UpdateMailButton(true) end)
 end)
 X.On("MAIL_CLOSED", function()
 	readDirty = true
+	single = nil
 	X.UpdateMailButton(false)
 end)
 -- walking away from the mailbox closes it through the game's interaction manager
@@ -307,6 +346,7 @@ end)
 X.On("MAIL_FAILED", function(itemID)
 	itemID = X.Plain(itemID)
 	if run and itemID then run.failed[itemID] = true end
+	if single and itemID then single.failed[itemID] = true end
 end)
 -- the game refused a take that did not come from a click: the item it was about is not counted, and from now on every
 -- click takes one

@@ -471,6 +471,43 @@ local function findSale(L, name, count, money, who, from, to, pending)
 	return nil
 end
 
+-- [[ "Since you were last here" ]] what the mailbox brought that XNAH had not seen before: added up while the mails are
+-- read, then told in one chat line a moment later (nothing when nothing is new). This session only: a mail is new
+-- once (its fingerprint), so the line never repeats what an earlier line told. Setting awayLine (also the line at login).
+X.Default("awayLine", true)
+local news = {sold = 0, soldMoney = 0, expired = 0, bought = 0}
+local function plural(n, one, many) return X.Num(n) .. " " .. (n == 1 and one or many) end
+-- the line for a tally {sold, soldMoney, expired, bought}, or nil when there is nothing in it
+function X.AwayMailText(t)
+	local parts = {}
+	if t.sold > 0 then parts[#parts + 1] = "sold " .. plural(t.sold, "item", "items") .. " for " .. X.Money(t.soldMoney, true) end
+	if t.expired > 0 then parts[#parts + 1] = X.Num(t.expired) .. " came back unsold" end
+	if t.bought > 0 then parts[#parts + 1] = "bought " .. X.Num(t.bought) end
+	if #parts == 0 then return nil end
+	return "Since you were last here: " .. table.concat(parts, ", ")
+end
+local function tellNews()
+	local text = X.AwayMailText(news)
+	news = {sold = 0, soldMoney = 0, expired = 0, bought = 0}
+	if not text or not X.S().awayLine then return end
+	X.Print(text)
+	local c = X.db.chars and X.CharKey and X.db.chars[X.CharKey()]
+	if c then c.awayTold = X.Now() end
+end
+local function addNews(kind, e)
+	local n = e.count or 1
+	if kind == "sale" then
+		news.sold, news.soldMoney = news.sold + n, news.soldMoney + (e.money or 0) - (e.cut or 0)
+	elseif kind == "expired" then
+		news.expired = news.expired + n
+	elseif kind == "buy" then
+		news.bought = news.bought + n
+	else
+		return
+	end
+	X.Debounce("xnah-away-mail", 1.5, tellNews)
+end
+
 local function readMail()
 	if not (GetInboxNumItems and GetInboxHeaderInfo) then return end
 	local n = X.Try(GetInboxNumItems) or 0
@@ -530,6 +567,7 @@ local function readMail()
 					else
 						e.cut, e.deposit = cut, deposit
 						table.insert(L.sales, e)
+						addNews("sale", e)
 					end
 					added = added + 1
 				elseif kind == "pend" then
@@ -537,14 +575,17 @@ local function readMail()
 					if not findSale(L, name, count, money, who, arrival - BUCKET * 2, arrival + 3 * 3600, false) then
 						e.cut, e.deposit, e.pending = cut, deposit, true
 						table.insert(L.sales, e)
+						addNews("sale", e)
 						added = added + 1
 					end
 				elseif kind == "buy" then
 					table.insert(L.buys, e)
+					addNews("buy", e)
 					added = added + 1
 				elseif kind == "expired" or kind == "cancelled" then
 					e.money = nil
 					table.insert(L[kind], e)
+					addNews(kind, e)
 					added = added + 1
 				end
 			end
