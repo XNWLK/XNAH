@@ -2,7 +2,7 @@
 ## Title: XNAH
 ## Notes: Auction house prices and gold making: full scans, price history with graphs, trends, deals with one-click buying, posting at the right price with one key, fair prices, profit and gold per hour, crafting costs for every recipe. Type /xnah
 ## Author: Xn
-## Version: 0.7.3
+## Version: 0.8.0
 ## SavedVariables: XNAHDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 

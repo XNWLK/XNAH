@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.8.0
+
+- Deals and Buy are one tab: 8 tabs became 7 (Home, Market, Item, Buy, Sell, Crafting, Gold). Best buys shows
+  everything worth buying in one list - your shopping lists, your crafting queue's materials and watched items under
+  your price first, then what the ideas found - with why, profit, sales speed, risk and a Buy button in each row.
+  Sell ideas moved to the Sell tab, Make ideas to the Crafting tab, Adjust ideas to the Buy tab.
+- One key for everything: the Next step key (key bindings, AddOns, XNAH) does whatever comes next where you are, one
+  step per press - craft the next recipe of your queue at the profession window, take the next auction house mail at
+  a mailbox, and at the auction house finish a purchase, cancel an undercut auction, post the next ticked item, then
+  buy your shopping lists, queue materials and the best buys. The bar on the auction house window does the same.
+  Mail is still only taken when you press.
+- Home is a Today checklist: scan, take your mail, cancel undercut auctions, post, buy, craft - a green tick for each
+  step done, the next one lit, and one big Next step button.
+- Shopping lists: Keep in stock - keep N of an item, counting what all your characters own (and what you bought that
+  is still in the mail), and only buy the rest.
+- Price alerts: right-click an item (or the button on its Item page) and type the most you would pay. Any scan or
+  search that finds it at or under that price gives a chat line and a sound, and puts it in the sniper's hits to buy
+  with a click. Works with the sniper off; never buys by itself.
+- Welcome back: at login after a while, a chat line with how many of your auctions ran out and the gold waiting in
+  your mailboxes; at the mailbox, what sold, came back or was bought since you were last there. (Settings: Welcome
+  back lines.)
+- Best day to sell: the day of the week an item usually sells for most, from its daily prices (needs 3 weeks; a
+  rising or falling price does not count as a good day). On the Item page, in tooltips and on the Sell tab.
+- Crafting queue: its materials show up as buys at a price that keeps the recipe profitable, and what the queue still
+  needs is not posted.
+
 ## v0.7.3
 
 - Fixed: prices seemed wiped after an update. Right at login the game sometimes does not know the realm yet, and XNAH
