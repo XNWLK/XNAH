@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.3
+
+- Fixed: prices seemed wiped after an update. Right at login the game sometimes does not know the realm yet, and XNAH
+  filed new scans under a blank realm name, so the history looked empty. It never uses a blank name now (the realm of
+  last time, else the one with the newest scan), asks the game again a moment later, and joins the data filed under
+  blank names back in at your next login.
+- When two sets of prices are joined, both histories of every item are kept (before, only the copy with the newest
+  price was kept).
+- New setting "All my characters are on one realm" (on): one set of prices whatever realm number the game gives (it
+  is not always the same); prices kept under other realm numbers are joined in.
+- Installing with tools/install.ps1 first backs up XNAH's saved data of every account (private/backups, the last 15).
+
 ## v0.7.2
 
 - One auction house for both factions: on Forever, Alliance and Horde share the auction house, so XNAH now keeps one
