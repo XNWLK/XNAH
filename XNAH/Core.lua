@@ -14,7 +14,10 @@ function X.CheckRealm()
 		X.realmKey = key
 		X.Debug("realm: " .. key .. (sure and "" or " (the game does not say yet)"))
 	end
-	if sure then X.db.lastRealm = key end
+	-- remembered once the game says it (with one realm: the first one stays)
+	if sure and not (X.S().oneRealm and type(X.db.lastRealm) == "string" and X.db.lastRealm:find("^Realm %d")) then
+		X.db.lastRealm = key
+	end
 	if X.MigrateRealms(key) > 0 then
 		X.statsCache = setmetatable({}, {__mode = "k"})
 		X.Fire("XNAH_PRICES")

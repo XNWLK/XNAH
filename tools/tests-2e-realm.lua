@@ -28,8 +28,9 @@ T.scene("realm: shard names and both factions join one realm key", function()
 	X.db.chars["Ann Lee"] = {realm = "Realm 93-Alliance", money = 5, bags = {}, bank = {}, mail = {}, auctions = {}, bound = {}}
 	X.db.chars["Bob Stone"] = {realm = "Realm 93-Horde", money = 7, bags = {}, bank = {}, mail = {}, auctions = {}, bound = {}}
 	X.db.chars["Cid Moss"] = {realm = "CAMWOW EU5 Realm 4 PvP-Horde", money = 1, bags = {}, bank = {}, mail = {}, auctions = {}, bound = {}}
-	-- another realm stays apart
+	-- another realm stays apart (characters on several realms: the one-realm setting off)
 	X.db.realms["Realm 77-Alliance"] = {items = {["1"] = {id = 1}}, scans = {}}
+	X.S().oneRealm = false
 	-- next login: the game gives the realm ID
 	W.realmID = 93
 	X = W.reload()
@@ -80,13 +81,19 @@ T.scene("realm: the game does not know the realm at login - nothing is filed und
 	T.ok("the scan filed under a blank name came along", r and r.items["2770"] ~= nil)
 	T.check("blank keys gone", X.db.realms[""], nil)
 	T.check("blank faction key gone", X.db.realms["-Alliance"], nil)
-	T.ok("the other realm stays apart", X.db.realms["Realm 6940-Alliance"] ~= nil)
+	T.check("one realm (the default): the other realm number joined too", X.db.realms["Realm 6940-Alliance"], nil)
+	T.ok("its item came along", r and r.items["2592"] ~= nil)
 	T.check("nothing saved as the realm yet (the game did not say)", X.db.lastRealm, nil)
 	-- a little later the game knows: it is remembered for next time
 	W.realmID = 6946
 	W.advance(3)
 	T.check("the game's realm", X.realmKey, "Realm 6946")
 	T.check("remembered for next time", X.db.lastRealm, "Realm 6946")
+	-- a login where the game gives another number for the same realm: the remembered one stays
+	W.realmID = 6940
+	X = W.reload()
+	T.check("another number from the game: still one realm", X.realmKey, "Realm 6946")
+	T.check("no second set made", X.db.realms["Realm 6940"], nil)
 	-- a later login where the game is slow again: last time's realm straight away
 	W.realmID = 0
 	X = W.reload()

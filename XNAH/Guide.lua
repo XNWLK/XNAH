@@ -391,6 +391,8 @@ local PAGES = {
 		h("One auction house for both factions"),
 		"On Forever, Alliance and Horde share one auction house, so XNAH keeps one set of prices per realm. All your " ..
 		"characters on the same realm - both factions - share it, and the Gold page counts them all.",
+		"- " .. g("All my characters are on one realm") .. " (Settings, on): the game does not always give the same " ..
+		"realm number, so XNAH keeps one set whatever it says. Turn it off only if you have characters on several realms.",
 		"",
 		h("Clicks"),
 		"The game allows posting, buying, cancelling and crafting only on a click of yours. XNAH prepares " ..

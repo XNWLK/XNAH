@@ -92,8 +92,13 @@ function X.GuessRealmKey()
 	end
 	return best
 end
+-- "All my characters are on one realm" (on by default; Xn, 2026-11-22: one realm, and the game once gave another
+-- realm number - 6940 instead of 6946 - which split the prices): the first realm XNAH was sure of stays the key
+X.Default("oneRealm", true)
 function X.RealmKey()
 	local id = realmID()
+	local one = X.db and X.db.settings and X.db.settings.oneRealm
+	if one and type(X.db.lastRealm) == "string" and X.db.lastRealm:find("^Realm %d") then return X.db.lastRealm, id ~= nil end
 	if id then return "Realm " .. id, true end
 	if X.db and type(X.db.lastRealm) == "string" and X.db.lastRealm ~= "" then return X.db.lastRealm, false end
 	local guess = X.GuessRealmKey()
@@ -154,6 +159,7 @@ function X.MigrateRealms(key)
 	local function old(k)
 		if not k or k == key then return false end
 		if k:match("^Realm " .. id .. "%-") then return true end -- this realm, one faction
+		if X.S().oneRealm and k:find("^Realm %d") then return true end -- one realm: every realm number is this realm
 		if k == "Realm ?" or k:find("^Realm %?") then return true end -- filed before the game knew the realm
 		return not k:find("^Realm %d") -- a server shard name, or a blank one ("" / "-Alliance": the game did not know)
 	end

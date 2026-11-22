@@ -211,6 +211,11 @@ local function buildSettings(p)
 	end)
 	get, set = boolSetting("debug")
 	check(10, -290, "Debug messages in chat", get, set)
+	check(250, -290, "All my characters are on one realm", function() return X.S().oneRealm end, function(on)
+		X.S().oneRealm = on
+		if on and X.CheckRealm then X.CheckRealm() end
+	end, "On: XNAH keeps one set of prices, whatever realm number the game gives (it is not always the same). " ..
+		"Prices kept under other realm numbers are joined in. Off: a set per realm (for characters on several realms).")
 
 	title("Item tooltips", -322)
 	get, set = boolSetting("tooltip")
