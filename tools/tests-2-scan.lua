@@ -184,7 +184,7 @@ T.scene("scan: watch list - commodities, gear, a random suffix, a search with no
 	T.check("Wool Cloth: nothing recorded", X.Items()["2592"], nil)
 	T.check("Claymore: nothing recorded (never seen)", X.Items()["15248"], nil)
 	local log = X.Realm().scans
-	T.check("scan logged", log[#log] and log[#log].kind, "watch list")
+	T.check("scan logged", log[#log] and log[#log].kind, "tracked items")
 	T.check("scan logged: 4 items", log[#log] and log[#log].items, 4)
 	T.ok("chat says done", #W.said("scan done: 4 items") == 1, W.lastSaid())
 	-- the base key of a sword finds every suffix and records each apart

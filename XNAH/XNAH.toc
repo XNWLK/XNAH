@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: XNAH
-## Notes: Auction house prices and gold making: full scans, price history with graphs, trends, deals with one-click buying, posting at the right price with one key, fair prices, profit and gold per hour, crafting costs for every recipe. Type /xnah
+## Notes: Auction house numbers for buying and selling in the game's own auction house: full scans, price history with graphs, usual prices and trends, what is listed now, best time to sell, opportunities (cheap listings, vendor flips, few sellers), crafting costs, your profit and net worth. One button buys the cheapest auction of an item. Type /xnah
 ## Author: Xn
 ## Version: 0.8.1
 ## SavedVariables: XNAHDB
@@ -28,6 +28,7 @@ UIMarket.lua
 UIItem.lua
 UILedger.lua
 UIWealth.lua
+UIOpps.lua
 UIScan.lua
 AHPanel.lua
 Quick.lua

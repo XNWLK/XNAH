@@ -102,7 +102,7 @@ function X.FullScan(force)
 	if X.scan.state ~= "idle" then X.Print("a scan is already running") return false end
 	local left = X.FullScanLeft()
 	if left > 0 and not force then
-		X.Print("the server allows a full scan again in " .. X.Clock(left) .. " (a watch list scan works any time)")
+		X.Print("the server allows a full scan again in " .. X.Clock(left) .. " (searching your tracked items works any time)")
 		return false
 	end
 	local token = {}
@@ -389,8 +389,8 @@ function X.ScanItems(keys, label)
 		for key in pairs(X.db.watch) do keys[#keys + 1] = key end
 		table.sort(keys)
 	end
-	if #keys == 0 then X.Print("nothing to scan: star items to put them on the watch list") return false end
-	X.scan = {state = "items", token = {}, kind = label or "watch list", queue = keys, pos = 0, total = #keys, done = 0,
+	if #keys == 0 then X.Print("nothing to scan: track items first (the Track button in the Items view)") return false end
+	X.scan = {state = "items", token = {}, kind = label or "tracked items", queue = keys, pos = 0, total = #keys, done = 0,
 		started = X.Now(), startedAt = GetTime()}
 	X.ScanItemsNext()
 	return true

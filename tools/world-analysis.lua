@@ -86,17 +86,22 @@ table.insert(W.onEnv, function(env)
 	env.C_AuctionHouse.GetCommoditySearchResultInfo = function(id, i)
 		local row = getRow(id, i)
 		if type(row) ~= "table" then return row end
-		local names, seen = {}, {}
+		-- like the game: numOwnerItems = how many of the row's units are yours (a row can mix yours and others')
+		local names, seen, own = {}, {}, 0
 		for _, a in ipairs(W.ah) do
 			if a.itemID == id and a.buyout and a.buyout > 0 and a.owner then
 				local u = math.floor(a.buyout / math.max(1, a.count or 1) + 0.5)
-				if u == row.unitPrice and not seen[a.owner] then seen[a.owner] = true names[#names + 1] = a.owner end
+				if u == row.unitPrice then
+					if not seen[a.owner] then seen[a.owner] = true names[#names + 1] = a.owner end
+					if W.me and a.owner == W.me then own = own + (a.count or 1) end
+				end
 			end
 		end
 		row.totalNumberOfOwners = #names
 		if W.ownerCap then for k = #names, W.ownerCap + 1, -1 do names[k] = nil end end
 		row.owners = names
-		row.numOwnerItems = 0
+		row.numOwnerItems = own
+		row.containsOwnerItem = own > 0
 		return row
 	end
 end)

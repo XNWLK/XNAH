@@ -1,20 +1,17 @@
--- The "Characters" view of the Gold tab (UILedger.lua builds the tab): your characters of this realm (both factions) -
--- gold, and what their bags, bank, mailbox and auctions are worth - with the total over time, and for this character
--- what to do with each thing in the bags.
--- Layout (940 x 522, under the Gold tab's view buttons): help and "Delete a character" on top; the characters table
--- (6 rows) and the total line; below the net worth graph (left, 440 wide) and "Your bags" (right, 490 wide).
+-- The "Characters" part of the Your gold view (UILedger.lua builds the view): your characters of this realm (both
+-- factions) - gold, and what their bags, bank, mailbox and auctions are worth - with the total over time, and for this
+-- character where each thing in the bags brings more (auction house or vendor). Read-only; right-click a character to
+-- forget one you deleted or moved.
+-- Layout (w x h given by the Your gold view): help on top; the characters table (6 rows) and the total line; below the
+-- net worth graph (left, 45% wide) and "Your bags" (right).
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
-local W, H = UI.W, UI.H - 28
 local GREY = "|cff999999"
 local NONE = "|cff666666-|r"
 local DAY = 86400
 local RANGES = {{"30 days", 30 * DAY}, {"90 days", 90 * DAY}, {"All", nil}}
 local rangeIdx = 1
-local GW = 440           -- graph width
-local BX = GW + 10       -- "Your bags" left edge
-local BW = W - BX        -- 490
 local LOW = 186          -- top of the lower half
 
 local function M(v)
@@ -43,14 +40,37 @@ local BAG_COLS = {
 	{"AH value", 85, "RIGHT", text = function(r) return UI.MoneyCell(r.ah) end, sort = function(r) return r.ah end},
 	{"Vendor", 75, "RIGHT", text = function(r) return UI.MoneyCell(r.vendor) end, sort = function(r) return r.vendor end},
 	{"Best", 80, "LEFT", text = function(r) return r.best and (BEST[r.best] or r.best) or NONE end, sort = function(r) return r.best end},
-	{"Sold/day", 40, "RIGHT", text = function(r)
+	{"Sold/day", 48, "RIGHT", text = function(r)
 		if not r.rate then return NONE end
 		return r.rate >= 10 and X.Num(r.rate) or string.format("%.1f", r.rate)
 	end, sort = function(r) return r.rate end},
 }
+-- the first column takes the room the others leave
+local function fit(columns, w)
+	local fixed = 0
+	for i = 2, #columns do fixed = fixed + columns[i][2] end
+	local out = {}
+	for i, c in ipairs(columns) do out[i] = c end
+	local first = columns[1]
+	out[1] = {first[1], math.max(120, w - 20 - fixed), first[3], text = first.text, sort = first.sort, desc = first.desc}
+	return out
+end
 
 local function onBagRow(row, button, rowFrame)
 	if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
+end
+-- right-click a character: forget it (not this one: it comes back when you log in)
+local function onCharRow(row, button, rowFrame)
+	if button ~= "RightButton" or row.warbank then return end
+	local items = {{text = row.name, isTitle = true}}
+	if row.me then
+		items[2] = {text = "This character (cannot be forgotten)", disabled = true}
+	else
+		items[2] = {text = "Forget this character", func = function()
+			X.Confirm("Forget " .. row.name .. "'s gold, bags, bank and net worth history?", function() X.DeleteChar(row.key) end)
+		end}
+	end
+	K.Menu(rowFrame, items)
 end
 
 local function refresh(p)
@@ -68,8 +88,8 @@ local function refresh(p)
 	end
 	p.chars:SetRows(rows, "No characters yet - log in, open your bags, bank and mailbox.")
 	local sync = X.db.sync
-	p.help:SetText(GREY .. "Gold and items of your characters, worth their auction house price after the cut (soulbound: what a " ..
-		"vendor pays). Open your bank and mailbox once to count them. " .. (sync and sync.at and
+	p.help:SetText(GREY .. "Worth = auction house price after the cut (soulbound: what a vendor pays). Open your bank and " ..
+		"mailbox once to count them. Right-click a character to forget it. " .. (sync and sync.at and
 		("Other accounts joined " .. X.Ago(sync.at) .. " (Sync accounts on your PC, game closed).") or
 		"Characters of your other WoW accounts: run \"Sync accounts\" in the XNAH folder on your PC with the game closed.") .. "|r")
 	local gold = 0
@@ -92,30 +112,18 @@ local function refresh(p)
 	p.bagSum:SetText(GREY .. "best way for all:|r " .. X.Money(sum, true))
 end
 
-local function build(p)
-	local help = K.Label(p, "Gold and items of your characters here, worth their auction house price after the cut " ..
-		"(soulbound: what a vendor pays). Open your bank and mailbox once to count them.", "GameFontDisableSmall")
+local function build(p, W, H)
+	W, H = W or UI.W, H or UI.H
+	local GW = math.floor(W * 0.45)  -- graph width
+	local BX = GW + 10                -- "Your bags" left edge
+	local BW = W - BX
+	local help = K.Label(p, "", "GameFontDisableSmall")
 	help:SetPoint("TOPLEFT", 0, 0)
-	help:SetWidth(W - 160)
+	help:SetWidth(W)
 	help:SetWordWrap(true)
 	p.help = help
-	local del = K.Button(p, "Delete a character", 150, 20, function(self)
-		local items = {{text = "Delete which character?", isTitle = true}}
-		local mine = X.CharKey()
-		for _, c in ipairs(X.Chars()) do
-			if c.key ~= mine then
-				items[#items + 1] = {text = c.name, func = function()
-					X.Confirm("Forget " .. c.name .. "'s gold, bags, bank and net worth history?", function() X.DeleteChar(c.key) end)
-				end}
-			end
-		end
-		if #items == 1 then items[2] = {text = "No other characters saved", disabled = true} end
-		K.Menu(self, items)
-	end)
-	del:SetPoint("TOPRIGHT", 0, 0)
-	K.Tooltip(del, "Delete a character", "Forget a character you deleted or moved (this one comes back when you log in).")
 
-	p.chars = K.Table(p, W, 6 * 18 + 4, CHAR_COLS)
+	p.chars = K.Table(p, W, 6 * 18 + 4, fit(CHAR_COLS, W), onCharRow)
 	p.chars:SetPoint("TOPLEFT", 0, -46)
 	p.chars:SortBy(7, true)
 	p.total = K.Label(p, "", "GameFontNormal")
@@ -139,7 +147,7 @@ local function build(p)
 	p.graph:SetPoint("TOPLEFT", 0, -LOW - 24)
 
 	-- [[ your bags ]]
-	local bt = K.Label(p, "Your bags: sell or keep?", "GameFontNormalSmall")
+	local bt = K.Label(p, "Your bags: auction house or vendor?", "GameFontNormalSmall")
 	bt:SetPoint("TOPLEFT", BX, -LOW)
 	p.bagSum = K.Label(p, "", "GameFontHighlightSmall", "RIGHT")
 	p.bagSum:SetPoint("TOPRIGHT", 0, -LOW)
@@ -151,9 +159,10 @@ local function build(p)
 	bh:SetWidth(BW)
 	bh:SetWordWrap(false)
 	local top = LOW + 48
-	p.bags = K.Table(p, BW, H - top, BAG_COLS, onBagRow)
+	p.bags = K.Table(p, BW, H - top, fit(BAG_COLS, BW), onBagRow)
 	p.bags:SetPoint("TOPLEFT", BX, -top)
 end
 
--- the Gold tab (UILedger.lua) calls these for its Characters view (UI.lua refreshes the shown page on XNAH_INVENTORY)
+-- the Your gold view (UILedger.lua) calls these for its Characters part (UI.lua refreshes the shown view on
+-- XNAH_INVENTORY): build(frame, width, height), refresh(frame)
 UI.GoldChars = {build = build, refresh = refresh}

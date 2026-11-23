@@ -3,7 +3,7 @@
 
 local function has(text, part) return text:find(part, 1, true) ~= nil end
 local function said(part) return #W.said(part) end
-local function itemPanel(X) return X.UI.tabs.item and X.UI.tabs.item.panel end
+local function itemPanel(X) return X.UI.tabs.items and X.UI.tabs.items.panel end
 
 T.scene("alerts-away: mailbox line - what is new since the last line", function()
 	local X = W.start()
@@ -151,7 +151,7 @@ T.scene("alerts-away: best day to sell - little data, a Tuesday bump, a steady t
 	-- a 1% bump is not "clearly higher"
 	days(X, "4306", "Silk Cloth", 42, function(i, w) return w == 3 and 1010 or 1000 end)
 	T.check("1% is too little", X.BestDay("4306"), nil)
-	-- the tooltip line and the item page row, only when known
+	-- the tooltip line only when known; the Items view's best-time box says when no day is better yet
 	local function tipHas(key, text)
 		for _, l in ipairs(X.TooltipLines(key)) do if has(W.plain(l[1] .. " " .. l[2]), text) then return true end end
 		return false
@@ -164,8 +164,9 @@ T.scene("alerts-away: best day to sell - little data, a Tuesday bump, a steady t
 	W.advance(0.5)
 	local panel = itemPanel(X)
 	local screen = W.screen(panel)
-	T.ok("item page: the row", has(screen, "Best day to sell") and has(screen, "Tuesday ("), screen)
+	T.ok("items view: the best day", has(screen, "Best day to sell: Tuesday ("), screen)
 	X.UI.ShowItem("3576")
 	W.advance(0.5)
-	T.ok("item page: no row when unknown", not has(W.screen(panel), "Best day to sell"))
+	screen = W.screen(panel)
+	T.ok("items view: unknown said so", has(screen, "Best day to sell: no day clearly better yet"), screen)
 end)

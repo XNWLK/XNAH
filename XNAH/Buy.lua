@@ -14,6 +14,7 @@ local ADDON, X = ...
 -- what all of that auction costs
 X.live = {}
 X.SEARCH_GAP = 1.0 -- seconds between two searches of ours
+X.QUOTE_WAIT = 5   -- seconds to wait for the exact price of a commodity purchase
 
 local queue, pending, pumping = {}, nil, false
 local lastOurs, lastForeign = -100, -100
@@ -189,9 +190,10 @@ end)
 X.buy = {state = "idle"}
 
 -- what to buy from the offers of a search: commodities = the cheapest units up to `need`, each at most `max`;
--- other items = the cheapest auction (at most `max` each and not more than `need`). plan.total = what it all costs
--- (other items: the whole auction, price of one x how many); plan.buyout = the amount sent with the click
-function X.BuyPlan(key, need, max)
+-- other items = the cheapest auction (at most `max` each and not more than `need`; anyStack = true: whatever its
+-- size). plan.total = what it all costs (other items: the whole auction, price of one x how many); plan.buyout = the
+-- amount sent with the click
+function X.BuyPlan(key, need, max, anyStack)
 	local live = X.live[key]
 	if not live then return nil end
 	local plan = {key = key, commodity = live.commodity, qty = 0, total = 0, offers = {}}
@@ -203,7 +205,7 @@ function X.BuyPlan(key, need, max)
 				plan.qty = plan.qty + take
 				plan.total = plan.total + take * o.unit
 				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = take}
-			elseif o.qty <= need then
+			elseif anyStack or o.qty <= need then
 				local all = o.total or o.unit * o.qty
 				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = o.qty, auctionID = o.auctionID, buyout = o.buyout, total = all}
 				if not plan.auctionID then
@@ -238,21 +240,38 @@ local function research()
 			b.need = n
 			if n == 0 and (b.bought or 0) > 0 then setState("done", "Bought all there was at or under your price.") return end
 		end
-		local plan = X.BuyPlan(b.key, b.need, b.max)
+		local plan = X.BuyPlan(b.key, b.need, b.max, b.cheapest)
 		b.plan = plan
 		if plan then setState("ready", nil)
-		else setState("none", "Nothing listed" .. (b.max and (" at or under " .. X.MoneyPlain(b.max) .. " each") or "") .. " right now.") end
+		else setState("none", "Nothing listed" .. (b.max and (" at or under " .. X.MoneyPlain(b.max) .. " each") or "") ..
+			(b.cheapest and " that is not yours" or "") .. " right now.") end
 	end)
 end
 X.BuyResearch = function() if X.buy.key then research() end end
 
 -- start buying `need` of an item, at most `max` copper each (nil = any price); need nil = as many as are listed at or
--- under `max` (worked out again after each purchase)
-function X.BuyStart(key, need, max, source, tag)
+-- under `max` (worked out again after each purchase). cheapest = true ("Buy cheapest now"): other items buy the single
+-- cheapest auction that is not yours, whatever its size; after each purchase it searches again and is ready for the
+-- next one (`need` - the commodities to buy per purchase - stays as it is)
+function X.BuyStart(key, need, max, source, tag, cheapest)
 	if X.buy.state == "quoting" or X.buy.state == "confirm" or X.buy.state == "toohigh" then X.BuyCancel() end
 	X.buy = {state = "idle", key = key, itemID = X.KeyID(key), need = math.max(0, need or 0), all = need == nil, max = max,
-		source = source, tag = tag, token = {}, bought = 0, spent = 0}
+		source = source, tag = tag, token = {}, bought = 0, spent = 0, cheapest = cheapest and true or nil}
 	research()
+end
+-- "Buy cheapest now": how many of a commodity one purchase buys. Worked out again from the last search (no new search),
+-- or, when the exact price was already asked, that purchase is stopped and the item searched again.
+function X.BuyNeed(n)
+	local b = X.buy
+	n = math.max(1, math.floor(tonumber(n) or 1))
+	if not b.key or b.need == n then return end
+	b.need = n
+	if b.state == "quoting" or b.state == "confirm" then
+		X.BuyCancel()
+	elseif b.state == "ready" or b.state == "none" then
+		b.plan = X.BuyPlan(b.key, b.need, b.max, b.cheapest)
+		if b.plan then setState("ready", nil) else setState("none", "Nothing listed right now.") end
+	end
 end
 function X.BuyClear()
 	if X.buy.state == "quoting" or X.buy.state == "confirm" or X.buy.state == "toohigh" then X.BuyCancel() end
@@ -260,11 +279,29 @@ function X.BuyClear()
 	X.Fire("XNAH_BUY")
 end
 
+-- the "Buy cheapest now" button: its label always shows the exact amount the next press pays
+local function cheapestLabel(b)
+	local s = b.state
+	if not X.ahOpen then return "Open the auction house to buy", false end
+	if s == "ready" and b.plan then
+		local p = b.plan
+		if not p.commodity and p.qty > 1 then return "Buy cheapest: " .. X.Num(p.qty) .. " for " .. X.MoneyPlain(p.total), true end
+		return "Buy " .. X.Num(p.qty) .. " for " .. X.MoneyPlain(p.total), true
+	elseif s == "confirm" and b.quote then
+		return "Confirm: " .. X.Num(b.quote.qty) .. " for " .. X.MoneyPlain(b.quote.total), true
+	elseif s == "searching" then return "Searching ...", false
+	elseif s == "quoting" then return "Asking the exact price ...", false
+	elseif s == "buying" then return "Buying ...", false
+	elseif s == "none" then return "Nothing to buy - search again", true end
+	return "Search the auction house", true
+end
+
 -- the label and state of the Buy button: text, enabled
 function X.BuyButton()
 	local b = X.buy
 	local s = b.state
 	if not b.key then return "Buy", false end
+	if b.cheapest then return cheapestLabel(b) end
 	if not X.ahOpen then return "Buy (auction house closed)", false end
 	if s == "ready" and b.plan then
 		if b.plan.commodity then return "Buy " .. X.Num(b.plan.qty) .. " for about " .. X.MoneyPlain(b.plan.total), true end
@@ -292,6 +329,14 @@ function X.BuyClick()
 			-- the average price of one as a third value, as Blizzard's own buy window does (not in the documents)
 			C_AuctionHouse.StartCommoditiesPurchase(b.itemID, plan.qty, math.ceil(plan.total / math.max(1, plan.qty)))
 			setState("quoting", "Asking the server for the exact price of " .. X.Num(plan.qty) .. " ...")
+			-- no price back within 5 seconds: stopped, said so, and searched again (the next press starts over)
+			local token = b.token
+			X.After(X.QUOTE_WAIT, function()
+				if X.buy.token ~= token or X.buy.state ~= "quoting" then return end
+				X.Try(C_AuctionHouse.CancelCommoditiesPurchase)
+				X.Print("no price came back from the auction house in " .. X.QUOTE_WAIT .. " seconds - stopped, press again")
+				research()
+			end)
 		else
 			-- the amount sent is the auction's buyoutAmount as the search gave it (the price of one), exactly as the
 			-- game's own Buyout button does; the cost is the whole auction (gold before, to see what was really taken)
@@ -327,7 +372,7 @@ end
 
 local function bought(qty, total)
 	local b = X.buy
-	b.need = math.max(0, b.need - qty)
+	if not b.cheapest then b.need = math.max(0, b.need - qty) end
 	b.bought = b.bought + qty
 	b.spent = b.spent + (total or 0)
 	X.Print("bought " .. X.Num(qty) .. " " .. X.ItemText(b.key) .. " for " .. X.Money(total or 0))
@@ -335,9 +380,11 @@ local function bought(qty, total)
 	research()
 end
 
+-- the exact price of a started commodity purchase (again when it changes while the purchase waits for its confirm, so
+-- the button always shows what the next press pays)
 X.On("COMMODITY_PRICE_UPDATED", function(unit, total)
 	local b = X.buy
-	if b.state ~= "quoting" then return end
+	if b.state ~= "quoting" and b.state ~= "confirm" then return end
 	b.quote = {unit = unit, total = total, qty = b.asked}
 	if b.max and unit and unit > b.max then
 		setState("toohigh", "The real price is " .. X.MoneyPlain(unit) .. " each, over your max of " .. X.MoneyPlain(b.max) .. ". Press Cancel.")

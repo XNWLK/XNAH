@@ -1,23 +1,20 @@
--- XNAH inside the game's own auction house window:
---   * a panel docked to the right of the window with XNAH's numbers and a small price graph for the item the game's
---     window shows (the item you clicked in its list, or the item you are about to post);
---   * two extra columns in the game's lists: "% of usual price" (green = cheaper than usual, red = dearer) and
---     "sells a day".
+-- XNAH and the game's own auction house window:
+--   * the item you pick in the game's window (clicked in its list, or picked to post) is shown in XNAH's window on the
+--     Items view; XNAH's window docks beside the game's window (UI.lua);
+--   * two extra columns in the game's lists (setting "Extra columns in the auction house lists"): "% of usual price"
+--     (green = cheaper than usual, red = dearer) and "sells a day".
 -- How it stays out of the game's way: the game's functions are never replaced and never called to change anything.
 -- XNAH only listens AFTER the game's own functions have run (hooksecurefunc, the game's sanctioned way to follow them)
--- and reads what they were given. The panel is XNAH's own frame (parent UIParent, only anchored to the window); the
--- column text sits in XNAH's own small frames laid on top of the game's rows; nothing is written into the game's
--- tables. (Buying on Forever needs a click, not untouched game code - and the game's code stays untouched anyway.)
+-- and reads what they were given. The column text sits in XNAH's own small frames laid on top of the game's rows;
+-- nothing is written into the game's tables.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
-X.Default("ahPanel", true)   -- the panel beside the game's auction house window
 X.Default("ahColumns", true) -- the extra columns in the game's lists
 
 local A = {}
 X.AHPanel = A
 local GREY = "|cff999999"
-local PW, PH = 250, 538 -- the panel; the game's window is 538 high
 
 -- [[ item keys ]] the game's item key {itemID, itemSuffix, ...} -> XNAH's key ("2589" or "15210:-19")
 local function keyOf(ik)
@@ -65,216 +62,20 @@ local function hook(obj, method, fn)
 	return true
 end
 
--- [[ the panel ]]
-local panel, tab, refreshPanel
-local function setKey(key)
-	if not key or key == A.key then return end
+-- [[ the item picked ]] shown in XNAH's window on the Items view (UI.FollowItem). picked = true: you picked it in the
+-- game's window just now (its list, or an item to post) - shown even when it is the same item as before (you may have
+-- looked at others in XNAH since); otherwise only a new item is shown (the game's listings pages and search answers)
+local function setKey(key, picked)
+	if not key then return end
+	if key == A.key and not (picked and key ~= UI.itemKey) then return end
 	A.key = key
-	if panel and panel:IsShown() then refreshPanel() end
+	if UI.FollowItem then UI.FollowItem(key) end
 end
 A.SetKey = setKey
 
-local function moneyText(c, old)
-	if not c then return GREY .. "-|r" end
-	if old then return GREY .. X.MoneyPlain(c) .. "|r" end
-	return X.Money(c, true)
-end
-
--- the numbers, one line each: {label, function(s) -> text}
-local LINES = {
-	{"Lowest now", function(s) return moneyText(s.cur and s.cur.qty ~= 0 and s.cur.min, not s.fresh) end},
-	{"Market value", function(s) return moneyText(s.cur and s.cur.mkt, not s.fresh) end},
-	{"Now vs usual", function(s)
-		if not (s.cur and s.cur.min and s.cur.qty ~= 0 and s.usual and s.usual > 0) then return GREY .. "-|r" end
-		local p = s.cur.min / s.usual * 100
-		local col = p < 99.5 and "4ade80" or (p > 100.5 and "f87171" or "ffffff")
-		return "|cff" .. col .. string.format("%d%%", math.floor(p + 0.5)) .. "|r" .. GREY .. " of usual|r"
-	end},
-	{"7-day average", function(s) return moneyText(s.st and s.st.avg7) end},
-	{"30-day average", function(s) return moneyText(s.st and s.st.avg30) end},
-	{"Trend", function(s)
-		local t = s.st and s.st.trend
-		if not t then return GREY .. "not enough days|r" end
-		return X.Arrow(t) .. " " .. X.Pct(t) .. GREY .. " a week|r"
-	end},
-	{"Sells a day", function(s)
-		if not s.rate then return GREY .. "not known yet|r" end
-		return X.Rate(s.rate)
-	end},
-	{"Vendor pays", function(s) return moneyText(s.vsell) end},
-	{"Crafting cost", function(s) return moneyText(s.craft) end},
-	{"You own", function(s)
-		if not s.owned then return GREY .. "-|r" end
-		return s.owned > 0 and X.Num(s.owned) or (GREY .. "none|r")
-	end},
-}
-
-local function buildPanel()
-	panel = CreateFrame("Frame", "XNAHAuctionPanel", UIParent, "BackdropTemplate")
-	panel:SetSize(PW, PH)
-	panel:SetClampedToScreen(true)
-	panel:EnableMouse(true)
-	K.Backdrop(panel, K.colors.bg)
-	panel:Hide()
-
-	local title = K.Label(panel, "|cffe6b422XNAH|r", "GameFontNormal")
-	title:SetPoint("TOPLEFT", 8, -8)
-	panel.hide = K.Button(panel, "Hide", 50, 18, function()
-		X.S().ahPanel = false
-		A.Update()
-	end)
-	panel.hide:SetPoint("TOPRIGHT", -6, -5)
-	K.Tooltip(panel.hide, "Hide this panel", "The small XNAH button beside the auction house window brings it back.")
-
-	-- the item
-	panel.icon = panel:CreateTexture(nil, "ARTWORK")
-	panel.icon:SetSize(32, 32)
-	panel.icon:SetPoint("TOPLEFT", 8, -30)
-	panel.name = K.Label(panel, "", "GameFontNormal")
-	panel.name:SetPoint("TOPLEFT", panel.icon, "TOPRIGHT", 8, 0)
-	panel.name:SetWidth(PW - 56)
-	panel.name:SetWordWrap(false)
-	panel.sub = K.Label(panel, "", "GameFontDisableSmall")
-	panel.sub:SetPoint("BOTTOMLEFT", panel.icon, "BOTTOMRIGHT", 8, 0)
-	panel.sub:SetWidth(PW - 56)
-	panel.sub:SetWordWrap(false)
-	panel.hint = K.Label(panel, "Click an item in the auction house list (or pick one to post) and XNAH's numbers for it show here.",
-		"GameFontDisable", "CENTER")
-	panel.hint:SetPoint("TOP", 0, -90)
-	panel.hint:SetWidth(PW - 30)
-
-	-- everything about the item
-	local body = CreateFrame("Frame", nil, panel)
-	body:SetAllPoints()
-	panel.body = body
-	panel.lines = {}
-	for i, l in ipairs(LINES) do
-		local y = -72 - (i - 1) * 16
-		local left = K.Label(body, l[1], "GameFontNormalSmall")
-		left:SetPoint("TOPLEFT", 10, y)
-		local right = K.Label(body, "", "GameFontHighlightSmall", "RIGHT")
-		right:SetPoint("TOPRIGHT", -10, y)
-		right:SetWidth(PW - 110)
-		right:SetWordWrap(false)
-		panel.lines[i] = right
-	end
-	local afterLines = -72 - #LINES * 16 - 4
-	panel.graphTitle = K.Label(body, GREY .. "Last 30 days:|r |cffffd100market value|r, |cff4ade80lowest|r", "GameFontHighlightSmall")
-	panel.graphTitle:SetPoint("TOPLEFT", 10, afterLines - 32)
-	panel.graph = K.Graph(body, PW - 12, 132)
-	panel.graph:SetPoint("TOPLEFT", 4, afterLines - 46)
-
-	-- buttons
-	local bw = (PW - 24) / 2
-	panel.open = K.Button(body, "Open in XNAH", bw, 22, function()
-		if A.key then X.ShowItem(A.key) end
-	end)
-	panel.open:SetPoint("BOTTOMLEFT", 8, 56)
-	K.Tooltip(panel.open, "Open in XNAH", "Opens this item's page in XNAH's window (all numbers, the full graph, recipes).")
-	panel.watch = K.Button(body, "Watch", bw, 22, function()
-		if A.key then X.SetWatched(A.key, not X.Watched(A.key)) end
-	end)
-	panel.watch:SetPoint("LEFT", panel.open, "RIGHT", 8, 0)
-	K.Tooltip(panel.watch, "Watch list", "Starred items: the watch list scan searches them.")
-	panel.max = K.Button(body, "Max price", bw, 22, function()
-		local key = A.key
-		if not key then return end
-		local cur = X.WatchMax(key)
-		K.Ask("Highest price to buy " .. X.ItemName(key) .. " at (each; empty = none)", cur and X.MoneyPlain(cur) or "", false, function(text)
-			local c = X.ParseMoney(text)
-			if not X.Watched(key) then X.SetWatched(key, true) end
-			X.SetWatchMax(key, c)
-		end, "Set")
-	end)
-	panel.max:SetPoint("TOPLEFT", panel.open, "BOTTOMLEFT", 0, -4)
-	K.Tooltip(panel.max, "Max price", "Puts the item on the watch list with the highest price you would pay for one.")
-
-	-- the columns in the game's list (for the whole panel, also when no item is picked)
-	panel.cols = K.Check(panel, "Extra columns in the list", function(on)
-		X.S().ahColumns = on
-		A.FillLists()
-	end)
-	panel.cols:SetPoint("BOTTOMLEFT", 6, 4)
-	K.Tooltip(panel.cols, "Extra columns", "Adds \"% usual\" (the price now against XNAH's usual price: green = cheaper, red = dearer) " ..
-		"and \"a day\" (how many sell a day) to the game's auction house lists.")
-end
-
-refreshPanel = function()
-	if not panel then return end
-	panel.cols:SetChecked(X.S().ahColumns and true or false)
-	local key = A.key
-	panel.hint:SetShown(key == nil)
-	panel.body:SetShown(key ~= nil)
-	panel.icon:SetShown(key ~= nil)
-	panel.name:SetShown(key ~= nil)
-	panel.sub:SetShown(key ~= nil)
-	if not key then return end
-	local id = X.KeyID(key)
-	local icon = id and C_Item and C_Item.GetItemIconByID and X.Try(C_Item.GetItemIconByID, id)
-	panel.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-	panel.name:SetText((X.Watched(key) and "|cffffd100*|r " or "") .. X.ItemText(key))
-
-	local s = X.Summary(key)
-	if X.SaleRate then s.rate = X.SaleRate(key) end
-	if X.Owned and id then s.owned = X.Owned(key) end
-	if not s.it then panel.sub:SetText("XNAH has not seen it on sale yet")
-	elseif s.cur and s.cur.t then panel.sub:SetText("Prices from " .. X.Ago(s.cur.t) .. ((s.st and s.st.days > 0) and (", " .. s.st.days .. " day" .. (s.st.days > 1 and "s" or "") .. " of history") or ""))
-	else panel.sub:SetText("") end
-	for i, l in ipairs(LINES) do panel.lines[i]:SetText(l[2](s)) end
-
-	local hist = X.History(key, X.Now() - 30 * 86400)
-	local mkt, low, qty = {}, {}, {}
-	for i, p in ipairs(hist) do
-		mkt[i] = {p[1], p[3]}
-		low[i] = {p[1], p[2]}
-		qty[i] = {p[1], p[4]}
-	end
-	panel.graph:SetSeries({
-		{points = mkt, color = {1, 0.82, 0}, width = 2, label = "Market value"},
-		{points = low, color = {0.29, 0.87, 0.5}, width = 1.5, label = "Lowest price"},
-	}, {bars = qty, barsLabel = "Listed", empty = "No prices in the last 30 days"})
-
-	panel.watch:SetText(X.Watched(key) and "Stop watching" or "Watch")
-	local max = X.WatchMax(key)
-	panel.max:SetText(max and ("Max " .. X.MoneyPlain(max)) or "Max price")
-end
-A.Refresh = function() if panel and panel:IsShown() then refreshPanel() end end
-
--- the small button that brings the panel back
-local function buildTab()
-	tab = K.Button(UIParent, "XNAH", 56, 20, function()
-		X.S().ahPanel = true
-		A.Update()
-	end)
-	K.Tooltip(tab, "XNAH panel", "Shows XNAH's numbers for the item you look at, beside the auction house window.")
-	tab:Hide()
-end
-
--- shows / hides the panel and the button with the game's window
+-- the auction house window came or went: XNAH's window docks beside it (UI.lua)
 function A.Update()
-	local f = window()
-	if not f then
-		if panel then panel:Hide() end
-		if tab then tab:Hide() end
-		return
-	end
-	local strata = X.Try(f.GetFrameStrata, f)
-	if X.S().ahPanel then
-		if not panel then buildPanel() end
-		if tab then tab:Hide() end
-		panel:SetFrameStrata(strata or "MEDIUM")
-		panel:ClearAllPoints()
-		panel:SetPoint("TOPLEFT", f, "TOPRIGHT", 2, 0)
-		panel:Show()
-		refreshPanel()
-	else
-		if panel then panel:Hide() end
-		if not tab then buildTab() end
-		tab:SetFrameStrata(strata or "MEDIUM")
-		tab:ClearAllPoints()
-		tab:SetPoint("TOPLEFT", f, "TOPRIGHT", 2, -2)
-		tab:Show()
-	end
+	if UI.AuctionWindow then UI.AuctionWindow() end
 end
 
 -- [[ the extra columns ]] for each of the game's lists: an overlay frame of XNAH's own on each row (a child of the row,
@@ -464,13 +265,14 @@ function A.Hook()
 	local f = AuctionHouseFrame
 	if hooked or not isTable(f) or not hooksecurefunc then return hooked end
 	hooked = true
-	-- the panel comes and goes with the window (the game may show it before or after XNAH hears the auction house opened)
+	-- XNAH's window docks and undocks with the game's window (the game may show it before or after XNAH hears the auction
+	-- house opened)
 	if f.HookScript then
 		f:HookScript("OnShow", function() X.Try(A.Update) end)
 		f:HookScript("OnHide", function() X.Try(A.Update) X.Try(A.FillLists) end)
 	end
 	-- an item picked in the list (also XNAH's own "show on the auction house")
-	hook(f, "SelectBrowseResult", function(_, result) if isTable(result) then setKey(keyOf(result.itemKey)) end end)
+	hook(f, "SelectBrowseResult", function(_, result) if isTable(result) then setKey(keyOf(result.itemKey), true) end end)
 	-- the listings pages of gear and of stackable goods
 	hook(f.ItemBuyFrame, "SetItemKey", function(_, itemKey) setKey(keyOf(itemKey)) end)
 	hook(f.CommoditiesBuyFrame, "SetItemIDAndPrice", function(_, itemID)
@@ -485,7 +287,7 @@ function A.Hook()
 			local id = X.Plain(X.Try(C_Item.GetItemID, loc))
 			if type(id) == "number" then key = tostring(id) end
 		end
-		setKey(key)
+		setKey(key, true)
 	end)
 	-- the extra columns: the list of items, the listings of gear, the listings of stackable goods
 	attachList(isTable(f.BrowseResultsFrame) and f.BrowseResultsFrame.ItemList, "browse", 2)
@@ -526,12 +328,11 @@ X.On("XNAH_AH", function(open)
 	end
 end)
 
--- new prices, watch list, sales speed, bags: the panel and the columns again (a moment later, once)
+-- new prices, watch list, sales speed, bags: the columns again (a moment later, once)
 local function changed()
 	cache = {}
 	if not X.ahOpen then return end
 	X.Debounce("ahpanel", 0.3, function()
-		A.Refresh()
 		A.FillLists()
 	end)
 end

@@ -302,9 +302,18 @@ T.scene("analysis: the Market and item pages show it", function()
 	W.advance(0.5)
 	X.S().itemMore = true
 	X.UI.Refresh(true)
-	local text = W.screen(X.UI.tabs.item.panel)
+	-- (the item analysis is helper B's Items view: read the whole window, whatever the view's key)
+	local text = W.screen(X.UI.Frame())
 	T.ok("item: disenchant value", text:find("Disenchant value", 1, true) ~= nil, text)
 	X.S().itemMore = false
+	-- the gear under its disenchanting value: on the Opportunities view
+	X.UI.Open("opps")
+	W.advance(2)
+	X.UI.Refresh(true)
+	local found
+	for _, r in ipairs(X.UI.OppsRows() or {}) do if r.kind == "de" and r.key == tostring(G.blue) then found = r end end
+	T.ok("opportunities: the mantle under its disenchant value", found ~= nil)
+	T.ok("opportunities: shown", W.screen(X.UI.tabs.opps.panel):find("Under disenchant", 1, true) ~= nil)
 	-- an empty start: the Market page says something
 	X = W.start()
 	X.UI.Toggle()

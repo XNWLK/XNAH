@@ -1,16 +1,13 @@
--- XNAH test scenes, part 24: the item page made calmer - ten plain rows (with "More numbers" for the rest), the fair
--- prices to buy and to sell (X.FairPrices), one Watch list button (no Buy button), honest ways to make gold.
+-- XNAH test scenes, part 24: the analysis of one item on the Items view - the fair prices to buy and to sell
+-- (X.FairPrices), the twelve number tiles with plain-words tooltips, the header line, the graph (ranges, names under it,
+-- the fair price lines), and the three boxes (the auction house now, the best time to sell, crafting and your trades)
+-- with and without the auction house open.
 
 local DAY, HOUR = 86400, 3600
 
 local function itemPanel(X)
-	local tab = X.UI.tabs.item
+	local tab = X.UI.tabs.items
 	return tab and tab.panel
-end
-local function openMenu()
-	for _, f in ipairs(W.frames) do
-		if f.strata == "FULLSCREEN_DIALOG" and f:IsVisible() then return f end
-	end
 end
 -- one price a day at noon on the realm's clock, `days` days back up to yesterday; fn(n) -> min, mkt (n = 1 oldest)
 local function daily(X, key, name, days, fn)
@@ -24,6 +21,12 @@ local function daily(X, key, name, days, fn)
 	end
 end
 local function has(text, part) return text:find(part, 1, true) ~= nil end
+local function tipOf(f)
+	W.hover(f)
+	local text = W.tipText(W.env.GameTooltip.lines)
+	W.unhover(f)
+	return text
+end
 
 T.scene("item page: fair prices to buy and to sell", function()
 	local X = W.start()
@@ -63,130 +66,157 @@ T.scene("item page: fair prices to buy and to sell", function()
 	T.ok("unknown item: says so", n3 and has(n3, "Never seen"), n3)
 end)
 
-T.scene("item page: ten plain rows, More numbers, the fair price lines", function()
+T.scene("item page: twelve number tiles with plain tooltips, the header, the graph", function()
 	local X = W.start()
 	daily(X, "2589", "Linen Cloth", 12, function(n) return 100 + n * 10, math.floor((100 + n * 10) * 1.2) end)
 	X.Record("2589", X.Now() - 60, 120, 170, 80, 8, "Linen Cloth", 1)
-	X.UI.Toggle()
 	X.UI.ShowItem("2589")
 	W.advance(0.5)
 	local panel = itemPanel(X)
 	local screen = W.screen(panel)
-	if os.getenv and os.getenv("SHOWITEM") then print(screen) print(W.screen(panel.profBox)) end
-	for _, label in ipairs({"Lowest now", "Usually sells for", "Fair price to buy", "Fair price to sell", "Sells a day",
-		"Listed now", "Price trend", "Vendor pays", "You own", "Seen"}) do
-		T.ok("plain row: " .. label, has(screen, label), screen)
+	for _, label in ipairs({"Cheapest now", "Market value", "Usual price", "Now vs usual", "Trend a week", "Ups and downs",
+		"Sells a day", "Listed vs normal", "Fair price to buy", "Fair price to sell", "Vendor pays", "Crafting cost"}) do
+		T.ok("tile: " .. label, has(screen, label), screen)
 	end
-	for _, label in ipairs({"Market shape", "3-day average", "Day-to-day spread", "Vendor sells at", "Disenchant value"}) do
-		T.ok("not in the plain view: " .. label, not has(screen, label))
+	T.check("twelve tiles", #panel.tiles, 12)
+	-- every tile says in plain words what it means
+	for i, t in ipairs(panel.tiles) do
+		local tip = tipOf(t)
+		T.ok("tile " .. i .. ": a tooltip with words", #tip > 40, tip)
 	end
-	local shown = 0
-	for i = 1, #panel.numL do if panel.numL[i]:IsShown() then shown = shown + 1 end end
-	T.check("ten rows", shown, 10)
-	T.ok("the fair price note", has(screen, "Fair to buy:"), screen)
-	T.ok("cheap now: says so", has(screen, "a good price"), screen)
-	local buy = X.FairPrices("2589")
-	-- More numbers: the rest, and back
-	W.click("More numbers", panel)
-	screen = W.screen(panel)
-	T.ok("more: 3-day average", has(screen, "3-day average"), screen)
-	T.ok("more: spread", has(screen, "Day-to-day spread"))
-	T.ok("more: no market shape", not has(screen, "Market shape"))
-	T.ok("more: note hidden", not has(screen, "Fair to buy:"))
-	T.check("remembered", X.S().itemMore, true)
-	W.click("Fewer numbers", panel)
-	T.ok("plain again", has(W.screen(panel), "Usually sells for"))
-	T.check("remembered off", X.S().itemMore, false)
-	-- the graph: two flat lines at the fair prices, a name under the graph hides them
+	T.ok("cheapest now: 1s 20c", has(W.plain(panel.tiles[1].value.text), "1s 20c"), panel.tiles[1].value.text)
+	T.ok("market value: 1s 70c", has(W.plain(panel.tiles[2].value.text), "1s 70c"))
+	local usual = X.Usual("2589")
+	T.check("now vs usual", W.plain(panel.tiles[4].value.text), math.floor(120 / usual * 100 + 0.5) .. "%")
+	T.ok("cheaper than usual: green", has(panel.tiles[4].value.text, "4ade80"))
+	T.check("listed now", W.plain(panel.tiles[8].value.text), "80")
+	local buy, sell = X.FairPrices("2589")
+	T.ok("fair to buy", has(W.plain(panel.tiles[9].value.text), W.plain(X.Money(buy, true))))
+	T.ok("fair to sell: what you keep", has(W.plain(panel.tiles[10].sub.text), "keep"))
+	T.ok("vendor pays (13c)", has(W.plain(panel.tiles[11].value.text), "13c"), panel.tiles[11].value.text)
+	T.ok("no recipe", has(W.plain(panel.tiles[12].value.text), "no recipe"))
+	-- the header: how many listed, by whom, when
+	T.ok("header: listed and auctions", has(W.plain(panel.sub.text), "80 listed in 8 auctions"), panel.sub.text)
+	T.ok("header: updated", has(W.plain(panel.sub.text), "updated"), panel.sub.text)
+	-- the graph: lines, the fair prices as two flat lines, the names under it hide them
 	local info = panel.graph.GetInfo()
+	T.check("two lines", #info.series, 2)
 	T.check("two fair lines", #info.levels, 2)
 	T.check("fair to buy line", info.levels[2] and info.levels[2].v, buy)
-	T.ok("legend: Fair prices", has(W.screen(panel), "Fair prices"))
-	T.check("lines stay out of the series", #info.series, 2)
 	W.click("Fair prices", panel)
 	T.check("hidden", #panel.graph.GetInfo().levels, 0)
 	W.click("Fair prices", panel)
 	T.check("shown again", #panel.graph.GetInfo().levels, 2)
-	-- an item with little history: no lines, no name
+	W.click("Market value", panel)
+	T.check("market value hidden", #panel.graph.GetInfo().series, 1)
+	W.click("Market value", panel)
+	-- the ranges
+	for i, name in ipairs({"7 days", "30 days", "90 days", "1 year"}) do
+		W.click(name, panel)
+		T.check("range " .. name, X.S().itemRange, i)
+	end
+	W.click("7 days", panel)
+	T.ok("7 days: fewer points than a year", #panel.graph.GetInfo().series[1].pts <= 8)
+	W.click("30 days", panel)
+	-- an item with little history: no fair lines, says so
 	X.Record("2592", X.Now() - 60, 500, 600, 20, 2, "Wool Cloth", 1)
 	X.UI.ShowItem("2592")
 	W.advance(0.3)
 	T.check("little history: no lines", #panel.graph.GetInfo().levels, 0)
 	T.ok("little history: not known yet", has(W.screen(panel), "not known yet"))
 	T.ok("little history: no Fair prices name", not has(W.screen(panel), "Fair prices"))
+	T.ok("trend: too new", has(W.plain(panel.tiles[5].value.text), "too new"))
 end)
 
-T.scene("item page: Search and one Watch list button, no Buy button", function()
+T.scene("item page: the three boxes, away from and at the auction house", function()
 	local X = W.start()
 	daily(X, "2589", "Linen Cloth", 12, function(n) return 100 + n * 10, math.floor((100 + n * 10) * 1.2) end)
-	W.list(2589, 120, 20, 3)
-	X.UI.Toggle()
+	X.Record("2589", X.Now() - 60, 120, 170, 80, 8, "Linen Cloth", 1)
+	-- a recipe that uses linen, one that makes it, and your trades
+	W.recipes = {
+		[1] = {name = "Bolt of Linen Cloth", out = 2996, reagents = {{2589, 2}}, learned = true, prof = "Tailoring"},
+		[2] = {name = "Linen from nothing", out = 2589, reagents = {{2320, 1}, {2592, 1}}, learned = true, prof = "Tailoring"},
+	}
+	W.openProfession("Tailoring") W.advance(2) W.closeProfession()
+	local L = X.Ledger()
+	L.sales[#L.sales + 1] = {t = X.Now() - 2 * DAY, key = "2589", name = "Linen Cloth", count = 20, money = 3000, cut = 150}
+	L.buys[#L.buys + 1] = {t = X.Now() - 3 * DAY, key = "2589", name = "Linen Cloth", count = 10, money = 1000}
 	X.UI.ShowItem("2589")
 	W.advance(0.5)
 	local panel = itemPanel(X)
-	local buy = X.FairPrices("2589")
-	T.ok("no Buy button", panel.buy == nil and W.findButton("Buy", panel) == nil)
-	T.ok("no price alert button", panel.alert == nil and W.findButton("Alert me", panel) == nil)
-	T.ok("search hidden while the auction house is closed", not panel.ah:IsShown())
+	-- away from the auction house: the last scan, and how to see every listing
+	local ladder = W.screen(panel.ladder)
+	T.ok("away: last scan", has(ladder, "The last scan"), ladder)
+	T.ok("away: cheapest", has(ladder, "Cheapest:") and has(ladder, "1s 20c"), ladder)
+	T.ok("away: listed", has(ladder, "80 in 8 auctions"), ladder)
+	T.ok("away: open the auction house", has(ladder, "Open the auction house to see every listing"), ladder)
+	local best = W.screen(panel.bestBox)
+	T.ok("best time: weekday chart", has(best, "Price by weekday"), best)
+	T.ok("best time: the day line", has(best, "Best day to sell:"), best)
+	T.ok("best time: the hour line", has(best, "Best hour:"), best)
+	local tip = tipOf(panel.bestBox.hot)
+	T.ok("hover the title: the whole story", has(tip, "Best day to sell") and has(tip, "Your sales"), tip)
+	local craft = W.screen(panel.craftBox)
+	T.ok("crafting: its cost", has(craft, "Crafting cost"), craft)
+	T.ok("crafting: a reagent line", has(craft, "1x") and has(craft, "Wool Cloth"), craft)
+	T.ok("crafting: profit", has(craft, "Profit (after cut)"), craft)
+	T.ok("used in recipes", has(craft, "Used in") and has(craft, "recipe"), craft)
+	T.ok("your trades", has(craft, "sold 20, bought 10"), craft)
+	T.ok("average prices", has(craft, "Average price") and has(craft, "buy 1s"), craft)
+	T.ok("you own", has(craft, "You own"), craft)
+	tip = tipOf(panel.craftBox)
+	T.ok("hover: the whole recipe", has(tip, "Linen from nothing") and has(tip, "Cost of one craft"), tip)
+	-- at the auction house: the search fills the ladder
+	W.list(2589, 100, 20, 2, "Ann")  -- 40 at 1s
+	W.list(2589, 120, 30, 1, "Bob")  -- 30 at 1s 20c
+	W.list(2589, 300, 5, 1, "Cid")   -- 5 at 3s
+	W.mine(2589, 150, 10)             -- 10 of yours at 1s 50c (a price of its own: tools/world-analysis.lua gives no
+	                                  -- count of yours in a row shared with others)
 	W.openAH()
+	W.waitFor(function() return X.live["2589"] ~= nil end, 10)
 	W.advance(0.5)
-	T.ok("search shown with the auction house open", panel.ah:IsShown())
-	local old = {"Add to watch list", "Max price", "Shopping list", "Add to the shopping list"}
-	for _, t in ipairs(old) do T.ok("one button instead of: " .. t, W.findButton(t, panel) == nil) end
-	-- the Watch list menu
-	W.click("Watch list", panel)
-	local menu = openMenu()
-	T.ok("a menu", menu ~= nil)
-	T.ok("no shopping list in the menu", menu == nil or W.findButton("shopping list", menu) == nil)
-	if menu then W.click("On the watch list", menu) end
-	W.advance(0.6)
-	T.check("watched", X.Watched("2589") and true or false, true)
-	T.ok("button says so", W.findButton("Watched", panel) ~= nil)
-	W.click("Watched", panel)
-	menu = openMenu()
-	if menu then W.click("fair price to buy", menu) end
-	W.advance(0.6)
-	T.check("highest price = the fair price to buy", X.WatchMax("2589"), buy)
-	T.ok("button shows it", W.findButton("Watched, max", panel) ~= nil)
-	W.click("Watched", panel)
-	menu = openMenu()
-	if menu then W.click("No highest price", menu) end
-	W.advance(0.6)
-	T.check("no highest price", X.WatchMax("2589"), nil)
+	ladder = W.screen(panel.ladder)
+	local rows = 0
+	for _, r in ipairs(panel.ladder.rows) do if r:IsShown() then rows = rows + 1 end end
+	T.check("four price steps", rows, 4)
+	T.ok("step 1: 1s, 40 listed", has(W.plain(panel.ladder.rows[1].price.text), "1s") and W.plain(panel.ladder.rows[1].count.text) == "40")
+	T.check("step 2: 30 at 1s 20c", W.plain(panel.ladder.rows[2].count.text), "30")
+	T.check("step 3: yours marked", W.plain(panel.ladder.rows[3].count.text), "10 (10 yours)")
+	T.ok("the bars: the biggest step is the longest", panel.ladder.rows[1].bar.w >= panel.ladder.rows[3].bar.w)
+	T.ok("foot: how many listed", has(ladder, "85 listed, 10 of them yours"), ladder)
+	tip = tipOf(panel.ladder.rows[3])
+	T.ok("hover: everything up to this price (not yours)", has(tip, "70 for 76s"), tip)
+	T.ok("hover: yours", has(tip, "10 of them are yours"), tip)
+	-- many price steps: the ladder says how many more
+	for i = 1, 15 do W.list(2589, 400 + i * 10, 1, 1, "Dan") end
+	X.LiveSearch("2589")
+	W.advance(2)
+	T.ok("more prices than rows", has(W.screen(panel.ladder), "more prices, up to"), W.screen(panel.ladder))
 	W.closeAH()
+	W.advance(0.5)
+	T.ok("closed again: the last scan", has(W.screen(panel.ladder), "Open the auction house"), W.screen(panel.ladder))
 end)
 
-T.scene("item page: ways to make gold stay honest", function()
+T.scene("item page: an empty database and unknown items do no harm", function()
 	local X = W.start()
-	-- stone at about 1s 75c with one silly scan at 1g: buying at 1s 70c is no real profit
-	daily(X, "2836", "Coarse Stone", 12, function(n)
-		if n == 4 then return 10000, 10000 end
-		return 170 + (n % 3), 175 + (n % 3)
-	end)
-	X.Record("2836", X.Now() - 60, 172, 176, 200, 20, "Coarse Stone", 1)
-	X.UI.Toggle()
-	X.UI.ShowItem("2836")
-	W.advance(0.5)
+	X.UI.Open("items")
+	W.advance(0.3)
 	local panel = itemPanel(X)
-	local box = W.screen(panel.profBox)
-	T.ok("no silly profit from one high scan", not has(box, "Buy it now"), box)
-	T.ok("says nothing is worth doing", has(box, "Nothing worth doing"), box)
-	-- linen listed cheap now (under the fair price to buy): buy it now, sell it later, with the real numbers
-	daily(X, "2589", "Linen Cloth", 12, function(n) return 100 + n * 10, math.floor((100 + n * 10) * 1.2) end)
-	X.Record("2589", X.Now() - 60, 105, 170, 80, 8, "Linen Cloth", 1)
-	X.UI.ShowItem("2589")
+	T.ok("hint with nothing shown", panel.hint:IsShown() and not panel.ana:IsShown())
+	T.ok("the list says how to add", has(W.screen(panel), "Nothing tracked yet"))
+	X.UI.ShowItem("424242")
 	W.advance(0.3)
-	box = W.screen(panel.profBox)
-	local _, sell = X.FairPrices("2589")
-	T.ok("cheap now: buy it now, sell it later", has(box, "Buy it now, sell it later"), box)
-	T.ok("profit from the fair price to sell", has(box, W.plain(X.MoneyPlain(math.floor(X.AfterCut(sell) - 105)))) or
-		has(box, W.plain(X.MoneyPlain(X.AfterCut(sell) - 105))), box)
-	local heads = 0
-	for _, slot in ipairs(panel.prof) do if slot.head:IsShown() then heads = heads + 1 end end
-	T.ok("at most three ways", heads <= 3, heads)
-	-- old prices: no buy-now idea
-	X.Items()["2589"].cur.t = X.Now() - 10 * DAY
-	X.UI.Refresh(true)
+	T.ok("unknown: not seen yet", has(W.screen(panel), "Not seen on the auction house yet"), W.screen(panel))
+	for _, t in ipairs(panel.tiles) do W.hover(t) W.unhover(t) end
+	W.click("1 year", panel)
+	W.openAH()
+	W.advance(2)
+	T.ok("at the auction house: nothing listed", has(W.screen(panel.ladder), "Nothing listed") or has(W.screen(panel.ladder), "Searching"),
+		W.screen(panel.ladder))
+	T.ok("buy button: nothing to buy", has(W.plain(W.buttonText(panel.buy)), "Nothing to buy"), W.buttonText(panel.buy))
+	W.closeAH()
+	W.advance(0.5)
+	T.check("buy button: closed", W.plain(W.buttonText(panel.buy)), "Open the auction house to buy")
+	X.UI.ShowItem("2589:-19")
 	W.advance(0.3)
-	T.ok("old prices: no buy-now idea", not has(W.screen(panel.profBox), "Buy it now"))
 end)

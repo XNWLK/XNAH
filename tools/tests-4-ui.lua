@@ -1,4 +1,4 @@
--- XNAH test scenes, part 4: the window. Every tab opens, and every button, box, row and hover spot found in it is used,
+-- XNAH test scenes, part 4: the window. Every view opens, and every button, box, row and hover spot found in it is used,
 -- with a 10-day market loaded - without a Lua error and without "error" in chat. The scene does not know the tabs'
 -- insides: it walks the frames each tab built. (The stand-in frames accept any method, so this proves the tabs' own
 -- logic runs; tools/check-api.js proves the methods exist in the Forever client.)
@@ -164,9 +164,9 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	T.ok("tabs registered", #X.UI.order > 0, #X.UI.order)
 	local keys = {}
 	for _, k in ipairs(X.UI.order) do keys[#keys + 1] = k end
-	T.check("the tabs that are left", table.concat(keys, ","), "market,item,gold,scan")
-	-- with the auction house open
-	X.UI.Toggle() -- the full window (/xnah opens the simple one: tests-17)
+	T.check("the views", table.concat(keys, ","), "items,market,gold,opps,scan")
+	-- with the auction house open (it opened the window by itself, beside it)
+	X.UI.Open()
 	local frame = X.UI.Frame()
 	T.ok("window open", frame and frame:IsShown())
 	X.UI.ShowItem("2589")
@@ -195,8 +195,8 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	X.UI.ShowItem("2575")
 	X.UI.ShowItem("424242")
 	W.advance(0.5)
-	-- the bar on the auction house window, the minimap button
-	for _, root in ipairs({W.env.AuctionHouseFrame, W.env.Minimap, W.env.XNAHAuctionPanel}) do
+	-- the header of the window, the minimap button
+	for _, root in ipairs({W.env.AuctionHouseFrame, W.env.Minimap}) do
 		for _, f in ipairs(under(root, isClickable)) do
 			if f:IsVisible() then f:Click("LeftButton") W.advance(0.3) closePopups(X) end
 			if X.scan.state ~= "idle" then W.waitFor(function() return X.scan.state == "idle" end, 120) end
@@ -212,7 +212,7 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	T.ok("the window closes with Escape", X.Contains(W.env.UISpecialFrames, "XNAHFrame") ~= nil)
 	-- a reload with the window state saved
 	X = W.reload()
-	X.UI.Toggle() -- the full window (/xnah opens the simple one: tests-17)
+	X.UI.Open()
 	W.advance(1)
 	T.ok("window opens after a reload", X.UI.Frame() and X.UI.Frame():IsShown())
 	for _, l in ipairs(stats) do T.note("ui " .. l) end
@@ -220,7 +220,7 @@ end)
 
 T.scene("ui: an empty start (no data at all)", function()
 	local X = W.start()
-	X.UI.Toggle() -- the full window (/xnah opens the simple one: tests-17)
+	X.UI.Open()
 	for _, key in ipairs(X.UI.order) do
 		X.UI.Select(key)
 		W.advance(0.5)

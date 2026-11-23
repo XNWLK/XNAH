@@ -39,10 +39,11 @@ end)
 X.On("PLAYER_ENTERING_WORLD", function() if X.db then X.CheckRealm() end end)
 
 local HELP = {
-	"/xnah - open or close the window",
+	"/xnah - open or close the window (it also opens by itself beside the auction house)",
 	"/xnah scan - full scan (auction house open; about every 15 minutes)",
-	"/xnah watch - scan the watch list (auction house open)",
+	"/xnah tracked - search your tracked items (auction house open)",
 	"/xnah <item name or link> - show that item",
+	"/xnah settings - the settings",
 	"/xnah raw [n] - print the first n auctions of the last full scan as the game gives them (to check prices)",
 	"/xnah perf - what XNAH is doing and how much memory it uses",
 	"/xnah size 120 - window size in % (60 to 160; 100 = normal)",
@@ -58,8 +59,10 @@ SlashCmdList.XNAH = function(msg)
 		if X.Toggle then X.Toggle() end
 	elseif cmd == "scan" then
 		X.FullScan(rest == "force")
-	elseif cmd == "watch" then
+	elseif cmd == "tracked" or cmd == "watch" then
 		X.ScanItems()
+	elseif cmd == "settings" or cmd == "options" then
+		X.UI.Open("scan")
 	elseif cmd == "raw" then
 		X.RawDump(tonumber(rest) or 5)
 	elseif cmd == "size" then

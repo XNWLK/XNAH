@@ -1,5 +1,5 @@
--- XNAH test scenes, part 3b: the recipe list (RecipeDB.lua, every recipe of the game) - "used in" shows
--- every recipe an item goes into, hovering one shows the whole recipe.
+-- XNAH test scenes, part 3b: the recipe list (RecipeDB.lua, every recipe of the game) - "used in" counts every
+-- recipe an item goes into, the recipe tooltip shows the whole recipe.
 
 T.scene("recipe list: every recipe, used in, and the recipe tooltip", function()
 	local X = W.start()
@@ -29,32 +29,39 @@ T.scene("recipe list: every recipe, used in, and the recipe tooltip", function()
 	-- names of items the game has not loaded come from the list
 	T.check("name from the list", (X.ItemName("2454")), "Elixir of Minor Strength")
 
-	-- the item page: a scrolling "used in" list; hover = the recipe
+	-- the Items view: the crafting box counts the recipes it goes into; the recipe tooltip
 	W.list(2589, 50, 20, 3)
 	X.Record("2589", X.Now(), 50, 50, 60, 3, "Linen Cloth", 1)
+	X.UI.Toggle()
 	X.UI.ShowItem("2589")
 	W.advance(0.3)
-	local panel = X.UI.tabs.item.panel
-	local used = panel.used
-	T.ok("used-in list filled", #used.items >= 10, #used.items)
-	T.ok("title counts them", panel.uTitle:GetText():find(#used.items .. " recipes", 1, true) ~= nil, panel.uTitle:GetText())
-	T.ok("it scrolls", used.track:IsShown())
-	local row = used.rows[1]
-	row.scripts.OnEnter(row)
+	local panel = X.UI.tabs.items.panel
+	local box = panel.craftBox
+	local screen = W.screen(box)
+	local using = #X.RecipesUsing(2589)
+	T.ok("crafting box: used in every recipe of the list", screen:find("Used in", 1, true) ~= nil and
+		screen:find(using .. " recipes", 1, true) ~= nil, screen)
+	local rid = X.RecipesUsing(2589)[1]
+	local first = X.Recipe(rid)
+	X.UI.RecipeTooltip(box, rid, 2589)
 	local text = {}
 	for _, l in ipairs(W.env.GameTooltip.lines) do text[#text + 1] = table.concat(l, " | ") end
 	text = table.concat(text, "\n")
-	local first = X.Recipe(used.items[1].rid)
 	if os.getenv and os.getenv("SHOWTIP") then print(text) end
 	T.ok("tooltip: the recipe name", text:find(first.name, 1, true) ~= nil, text)
 	T.ok("tooltip: Linen Cloth marked", text:find("> |r", 1, true) ~= nil, text)
 	T.ok("tooltip: the cost", text:find("Cost of one craft", 1, true) ~= nil, text)
 	T.ok("tooltip: the profession", text:find(first.prof, 1, true) ~= nil, text)
-	-- an item made by a list recipe shows it in the crafting box
+	-- an item made by a list recipe shows it in the crafting box (hover: the recipe, known by none of your characters)
 	X.UI.ShowItem("2840")
 	W.advance(0.3)
-	T.ok("crafting box: the list recipe", panel.cTitle:GetText():find("Smelt Copper", 1, true) ~= nil, panel.cTitle:GetText())
-	T.ok("crafting box: from the recipe list", panel.cKnown:GetText():find("recipe list", 1, true) ~= nil, panel.cKnown:GetText())
+	T.check("crafting box: the list recipe", box.rid, 2657)
+	T.ok("crafting box: its cost row", W.screen(box):find("Crafting cost", 1, true) ~= nil, W.screen(box))
+	W.hover(box)
+	text = W.plain(W.tipText(W.env.GameTooltip.lines))
+	W.unhover(box)
+	T.ok("crafting box hover: Smelt Copper", text:find("Smelt Copper", 1, true) ~= nil, text)
+	T.ok("crafting box hover: from the recipe list, not known", text:find("None of your characters knows it", 1, true) ~= nil, text)
 end)
 
 T.scene("recipe list: the crafting list uses every recipe, quickly", function()

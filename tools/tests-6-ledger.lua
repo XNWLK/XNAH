@@ -345,11 +345,13 @@ T.scene("ledger and wealth on the gold tab: every view shown with data", functio
 	text = W.screen(frame)
 	T.ok("characters: the character", text:find("Xn Ascalon", 1, true) ~= nil, text)
 	T.ok("characters: the bags", text:find("Auction house", 1, true) ~= nil)
-	W.click("Delete a character", frame)
+	-- right-click a character: its menu (forgetting one is there, no button)
+	local chars = X.UI.tabs.gold.panel.views.chars.chars
+	chars.rows[1]:Click("RightButton")
 	W.advance(0.5)
 	X.K.CloseMenu()
-	-- a new mail while the tab is shown refreshes it
-	W.click("By item", frame)
+	-- a new mail while the view is shown refreshes it
+	W.click("Best sellers", frame)
 	W.addMail(W.mailWon(2592, 400, 10, "Bob Stone"))
 	W.advance(2)
 	T.ok("by item refreshed: Wool", W.screen(frame):find("Wool Cloth", 1, true) ~= nil)

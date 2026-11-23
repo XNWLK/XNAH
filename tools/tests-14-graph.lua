@@ -1,18 +1,12 @@
--- XNAH test scenes, part 14: more on the graph - your own sales and buys as dots on the price line, a second item to
--- compare, and the best weekday and hour to sell.
+-- XNAH test scenes, part 14: more on the graph - your own sales and buys as dots on the price line, the graph widget's
+-- plain use, and the best weekday and hour to sell (the box under the graph in the Items view).
 
 local DAY, HOUR = 86400, 3600
 
--- the item page's panel and its graph
+-- the Items view's panel and its graph
 local function itemPanel(X)
-	local tab = X.UI.tabs.item
+	local tab = X.UI.tabs.items
 	return tab and tab.panel
-end
--- the visible pop-up menu, if any
-local function openMenu()
-	for _, f in ipairs(W.frames) do
-		if f.strata == "FULLSCREEN_DIALOG" and f:IsVisible() then return f end
-	end
 end
 -- a price point a day at noon on the realm's clock, `days` days back up to yesterday; fn(day number, weekday) -> mkt
 local function dailyHistory(X, key, name, days, fn)
@@ -48,7 +42,7 @@ T.scene("graph: your sales and buys as dots, hover, hide", function()
 	T.check("trades of Linen: sales", #X.GraphTrades("2589", "sales"), 3)
 	T.check("trades of Linen: buys", #X.GraphTrades("2589", "buys"), 1)
 
-	X.UI.Toggle() -- the full window (/xnah opens the simple one)
+	X.UI.Toggle()
 	X.UI.ShowItem("2589")
 	W.advance(0.5)
 	local panel = itemPanel(X)
@@ -66,10 +60,14 @@ T.scene("graph: your sales and buys as dots, hover, hide", function()
 	local text = hoverAt(g, sold.x)
 	T.ok("hover: the sale with date", text:find("You sold 20 at 11s each", 1, true) ~= nil and text:find(X.Date(sold.t, "%b %d"), 1, true) ~= nil, text)
 	T.ok("hover: market value too", text:find("Market value", 1, true) ~= nil, text)
-	-- the whole history: the old sale too
-	W.click("All", panel)
-	T.check("all: three sales and a buy", #g.GetInfo().trades, 4)
+	-- a longer range: the old sale too; a shorter one: only the last week's
+	W.click("1 year", panel)
+	T.check("1 year: three sales and a buy", #g.GetInfo().trades, 4)
+	T.check("1 year: kept in the settings", X.S().itemRange, 4)
+	W.click("7 days", panel)
+	T.check("7 days: two sales and a buy", #g.GetInfo().trades, 3)
 	W.click("30 days", panel)
+	T.check("30 days again", X.S().itemRange, 2)
 	-- a click on "Your sales" hides them (kept in the settings), a second click shows them again
 	W.click("Your sales", panel)
 	T.check("sales hidden: the buy is left", #g.GetInfo().trades, 1)
@@ -88,63 +86,14 @@ T.scene("graph: your sales and buys as dots, hover, hide", function()
 	T.check("no trades: no dots", #g.GetInfo().trades, 0)
 end)
 
-T.scene("graph: a second item to compare, its own scale when far apart", function()
+T.scene("graph: the widget's plain use (no dots, no right scale)", function()
 	local X = W.start()
-	dailyHistory(X, "2589", "Linen Cloth", 10, function() return 1000 end)
-	dailyHistory(X, "2592", "Wool Cloth", 10, function() return 1300 end)
-	dailyHistory(X, "15210", "Raider Shortsword", 10, function() return 60000 end)
-	X.UI.Toggle() -- the full window (/xnah opens the simple one)
-	X.UI.ShowItem("2589")
-	W.advance(0.5)
-	local panel = itemPanel(X)
-	local g = panel.graph
-	W.click("Compare", panel)
-	T.ok("the search box opens", panel.cmpEdit:IsShown())
-	W.type(panel.cmpEdit, "wool", false)
-	W.advance(0.5)
-	local menu = openMenu()
-	T.ok("matches in a menu", menu ~= nil)
-	if menu then W.click("Wool Cloth", menu) end
-	W.advance(0.2)
-	T.ok("the box closes", not panel.cmpEdit:IsShown())
-	local s = g.GetInfo().series
-	T.check("three lines", #s, 3)
-	T.check("the second item's line", s[3] and s[3].label, "Wool Cloth")
-	T.check("same scale (prices close)", s[3] and s[3].right, false)
-	local text = hoverAt(g, g.GetInfo().marks[3].x)
-	T.ok("hover: both items", text:find("Market value", 1, true) ~= nil and text:find("Wool Cloth", 1, true) ~= nil, text)
-	T.ok("hover: the second item's price", text:find("13s", 1, true) ~= nil, text)
-	T.ok("legend: vs Wool Cloth", W.screen(panel):find("vs Wool Cloth", 1, true) ~= nil)
-	-- kept while looking at another item; Enter takes the best match
-	X.UI.ShowItem("2592")
-	W.advance(0.2)
-	T.check("on the compared item's own page: not drawn twice", #g.GetInfo().series, 2)
-	X.UI.ShowItem("2589")
-	W.advance(0.2)
-	T.check("back: still compared", g.GetInfo().series[3] and g.GetInfo().series[3].label, "Wool Cloth")
-	W.click("Compare", panel)
-	W.type(panel.cmpEdit, "raider", true)
-	W.advance(0.3)
-	s = g.GetInfo().series
-	T.check("Enter picks the match", s[3] and s[3].label, "Raider Shortsword")
-	T.check("far apart: its own scale", s[3] and s[3].right, true)
-	T.ok("legend: scale on the right", W.screen(panel):find("scale on the right", 1, true) ~= nil)
-	-- a click on its name takes it off
-	W.click("vs Raider", panel)
-	T.check("cleared", #g.GetInfo().series, 2)
-	T.ok("legend: gone", W.screen(panel):find("vs Raider", 1, true) == nil)
-	-- Escape closes the search box
-	W.click("Compare", panel)
-	W.type(panel.cmpEdit, "wo", false)
-	panel.cmpEdit.scripts.OnEscapePressed(panel.cmpEdit)
-	T.ok("Escape closes the box", not panel.cmpEdit:IsShown())
-	-- the graph widget's old way of use still works (no marks, no right scale)
 	local g2 = X.K.Graph(W.env.UIParent, 400, 150)
 	g2:SetSeries({{points = {{X.Now() - DAY, 100}, {X.Now(), 120}}, color = {1, 1, 1}, label = "Old"}}, {bars = {{X.Now(), 5}}})
-	T.check("old use: one line", #g2.GetInfo().series, 1)
-	T.check("old use: no dots", #g2.GetInfo().trades, 0)
+	T.check("plain use: one line", #g2.GetInfo().series, 1)
+	T.check("plain use: no dots", #g2.GetInfo().trades, 0)
 	g2:SetSeries({}, {empty = "Nothing"})
-	T.check("old use: empty text", g2.empty:GetText(), "Nothing")
+	T.check("plain use: empty text", g2.empty:GetText(), "Nothing")
 end)
 
 T.scene("graph: best day and hour to sell", function()
@@ -224,18 +173,25 @@ T.scene("graph: best day and hour to sell", function()
 	lines = W.plain(table.concat(X.BestTimesText(bt), "\n"))
 	T.ok("sentence: no sales yet", lines:find("Your sales: none in the ledger yet", 1, true) ~= nil, lines)
 
-	-- the item page: "Best time" shows the charts, "Price" the graph again
-	X.UI.Toggle() -- the full window (/xnah opens the simple one)
+	-- the Items view: the best-time box is always there, under the graph (which stays shown)
+	X.UI.Toggle()
 	X.UI.ShowItem("2589")
 	W.advance(0.5)
 	local panel = itemPanel(X)
-	W.click("Best time", panel)
-	T.ok("charts shown", panel.best:IsShown() and not panel.graph:IsShown())
+	T.ok("charts and graph both shown", panel.best:IsShown() and panel.graph:IsShown())
+	T.ok("range buttons shown too", W.findButton("30 days", panel) ~= nil)
 	local screen = W.screen(panel)
-	T.ok("charts: the sentence", screen:find("Best day to sell: Tuesday", 1, true) ~= nil, screen)
-	T.ok("charts: weekday labels", screen:find("Tue", 1, true) ~= nil and screen:find("Price by weekday", 1, true) ~= nil)
-	T.ok("charts: server time", screen:find("(server time)", 1, true) ~= nil)
-	T.ok("range buttons hidden", W.findButton("30 days", panel) == nil)
+	T.ok("box: its title", screen:find("Best time to sell", 1, true) ~= nil, screen)
+	T.ok("box: the best day", screen:find("Best day to sell: Tuesday", 1, true) ~= nil, screen)
+	T.ok("box: weekday labels", screen:find("Tue", 1, true) ~= nil and screen:find("Price by weekday", 1, true) ~= nil)
+	T.ok("box: server time", screen:find("(server time)", 1, true) ~= nil)
+	T.ok("box: hours not enough (one scan a day)", screen:find("Best hour: not enough scans yet", 1, true) ~= nil, screen)
+	-- hovering the title tells the whole story in sentences
+	W.hover(panel.bestBox.hot)
+	local story = W.plain(W.tipText(W.env.GameTooltip.lines))
+	W.unhover(panel.bestBox.hot)
+	T.ok("title hover: the sentences", story:find("Best day to sell: Tuesday (+", 1, true) ~= nil and
+		story:find("Server time", 1, true) ~= nil, story)
 	-- hovering the bars tells their numbers
 	for _, c in ipairs(panel.best.charts) do
 		for _, slot in ipairs(c.slots) do W.hover(slot) W.unhover(slot) end
@@ -245,12 +201,19 @@ T.scene("graph: best day and hour to sell", function()
 	local tip = W.plain(W.tipText(W.env.GameTooltip.lines))
 	W.unhover(tue)
 	T.ok("hover: Tuesday", tip:find("Tuesday", 1, true) ~= nil and tip:find("over the week's average", 1, true) ~= nil, tip)
-	-- another item keeps the view
+	-- Wool: the best hour in the box
+	X.UI.ShowItem("2592")
+	W.advance(0.2)
+	screen = W.screen(panel)
+	T.ok("box: best hour 20:00", screen:find("Best hour: 20:00 - 21:00 (+", 1, true) ~= nil, screen)
+	T.ok("box: no day yet (4 days)", screen:find("Best day to sell: no day clearly better yet", 1, true) ~= nil, screen)
+	-- an item with too little: said so, the graph stays
 	X.UI.ShowItem("4306")
 	W.advance(0.2)
-	T.ok("other item: not enough", W.screen(panel):find("not enough data yet", 1, true) ~= nil)
-	W.click("Price", panel)
-	T.ok("graph again", panel.graph:IsShown() and not panel.best:IsShown())
+	screen = W.screen(panel)
+	T.ok("other item: no day", screen:find("no day clearly better yet", 1, true) ~= nil, screen)
+	T.ok("other item: no hour", screen:find("not enough scans yet", 1, true) ~= nil, screen)
+	T.ok("other item: graph and box shown", panel.graph:IsShown() and panel.best:IsShown())
 
 	-- without the game's clock: the computer's clock, said so
 	W.gameShift = nil

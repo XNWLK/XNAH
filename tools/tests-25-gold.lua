@@ -265,6 +265,7 @@ T.scene("gold: the saved data of removed features is deleted once, the rest is k
 	local S = X.S()
 	S.homeFirst, S.snipeWait, S.alertSound, S.postFloor, S.buyView, S.craftView = true, 10, true, 80, "best", "recipes"
 	S.dealsHidden, S.strategySel, S.mailButton, S.routineCancel, S.guideAtLogin = {}, "usual", true, true, true
+	S.ahBar = true
 	S.tab = "buy"
 	S.sorts = {["buy:1"] = {2, true}, ["market:1"] = {3, false}, ["craft:2"] = {1, false}}
 	-- kept: the watch list with a highest price, prices, ledger, settings in use
@@ -281,14 +282,14 @@ T.scene("gold: the saved data of removed features is deleted once, the rest is k
 		T.check("deleted: " .. k, db[k], nil)
 	end
 	for _, k in ipairs({"homeFirst", "snipeWait", "alertSound", "postFloor", "buyView", "craftView", "dealsHidden",
-		"strategySel", "mailButton", "routineCancel", "guideAtLogin"}) do
+		"strategySel", "mailButton", "routineCancel", "guideAtLogin", "ahBar"}) do
 		T.check("setting deleted: " .. k, S[k], nil)
 	end
 	T.ok("the tab of a removed page is forgotten", S.tab ~= "buy", S.tab)
 	T.check("sorting of a removed page deleted", S.sorts["buy:1"], nil)
 	T.check("sorting of a removed page deleted (2)", S.sorts["craft:2"], nil)
 	T.ok("sorting of Market kept", S.sorts["market:1"] ~= nil)
-	T.check("done once", db.cleanup, 1)
+	T.check("done once", db.cleanup, 2)
 	T.ok("watch list kept", X.Watched("2589"))
 	T.check("its highest price kept", X.WatchMax("2589"), 77)
 	T.ok("prices kept", X.Items()["2589"] ~= nil and X.Items()["2589"].cur ~= nil)
@@ -300,4 +301,15 @@ T.scene("gold: the saved data of removed features is deleted once, the rest is k
 	X = W.reload()
 	W.advance(1)
 	T.ok("not cleaned twice", X.db.shop ~= nil and X.db.shop.kept == true)
+	-- saved data cleaned by the first round only (cleanup = 1): runs once more, harmless, and takes the auction house bar
+	X.db.cleanup = 1
+	X.S().ahBar = true
+	X.S().cut = 6
+	X = W.reload()
+	W.advance(1)
+	T.check("second round: auction house bar setting deleted", X.S().ahBar, nil)
+	T.check("second round: now 2", X.db.cleanup, 2)
+	T.check("second round: setting in use kept", X.S().cut, 6)
+	T.check("second round: ledger kept", #X.Ledger().sales, 1)
+	T.ok("second round: watch list kept", X.Watched("2589"))
 end)

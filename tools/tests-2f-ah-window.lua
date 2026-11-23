@@ -1,5 +1,5 @@
--- XNAH test scenes, part 2f: "Search on the auction house" also shows the item in the game's own auction house window
--- (its listings page; a search by name while the game is still loading the item).
+-- XNAH test scenes, part 2f: "Search on the auction house now" (the right-click menu of an item) also shows the item in
+-- the game's own auction house window (its listings page; a search by name while the game is still loading the item).
 
 local function stubWindow(f)
 	local calls = {}
@@ -34,11 +34,15 @@ T.scene("search: the game's auction house window shows the item too", function()
 	W.advance(2)
 	T.check("never known: a search by name", calls[#calls], "search")
 	W.items[2589].uncached, W.items[2589].never = nil, nil
-	-- the item page's button: the window and XNAH's own search
+	-- the right-click menu of an item: the window and XNAH's own search
 	for i = #calls, 1, -1 do calls[i] = nil end
 	X.UI.ShowItem("2589")
-	X.UI.tabs.item.panel.ah:Click()
-	T.check("button opens the listings", calls[#calls], "open 2589:0")
+	X.UI.ItemMenu(X.UI.Frame(), "2589")
+	local menu
+	for _, f in ipairs(W.frames) do if f.strata == "FULLSCREEN_DIALOG" and f:IsVisible() then menu = f end end
+	T.ok("a menu", menu ~= nil)
+	if menu then W.click("Search on the auction house now", menu) end
+	T.check("menu entry opens the listings", calls[#calls], "open 2589:0")
 	T.ok("and XNAH searches it", X.scan.state == "items" or #W.said("scan done") > 0, X.scan.state)
 	-- auction house closed: nothing
 	W.closeAH()

@@ -10,7 +10,7 @@ T.scene("quick: alt-click an item and the Find box", function()
 	W.alt = true
 	W.env.HandleModifiedItemClick("|cffffffff|Hitem:2589::::::::60:::::|h[Linen Cloth]|h|r")
 	W.alt = false
-	T.check("alt-click opens the item page", X.UI.current, "item")
+	T.check("alt-click opens the item page", X.UI.current, "items")
 	T.check("for that item", X.UI.itemKey, "2589")
 	-- shift-click (linking in chat) does nothing here
 	X.UI.Open("market")

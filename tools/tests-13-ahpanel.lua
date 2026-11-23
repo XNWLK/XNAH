@@ -1,6 +1,6 @@
--- XNAH test scenes, part 13: XNAH inside the game's auction house window (AHPanel.lua) - the panel beside the window
--- that follows the item the game shows, and the extra columns in the game's lists. The window is the detailed
--- stand-in of tools/world-ahpanel.lua.
+-- XNAH test scenes, part 13: XNAH and the game's auction house window (AHPanel.lua) - the item picked in the game's
+-- window is shown in XNAH's window (Items view), and the extra columns in the game's lists. The window is the
+-- detailed stand-in of tools/world-ahpanel.lua.
 
 -- 20 days of history at a usual price (market value) of `usual`, then a price now
 local function history(X, key, usual, minNow, name)
@@ -42,102 +42,74 @@ local function setup()
 	return X
 end
 
-T.scene("ah panel: follows the item picked in the game's auction house window", function()
+T.scene("ah panel: an item picked in the game's auction house window shows in XNAH's window", function()
 	local X = setup()
-	local p = W.env.XNAHAuctionPanel
-	T.ok("the panel is beside the window", p and p:IsShown())
-	T.ok("docked to its right edge", p and p.points[1] and p.points[1][1] == "TOPLEFT" and p.points[1][2] == W.ahFrame and p.points[1][3] == "TOPRIGHT")
-	T.ok("nothing picked yet: the hint", p.hint:IsShown() and not p.body:IsShown())
-
+	local f = X.UI.Frame()
+	T.ok("XNAH's window opened beside the auction house", f and f:IsShown())
+	T.ok("no panel beside the window any more", W.env.XNAHAuctionPanel == nil)
 	-- the game's list: Linen Cloth (stackable) and a sword with a suffix
 	W.ahRows("browse", {W.ahBrowseResult(2589, 40, 300), W.ahBrowseResult(15210, 60000, 1, -19)})
 	W.ahClickRow(1)
 	T.check("the stackable item", X.AHPanel.key, "2589")
 	T.check("the game still opened its listings page", W.ahFrame.displayMode.name, "CommoditiesBuy")
-	T.ok("name shown", W.plain(p.name.text):find("Linen Cloth", 1, true) ~= nil, p.name.text)
-	local text = {}
-	for i, fs in ipairs(p.lines) do text[i] = W.plain(fs.text) end
-	T.ok("lowest now", text[1]:find("40c", 1, true) ~= nil, text[1])
-	T.ok("market value", text[2]:find("50c", 1, true) ~= nil, text[2])
-	T.check("now vs usual", text[3], "80% of usual")
-	T.ok("30-day average", text[5]:find("50c", 1, true) ~= nil, text[5])
-	T.check("sells a day", text[7], "3.5")
-	T.ok("vendor pays", text[8]:find("13c", 1, true) ~= nil, text[8])
-	T.ok("a graph was drawn", p.graph ~= nil)
+	W.advance(0.5)
+	T.check("XNAH shows it", X.UI.itemKey, "2589")
+	T.check("on the Items view", X.UI.current, "items")
+	local panel = X.UI.tabs.items.panel
+	T.ok("its name in the analysis", W.plain(panel.name.text):find("Linen Cloth", 1, true) ~= nil, panel.name.text)
 
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
 	W.ahClickRow(2)
 	T.check("the sword with its suffix", X.AHPanel.key, "15210:-19")
 	T.check("its gear listings page", W.ahFrame.displayMode.name, "ItemBuy")
-	T.check("dearer than usual", W.plain(p.lines[3].text), "120% of usual")
+	T.check("XNAH shows the sword", X.UI.itemKey, "15210:-19")
 
-	-- XNAH's own "show on the auction house" goes through the same game function
+	-- another view in XNAH: picking an item in the game's window brings the Items view back
+	X.UI.Select("market")
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
 	X.ShowOnAuctionHouse("4306")
 	W.advance(0.5)
 	T.check("XNAH's own show-on-the-auction-house", X.AHPanel.key, "4306")
+	T.check("Items view again", X.UI.current, "items")
+	T.check("showing it", X.UI.itemKey, "4306")
+
+	-- an item looked at in XNAH, then the same item as before picked again in the game: shown again
+	X.UI.ShowItem("2589")
+	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
+	X.ShowOnAuctionHouse("4306")
+	W.advance(0.5)
+	T.check("picked again: shown again", X.UI.itemKey, "4306")
 
 	-- an item from the bags picked for posting
 	W.ahFrame:SetPostItem({link = W.link(2589), id = 2589})
 	T.check("item to post", X.AHPanel.key, "2589")
+	T.check("shown", X.UI.itemKey, "2589")
 
 	-- fallback: the game's search answer for the window's own item (as if a hook had missed it) ...
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.CommoditiesBuy)
 	W.ahFrame.CommoditiesBuyFrame.itemID = 2592
 	W.fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2592)
 	T.check("fallback: the window's item", X.AHPanel.key, "2592")
-	-- ... but XNAH's own searches for other items do not move the panel
+	-- ... but XNAH's own searches for other items do not move it
+	X.UI.ShowItem("4306")
+	W.fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2592)
 	W.fire("ITEM_SEARCH_RESULTS_UPDATED", {itemID = 15210, itemLevel = 0, itemSuffix = -19, battlePetSpeciesID = 0})
-	T.check("a search for another item: stays", X.AHPanel.key, "2592")
+	T.check("a search answer for the same item: XNAH stays on its item", X.UI.itemKey, "4306")
 
-	-- the buttons
+	-- XNAH's window closed by hand: a pick is kept for when it opens
+	f:Hide()
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
 	W.ahClickRow(1)
-	p.watch:Click()
-	T.ok("watch", X.Watched("2589"))
-	W.advance(0.5)
-	T.check("button says so", W.buttonText(p.watch), "Stop watching")
-	p.max:Click()
-	local d = W.env.XNAHDialog
-	T.ok("max price asks", d and d.shown)
-	W.type(d.line, "1s 20c")
-	d.ok:Click()
-	T.check("max price saved", X.WatchMax("2589"), 120)
-	W.advance(0.5)
-	T.ok("max price on the button", W.plain(W.buttonText(p.max)):find("1s 20c", 1, true) ~= nil, W.buttonText(p.max))
-	p.open:Click()
-	W.advance(0.5)
-	T.check("open in XNAH", X.UI.itemKey, "2589")
-	T.ok("XNAH's window on the item page", X.UI.Frame() and X.UI.Frame():IsShown() and X.UI.current == "item")
+	T.ok("closed: not opened by a pick", not f:IsShown())
+	X.UI.Open()
+	T.check("opened: that item", X.UI.itemKey, "2589")
 
-	-- hide / show again (remembered)
-	p.hide:Click()
-	T.ok("hidden", not p:IsShown())
-	T.check("remembered", X.S().ahPanel, false)
-	local tab = W.findButton("XNAH", W.env.UIParent)
-	local back
-	for _, f in ipairs(W.frames) do
-		if f.kind == "Button" and f.parent == W.env.UIParent and W.buttonText(f) == "XNAH" and f:IsVisible() and f.points[1] and f.points[1][2] == W.ahFrame then back = f end
-	end
-	T.ok("the small button beside the window", back ~= nil, tab and W.buttonText(tab))
-	if back then back:Click() end
-	T.ok("shown again", p:IsShown())
-	T.check("remembered again", X.S().ahPanel, true)
-
-	-- the auction house closes: the panel goes; opens again: nothing picked yet
+	-- the auction house closes: XNAH's window (opened by hand now) stays; opens again: nothing picked yet
 	W.closeAH()
-	T.ok("closed with the window", not p:IsShown())
+	T.ok("opened by hand: stays", f:IsShown())
 	W.openAH()
 	W.advance(0.5)
-	T.ok("back with the window", p:IsShown())
-	T.check("starts empty", X.AHPanel.key, nil)
-	-- a reload: the setting stays
-	p.hide:Click()
-	X = W.reload()
-	W.ahWindow()
-	W.openAH()
-	W.advance(0.5)
-	T.ok("hidden after a reload", not (W.env.XNAHAuctionPanel and W.env.XNAHAuctionPanel:IsShown()))
+	T.check("starts with nothing picked", X.AHPanel.key, nil)
 end)
 
 T.scene("ah panel: extra columns in the game's lists", function()
@@ -198,14 +170,15 @@ T.scene("ah panel: extra columns in the game's lists", function()
 	W.advance(0.5)
 	T.ok("after new prices", columns(crows[1]) ~= nil)
 
-	-- switched off in the panel: gone; on again: back
+	-- switched off in the settings: gone; on again: back
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
-	local p = W.env.XNAHAuctionPanel
-	p.cols:Click()
+	X.UI.Open("scan")
+	T.ok("the setting is in Settings", W.findButton("Extra columns in the auction house lists", X.UI.tabs.scan.panel) ~= nil)
+	W.click("Extra columns in the auction house lists", X.UI.tabs.scan.panel)
 	T.check("setting off", X.S().ahColumns, false)
 	T.check("columns gone", columns(W.ahLists.browse.ScrollBox.frames[1]), nil)
 	T.ok("header gone", not head:IsVisible())
-	p.cols:Click()
+	W.click("Extra columns in the auction house lists", X.UI.tabs.scan.panel)
 	T.ok("columns back", columns(W.ahLists.browse.ScrollBox.frames[1]) ~= nil)
 	-- the window closes: the column text goes with it
 	W.closeAH()
@@ -251,18 +224,19 @@ T.scene("ah panel: never writes into the game's window", function()
 	end
 	T.check("no new fields in the game's tables", table.concat(added, ", "), "")
 	T.ok("followed only with hooksecurefunc", (W.tableHooks or 0) >= 7, W.tableHooks)
-	T.ok("the panel is XNAH's own frame", W.env.XNAHAuctionPanel and W.env.XNAHAuctionPanel.parent == W.env.UIParent)
+	T.ok("XNAH's window is its own frame", W.env.XNAHFrame and W.env.XNAHFrame.parent == W.env.UIParent)
+	T.ok("no panel beside the window any more", W.env.XNAHAuctionPanel == nil)
 end)
 
 T.scene("ah panel: a bare auction house window (pieces missing) does no harm", function()
 	local X = W.start()
 	W.openAH() -- the plain stand-in window: none of the game's pieces
 	W.advance(4)
-	T.ok("panel still there", W.env.XNAHAuctionPanel and W.env.XNAHAuctionPanel:IsShown())
+	T.ok("XNAH's window beside it", W.env.XNAHFrame and W.env.XNAHFrame:IsShown())
 	X.Fire("XNAH_PRICES")
 	W.advance(1)
 	W.fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2589)
 	T.check("nothing picked", X.AHPanel.key, nil)
 	W.closeAH()
-	T.ok("hidden", not W.env.XNAHAuctionPanel:IsShown())
+	T.ok("closed with it", not W.env.XNAHFrame:IsShown())
 end)

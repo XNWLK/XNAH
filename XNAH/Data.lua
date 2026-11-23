@@ -7,7 +7,7 @@
 --   vbuy  = {[itemID] = {p = copper per one, lim = true if limited stock, at = t, from = "NPC name"}}
 --   recipes = {[recipeID] = see Craft.lua}
 --   watch = {[key] = true}          the watch list (starred items)
---   cleanup = 1                     the saved data of the features taken out after v0.8.1 was deleted (X.CleanRemoved)
+--   cleanup = 2                     the saved data of the features taken out after v0.8.1 was deleted (X.CleanRemoved)
 -- }
 -- An item key is the item ID as text ("2589"), or "id:suffix" for an item with a random bonus ("15210:-19", "of the
 -- Bear"): those sell for very different prices.
@@ -29,7 +29,6 @@ X.DEFAULTS = {
 	vendorBuyFirst = true, -- crafting: buy a reagent from a vendor when that is cheaper than the auction house
 	debug = false,
 	minimap = {angle = 200, hide = false},
-	ahBar = true,       -- the little XNAH bar on the auction house window
 	scanOnOpen = false, -- start a full scan by itself when the auction house opens (and the server allows one)
 }
 
@@ -61,17 +60,20 @@ function X.InitDB()
 	X.CleanRemoved(db)
 end
 
--- [[ after v0.8.1 XNAH became a price and analysis addon ]] once (db.cleanup = 1): the saved bits that only the removed
+-- [[ after v0.8.1 XNAH became a price and analysis addon ]] once per CLEANUP number: the saved bits that only the removed
 -- pages and helpers used go (shopping lists, crafting queue, posting rules, the sniper, strategies, the guide, the Home page,
--- Open all mail, the Next step key). Prices, history, the watch list (with its highest prices), the ledger, your
--- characters, recipes and the settings still used are never touched.
+-- Open all mail, the Next step key, the bar on the auction house window). Prices, history, the watch list (with its highest
+-- prices), the ledger, your characters, recipes and the settings still used are never touched. When something more is
+-- taken out, add it to the lists and raise CLEANUP by one: it then runs once more (running it again is harmless - it only
+-- deletes what is no longer used).
 local REMOVED_DATA = {"shop", "queue", "onWay", "strategies", "postRules", "sellTick", "sellList", "mailLast", "guideSeen"}
 local REMOVED_SETTINGS = {"guideAtLogin", "homeFirst", "homeScanHours", "mailButton", "postFloor", "postCeiling",
 	"postUndercut", "postDuration", "routineCancel", "snipeWait", "snipeSound", "alertSound", "buyView", "shopList",
-	"dealSpeedHide", "dealSpeedMin", "craftView", "craftProf", "craftMine", "dealsHidden", "strategySel"}
+	"dealSpeedHide", "dealSpeedMin", "craftView", "craftProf", "craftMine", "dealsHidden", "strategySel", "ahBar"}
 local REMOVED_PAGES = {home = true, buy = true, sell = true, craft = true, deals = true, strategies = true}
+local CLEANUP = 2 -- 1: v0.8.1 to the analysis addon; 2: the auction house bar (ahBar)
 function X.CleanRemoved(db)
-	if (db.cleanup or 0) >= 1 then return end
+	if (db.cleanup or 0) >= CLEANUP then return end
 	for _, k in ipairs(REMOVED_DATA) do db[k] = nil end
 	local s = db.settings
 	for _, k in ipairs(REMOVED_SETTINGS) do s[k] = nil end
@@ -83,7 +85,7 @@ function X.CleanRemoved(db)
 			if page and REMOVED_PAGES[page] then s.sorts[k] = nil end
 		end
 	end
-	db.cleanup = 1
+	db.cleanup = CLEANUP
 end
 function X.S()
 	return X.db.settings
