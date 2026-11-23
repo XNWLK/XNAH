@@ -14,7 +14,8 @@ One big window. It opens by itself beside the game's auction house (setting "Ope
 itself smaller to fit there; `/xnah`, the minimap button or a key binding open it anywhere. On top: the four views,
 how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and the Settings gear.
 
-- **Items**: your tracked items on the left (add any item, its price, % of its usual price, trend and a 7-day line),
+- **Items**: your tracked items on the left (add any item, its price, % of its usual price, trend and a 7-day line;
+  double-click one to show it in the game's auction house),
   and everything about the item you pick on the right:
   - 12 numbers, each explained in plain words when you point at it: cheapest now, market value, usual price, now vs
     usual, trend, ups and downs, sells a day, listed vs normal, **fair price to buy**, **fair price to sell**, vendor

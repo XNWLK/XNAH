@@ -429,6 +429,14 @@ function Frame:Click(button)
 	s = self.scripts.OnClick if s then step(s, self, button or "LeftButton", false) end
 	s = self.scripts.PostClick if s then step(s, self, button or "LeftButton", false) end
 end
+-- a double-click as the game gives it: the first press is a click; the second runs OnDoubleClick when the button has
+-- one (and then no OnClick), else it is a second click
+function Frame:DoubleClick(button)
+	self:Click(button)
+	if self.disabled then return end
+	local s = self.scripts.OnDoubleClick
+	if s then step(s, self, button or "LeftButton", false) else self:Click(button) end
+end
 
 -- [[ the tooltip ]] lines added by the addon are recorded; SetHyperlink / SetItemByID run the tooltip hooks
 local function newTooltip(name)

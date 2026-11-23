@@ -411,6 +411,17 @@ function UI.ItemTooltip(owner, key)
 	end
 	GameTooltip:Show()
 end
+-- double-click on an item in a list: the game's own auction house window shows it too (its listings page, with its name
+-- in the game's search box), so you can buy or sell it there with the game's own buttons. Only while that window is open.
+function UI.ShowInAuctionHouse(key)
+	if not key then return false end
+	local f = AuctionHouseFrame
+	if not (X.ahOpen and type(f) == "table" and f.IsShown and X.Try(f.IsShown, f)) then
+		X.Print("open the auction house first, then double-click again.")
+		return false
+	end
+	return X.Try(X.ShowOnAuctionHouse, key) and true or false
+end
 -- right-click menu on an item row: show it, track / stop tracking, search on the auction house, never suggest
 function UI.ItemMenu(anchor, key)
 	local items = {
@@ -439,11 +450,13 @@ function UI.ItemMenu(anchor, key)
 	K.Menu(anchor, items)
 end
 
--- [[ sortable table ]] K.Table(parent, w, h, columns, onClick)
+-- [[ sortable table ]] K.Table(parent, w, h, columns, onClick, onDoubleClick, doubleClickTip)
 -- columns = {{title, width, justify, text = function(row) -> string, sort = function(row) -> number or string}, ...}
 -- tbl:SetRows(rows, emptyText); clicking a header sorts by it (again: the other way); clicking a row: onClick(row, button,
--- rowFrame). Rows with row.key get the item tooltip on hover.
-function K.Table(parent, w, h, columns, onClick)
+-- rowFrame). Rows with row.key get the item tooltip on hover. Optional: a left double-click on a row runs
+-- onDoubleClick(row, rowFrame) (the game runs the row's click for the first press, the double-click for the second),
+-- and doubleClickTip is a grey line added to the row's item tooltip. Tables without them are unchanged.
+function K.Table(parent, w, h, columns, onClick, onDoubleClick, doubleClickTip)
 	local cols = {}
 	for i, c in ipairs(columns) do cols[i] = {c[1], c[2], c[3]} end
 	local tbl
@@ -463,8 +476,21 @@ function K.Table(parent, w, h, columns, onClick)
 			end
 			UI.menuTable = nil
 		end)
+		if tbl.onDoubleClick then
+			rowFrame:SetScript("OnDoubleClick", function(self, button)
+				if button ~= "LeftButton" then return end
+				local ok, err = pcall(tbl.onDoubleClick, row, self)
+				if not ok then X.OnError(err) end
+			end)
+		end
 		if row.key then
-			rowFrame:SetScript("OnEnter", function(self) UI.ItemTooltip(self, row.key) end)
+			rowFrame:SetScript("OnEnter", function(self)
+				UI.ItemTooltip(self, row.key)
+				if tbl.doubleClickTip and X.KeyID(row.key) then -- (the item tooltip was shown)
+					GameTooltip:AddLine(tbl.doubleClickTip, 0.6, 0.6, 0.6, true)
+					GameTooltip:Show()
+				end
+			end)
 			rowFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		else
 			rowFrame:SetScript("OnEnter", nil)
@@ -473,6 +499,7 @@ function K.Table(parent, w, h, columns, onClick)
 	end, cols)
 	tbl = list
 	tbl.columns = columns
+	tbl.onDoubleClick, tbl.doubleClickTip = onDoubleClick, doubleClickTip
 	tbl.sortCol, tbl.sortDesc = nil, true
 	-- the sorting you pick is remembered per view (tables made while a view is built: "market:1", "market:2", ...)
 	if UI.building then

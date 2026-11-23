@@ -146,9 +146,12 @@ local function buildList(panel)
 	panel.showing:SetPoint("TOPLEFT", 0, -30)
 	panel.showing:SetWidth(LIST_W)
 	panel.showing:SetWordWrap(false)
+	-- click: shown on the right; double-click: also in the game's own auction house window (to buy or sell it there)
 	local tbl = K.Table(panel, LIST_W, UI.H - 62, LIST_COLUMNS, function(row, button, rowFrame)
 		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
-	end)
+	end, function(row)
+		UI.ShowInAuctionHouse(row.key) -- (the first press of the double-click already showed it on the right)
+	end, "Double-click: show it in the auction house")
 	tbl:SetPoint("TOPLEFT", 0, -62)
 	tbl:SortBy(1, false)
 	-- after each redraw (sorting, scrolling): the 7-day lines, and the item shown marked
@@ -899,7 +902,7 @@ local function build(panel)
 	buildBest(panel, a)
 	buildCraft(panel, a)
 	panel.hint = K.Label(panel, "Pick an item on the left, type a name in Add an item, or use Find at the top: everything " ..
-		"about it shows here.", "GameFontDisable", "CENTER")
+		"about it shows here. Double-click an item on the left: show it in the auction house too.", "GameFontDisable", "CENTER")
 	panel.hint:SetPoint("CENTER", panel, "TOPLEFT", AX + AW / 2, -UI.H / 2)
 	panel.hint:SetWidth(AW - 100)
 end

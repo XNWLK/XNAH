@@ -10,6 +10,8 @@
 --   W.ahRows(listName, results)  shows rows in a list ("browse", "item", "commodity") and lets the scroll box update
 --   W.ahClickRow(i)              clicks row i of the item list (as the game does: SelectBrowseResult)
 --   W.ahBrowseResult(id, minPrice, qty, suffix)  one row of the item list as the game gives it
+--   W.ahFrame.calls              what was called on the window, in order ("mode Buy", "text Linen Cloth",
+--                                "open 2589:0", "search"), for scenes that check what XNAH asked of it
 
 local unpackf = table.unpack or unpack
 
@@ -124,23 +126,27 @@ function W.ahWindow()
 	f.CommoditiesBuyFrame.ItemList = newList(f.CommoditiesBuyFrame, "commodity")
 	f.ItemSellFrame = W.newFrame("Frame", nil, f)
 	f.CommoditiesSellFrame = W.newFrame("Frame", nil, f)
+	f.calls = {}
+	local function called(text) f.calls[#f.calls + 1] = text end
 	f.SearchBar = W.newFrame("Frame", nil, f)
-	f.SearchBar.StartSearch = function() f.searched = true end
+	f.SearchBar.StartSearch = function() f.searched = true called("search") end
 	W.ahLists = {browse = f.BrowseResultsFrame.ItemList, item = f.ItemBuyFrame.ItemList, commodity = f.CommoditiesBuyFrame.ItemList}
 
 	f.SetDisplayMode = function(self, mode)
 		for _, m in pairs(modes) do for _, sub in ipairs(m) do self[sub]:Hide() end end
 		for _, sub in ipairs(mode) do self[sub]:Show() end
 		self.displayMode = mode
+		called("mode " .. tostring(mode.name))
 	end
 	f.GetDisplayMode = function(self) return self.displayMode end
-	f.SetSearchText = function(self, text) self.searchText = text end
+	f.SetSearchText = function(self, text) self.searchText = text called("text " .. tostring(text)) end
 	f.ItemBuyFrame.SetItemKey = function(self, itemKey) self.itemKey = itemKey end
 	f.CommoditiesBuyFrame.SetItemIDAndPrice = function(self, itemID, price) self.itemID, self.price = itemID, price end
 	f.CommoditiesBuyFrame.GetItemID = function(self) return self.itemID end
 	-- as Blizzard_AuctionHouseFrame.lua: a commodity opens its listings page, anything else the gear listings
 	f.SelectBrowseResult = function(self, result)
 		local itemKey = result.itemKey
+		called("open " .. tostring(itemKey.itemID) .. ":" .. tostring(itemKey.itemSuffix))
 		local info = env.C_AuctionHouse.GetItemKeyInfo(itemKey)
 		if info and info.isCommodity then
 			self.CommoditiesBuyFrame:SetItemIDAndPrice(itemKey.itemID, result.minPrice)
