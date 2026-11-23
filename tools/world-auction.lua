@@ -35,7 +35,8 @@ table.insert(W.onReset, function()
 	W.sounds, W.flashes = {}, 0
 	W.money = 1234567
 	W.buyToBags = false
-	W.bids = {}             -- every PlaceBid: {auctionID, amount}
+	W.moneyLate = false     -- true: PlaceBid's gold goes only after its purchase event (as seen in the game)
+	W.bids = {}            -- every PlaceBid: {auctionID, amount}
 end)
 
 -- an auction's id (made the first time it is needed)
@@ -308,26 +309,29 @@ table.insert(W.onEnv, function(env)
 			W.fire("COMMODITY_PURCHASE_SUCCEEDED")
 		end)
 	end
-	-- buying other items: one whole auction. The amount sent is the price of ONE (the search row's buyoutAmount, as the
-	-- game's own Buyout button sends it); the server takes that x the auction's count. ASSUMED: not checked in the game
-	-- whether a stack costs one buyout or buyout x count - XNAH reads the gold that went (Buy.lua).
+	-- buying other items: ONE item of the auction. The amount sent is the price of ONE (the search row's buyoutAmount,
+	-- as the game's own Buyout button sends it); the server sells one item for that and leaves the rest listed
+	-- (verified in the game 2026-11-23: an auction of 7 at 34s 13c, one press = one item for 34s 13c, 6 left).
+	-- W.moneyLate = true: the gold goes only after the purchase event (as seen in the game: GetMoney often has not
+	-- changed yet when AUCTION_HOUSE_PURCHASE_COMPLETED comes).
 	AH.PlaceBid = function(auctionID, amount)
 		restricted("PlaceBid")
 		W.bids[#W.bids + 1] = {auctionID = auctionID, amount = amount}
 		local a = findAuction(auctionID)
 		local one = a and oneOf(a)
-		local price = one and one * (a.count or 1)
-		if not a or a.owner == W.me or not one or type(amount) ~= "number" or amount < one or (W.money or 0) < price then
+		if not a or a.owner == W.me or not one or type(amount) ~= "number" or amount < one or (W.money or 0) < one then
 			W.after(0.3, function() W.fire("AUCTION_HOUSE_SHOW_ERROR", 1) end)
 			return
 		end
-		removeAuction(a)
-		W.money = W.money - price
-		W.won[#W.won + 1] = {id = a.itemID, count = a.count, suffix = a.suffix, price = price}
-		if W.buyToBags then toBags(a.itemID, a.count, a.suffix) end
+		a.count = (a.count or 1) - 1
+		if a.count <= 0 then removeAuction(a) else a.buyout = one * a.count end
+		if not W.moneyLate then W.money = W.money - one end
+		W.won[#W.won + 1] = {id = a.itemID, count = 1, suffix = a.suffix, price = one}
+		if W.buyToBags then toBags(a.itemID, 1, a.suffix) end
 		W.after(0.3, function()
 			W.fire("AUCTION_HOUSE_PURCHASE_COMPLETED", auctionID)
 			W.fire("ITEM_PURCHASED", a.itemID)
+			if W.moneyLate then W.after(0.2, function() W.money = W.money - one end) end
 		end)
 	end
 

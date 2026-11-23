@@ -235,7 +235,8 @@ local function buildBuy(panel, a)
 	buy:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	buy:SetScript("OnClick", function(_, button) buyClick(button) end)
 	K.Tooltip(buy, "Buy cheapest now", "Buys the cheapest listing that is not yours, at exactly the price on the button, " ..
-		"without asking. Gear and other items: one press buys the whole auction (a stack of 40 too). Goods with one price " ..
+		"without asking. Gear and other items: one press buys ONE item for the price of one (also from an auction of 7: " ..
+		"press again for the next one). Goods with one price " ..
 		"each (ore, cloth ...): the first press asks the server for the exact price, the second press buys. After each " ..
 		"purchase it looks again, so you can keep pressing. Right-click: stop a purchase that was started.")
 	panel.buy = buy
@@ -281,8 +282,11 @@ local function buyNote(b, key)
 			return "The cheapest " .. X.Num(p.qty) .. ", about " .. X.MoneyPlain(math.floor(p.total / math.max(1, p.qty) + 0.5)) ..
 				" each. Press: exact price, press again: buy." .. done
 		end
-		return "Cheapest listing not yours" .. (p.qty > 1 and (": " .. X.Num(p.qty) .. " at " .. X.MoneyPlain(p.offers[1] and p.offers[1].unit or p.total) .. " each") or "") ..
-			". One press buys it." .. done
+		if (p.listed or 1) > 1 then
+			return "Cheapest not yours: " .. X.MoneyPlain(p.total) .. " each (" .. X.Num(p.listed) .. " listed in that auction)." ..
+				" One press buys one." .. done
+		end
+		return "Cheapest listing not yours. One press buys it." .. done
 	elseif s == "confirm" and b.quote then
 		return "Exact price: " .. X.MoneyPlain(b.quote.unit or 0) .. " each. Press again to buy, right-click to stop."
 	elseif s == "searching" then return "Looking for the cheapest listing ..." .. done

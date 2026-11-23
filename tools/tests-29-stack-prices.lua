@@ -2,7 +2,7 @@
 -- like gear). The game's item search gives such a row's buyout as the price of ONE, also for a stack of 40 (its own
 -- list shows it as it is, its Buyout button sends it unchanged). XNAH used to divide it by the quantity, so a stack of
 -- 40 at 49s 99c each read as 1s 25c each - 40 times too cheap. Here: one auction of 40 at 49s 99c each and one single
--- at 1g.
+-- at 1g. Buying from such an auction (PlaceBid) gets ONE item for the price of one (verified in the game 2026-11-23).
 
 local MAP = 50001
 local KEY = tostring(MAP)
@@ -64,7 +64,7 @@ T.scene("stack prices: an item search of a non-commodity stack gives the price o
 	T.check("% usual: about 100%", W.plain(X.AHPanel.PctText(price, X.Usual(KEY))), "100%")
 end)
 
-T.scene("stack prices: buying a stack - max price, label, gold check, amount sent, cost", function()
+T.scene("stack prices: buying from a stack - max price, label, gold check, amount sent, cost (one per press)", function()
 	local X = W.start()
 	addItem()
 	W.list(MAP, ONE, 40, 1, "Ann")
@@ -74,47 +74,83 @@ T.scene("stack prices: buying a stack - max price, label, gold check, amount sen
 	X.BuyStart(KEY, 40, 1000, "test", "cheap")
 	T.check("max 10s: nothing to buy", waitBuy(X), "none")
 	T.ok("max 10s: no plan", X.buy.plan == nil)
-	-- at most 60s each: the 40 for 19g 99s 60c
+	-- at most 60s each: one press buys ONE of the 40 for 49s 99c (verified in the game 2026-11-23)
 	X.BuyStart(KEY, 40, 6000, "test", "maps")
 	T.check("max 60s: ready", waitBuy(X), "ready")
 	local plan = X.buy.plan
-	T.check("plan: 40", plan and plan.qty, 40)
-	T.check("plan: the whole stack costs 19g 99s 60c", plan and plan.total, STACK)
+	T.check("plan: 1", plan and plan.qty, 1)
+	T.check("plan: costs the price of one", plan and plan.total, ONE)
+	T.check("plan: 40 listed in that auction", plan and plan.listed, 40)
 	T.check("plan: the amount sent is the price of one", plan and plan.buyout, ONE)
-	T.check("buy button label", (X.BuyButton()), "Buy 40 for " .. X.MoneyPlain(STACK))
-	-- the click: PlaceBid gets 49s 99c (as the game's own Buyout button); the stand-in server takes it x 40
+	T.check("buy button label", (X.BuyButton()), "Buy 1 for " .. X.MoneyPlain(ONE))
+	-- only the price of one is needed: 1g of gold is enough (the whole stack would be 19g 99s 60c)
+	W.money = 10000
 	local money = W.money
 	T.check("the click buys", press(X.BuyClick), true)
 	T.check("PlaceBid called once", #W.bids, 1)
 	T.check("PlaceBid amount: 49s 99c", W.bids[1] and W.bids[1].amount, ONE)
-	W.waitFor(function() return X.buy.state == "done" end, 10)
-	T.check("bought all 40", X.buy.bought, 40)
-	T.check("gold taken: 19g 99s 60c", money - W.money, STACK)
-	T.check("spent: 19g 99s 60c", X.buy.spent, STACK)
-	local line = W.said("bought 40 ")[1] or ""
-	T.ok("chat: bought 40 for 19g 99s 60c", line:find("for " .. W.plain(X.Money(STACK)), 1, true) ~= nil, line)
-	T.check("the 1g one is left", #W.ah, 1)
+	W.waitFor(function() return X.buy.bought > 0 end, 10)
+	T.check("bought 1", X.buy.bought, 1)
+	T.check("gold taken: 49s 99c", money - W.money, ONE)
+	T.check("spent: 49s 99c", X.buy.spent, ONE)
+	local line = W.said("bought 1 ")[1] or ""
+	T.ok("chat: bought 1 for 49s 99c", line:find("for " .. W.plain(X.Money(ONE)), 1, true) ~= nil, line)
+	T.check("39 left in that auction", W.ah[1] and W.ah[1].count, 39)
+	T.check("searched again: ready for the next one", waitBuy(X), "ready")
+	T.check("still needs 39", X.buy.need, 39)
+	T.check("label: the next one", (X.BuyButton()), "Buy 1 for " .. X.MoneyPlain(ONE))
 end)
 
-T.scene("stack prices: a server that takes one buyout for the stack - the gold that went is recorded", function()
+T.scene("stack prices: what is recorded after a purchase - the gold that went, else 1 at the price of one", function()
 	local X = W.start()
 	addItem()
 	W.list(MAP, ONE, 40, 1, "Ann")
 	W.openAH()
-	-- the other possible rule (unverified in the game): the whole stack for the amount sent
+	local function buyOnce()
+		X.BuyStart(KEY, 1, 6000, "test", "maps", true)
+		T.check("ready", waitBuy(X), "ready")
+		local n = X.buy.bought
+		press(X.BuyClick)
+		W.waitFor(function() return X.buy.bought > n end, 10)
+		W.advance(0.5)
+		return X.buy.bought, X.buy.spent
+	end
+	-- the gold goes only after the event (as seen in the game): 1 at the price of one, never the whole auction
+	W.moneyLate = true
+	local money = W.money
+	local qty, spent = buyOnce()
+	T.check("late gold: 1 recorded", qty, 1)
+	T.check("late gold: the price of one recorded", spent, ONE)
+	T.check("late gold: really taken 49s 99c", money - W.money, ONE)
+	local line = W.said("bought 1 ")[1] or ""
+	T.ok("late gold: chat says 1 for 49s 99c", line:find("for " .. W.plain(X.Money(ONE)), 1, true) ~= nil, line)
+	W.moneyLate = false
+	-- a server that took 2 x the price of one (not seen in the game): 2 recorded, the gold that went
 	local AH = W.env.C_AuctionHouse
 	local real = AH.PlaceBid
 	AH.PlaceBid = function(id, amount)
 		real(id, amount)
-		W.money = W.money + STACK - amount
+		W.money = W.money - ONE
 	end
-	X.BuyStart(KEY, 40, 6000, "test", "maps")
-	T.check("ready", waitBuy(X), "ready")
-	local money = W.money
-	press(X.BuyClick)
-	W.waitFor(function() return X.buy.state == "done" end, 10)
-	T.check("gold taken: 49s 99c", money - W.money, ONE)
-	T.check("spent: what really went", X.buy.spent, ONE)
+	qty, spent = buyOnce()
+	T.check("2 x the price went: 2 recorded", qty, 2)
+	T.check("2 x the price went: that recorded", spent, ONE * 2)
+	-- an amount that is not a whole number of items (1.5 x): 1 at the price of one
+	AH.PlaceBid = function(id, amount)
+		real(id, amount)
+		W.money = W.money - math.floor(ONE / 2)
+	end
+	qty, spent = buyOnce()
+	T.check("odd amount: 1 recorded", qty, 1)
+	T.check("odd amount: the price of one recorded", spent, ONE)
+	-- a few copper over the price of one: what really went
+	AH.PlaceBid = function(id, amount)
+		real(id, amount)
+		W.money = W.money - 3
+	end
+	qty, spent = buyOnce()
+	T.check("a little over: 1 recorded", qty, 1)
+	T.check("a little over: what really went", spent, ONE + 3)
 	AH.PlaceBid = real
 end)
 
@@ -151,7 +187,7 @@ T.scene("stack prices: the purchase engine - commodities, an auction, all under 
 	-- an item that is not a commodity: one click buys one auction
 	X.BuyStart("15210:-19", 1, 60000, "test", "sword")
 	T.check("sword: ready", waitBuy(X), "ready")
-	T.check("sword: label", (X.BuyButton()), "Buy for " .. X.MoneyPlain(50000))
+	T.check("sword: label", (X.BuyButton()), "Buy 1 for " .. X.MoneyPlain(50000))
 	press(X.BuyClick)
 	W.waitFor(function() return X.buy.state == "done" end, 10)
 	T.check("sword bought", X.buy.bought, 1)

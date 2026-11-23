@@ -5,13 +5,14 @@
 --   Buying: X.BuyStart(key, need, max, source, tag) searches the item and works out what the next click buys.
 --     X.BuyClick() must be called straight from a click on one of OUR buttons (the game allows buying only then) and
 --     does ONE thing per click: stackable items (commodities) "start" (the server answers with the exact price) and a
---     second click confirms; other items are bought one auction per click. One purchase at a time (X.buy).
+--     second click confirms; other items are bought ONE item per click (also from an auction of 7: the game sells one
+--     of them for the price of one, verified in the game 2026-11-23). One purchase at a time (X.buy).
 --   X.PriceNow(key): the cheapest price of one now (not yours); X.BuyLimit(key): the most to pay when you did not say.
 local ADDON, X = ...
 
 -- [key] = {t, at, commodity, offers = {{unit (price of one), qty (not ours), own (ours), auctionID, buyout, total}},
--- lowest, ownLowest, qty}; buyout (other items only) = what the game's Buyout button sends for that auction, total =
--- what all of that auction costs
+-- lowest, ownLowest, qty}; buyout (other items only) = what the game's Buyout button sends for that auction (the price
+-- of one; one press buys one), total = what all of that auction would cost (price of one x how many, for the ladder)
 X.live = {}
 X.SEARCH_GAP = 1.0 -- seconds between two searches of ours
 X.QUOTE_WAIT = 5   -- seconds to wait for the exact price of a commodity purchase
@@ -147,7 +148,8 @@ X.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
 end)
 -- other items: one row per auction. Its buyoutAmount is the price of ONE, also when the auction is a stack of 40
 -- (the game's own list shows it as it is, and its Buyout button sends exactly that amount) - never divide it by the
--- quantity. The whole auction costs buyoutAmount x quantity.
+-- quantity. PlaceBid with it buys ONE item of the auction for the price of one (verified in the game 2026-11-23: an
+-- auction of 7 at 34s 13c each, one press = one item for 34s 13c, 6 left).
 X.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
 	if type(itemKey) ~= "table" then return end
 	if not X.Try(C_AuctionHouse.HasFullItemSearchResults, itemKey) then return end
@@ -190,9 +192,9 @@ end)
 X.buy = {state = "idle"}
 
 -- what to buy from the offers of a search: commodities = the cheapest units up to `need`, each at most `max`;
--- other items = the cheapest auction (at most `max` each and not more than `need`; anyStack = true: whatever its
--- size). plan.total = what it all costs (other items: the whole auction, price of one x how many); plan.buyout = the
--- amount sent with the click
+-- other items = ONE item of the cheapest auction at most `max` each (one press buys one, whatever the auction's size;
+-- plan.listed = how many that auction has). plan.total = what the next press costs (other items: the price of one);
+-- plan.buyout = the amount sent with the click. anyStack is no longer needed (kept so callers do not break).
 function X.BuyPlan(key, need, max, anyStack)
 	local live = X.live[key]
 	if not live then return nil end
@@ -205,11 +207,11 @@ function X.BuyPlan(key, need, max, anyStack)
 				plan.qty = plan.qty + take
 				plan.total = plan.total + take * o.unit
 				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = take}
-			elseif anyStack or o.qty <= need then
-				local all = o.total or o.unit * o.qty
-				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = o.qty, auctionID = o.auctionID, buyout = o.buyout, total = all}
+			else
+				local one = o.buyout or o.unit
+				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = o.qty, auctionID = o.auctionID, buyout = one}
 				if not plan.auctionID then
-					plan.auctionID, plan.buyout, plan.qty, plan.total = o.auctionID, o.buyout, o.qty, all
+					plan.auctionID, plan.buyout, plan.qty, plan.total, plan.listed = o.auctionID, one, 1, one, o.qty
 				end
 			end
 		end
@@ -250,8 +252,8 @@ end
 X.BuyResearch = function() if X.buy.key then research() end end
 
 -- start buying `need` of an item, at most `max` copper each (nil = any price); need nil = as many as are listed at or
--- under `max` (worked out again after each purchase). cheapest = true ("Buy cheapest now"): other items buy the single
--- cheapest auction that is not yours, whatever its size; after each purchase it searches again and is ready for the
+-- under `max` (worked out again after each purchase). cheapest = true ("Buy cheapest now"): other items buy one item of
+-- the cheapest auction that is not yours, whatever its size; after each purchase it searches again and is ready for the
 -- next one (`need` - the commodities to buy per purchase - stays as it is)
 function X.BuyStart(key, need, max, source, tag, cheapest)
 	if X.buy.state == "quoting" or X.buy.state == "confirm" or X.buy.state == "toohigh" then X.BuyCancel() end
@@ -285,7 +287,6 @@ local function cheapestLabel(b)
 	if not X.ahOpen then return "Open the auction house to buy", false end
 	if s == "ready" and b.plan then
 		local p = b.plan
-		if not p.commodity and p.qty > 1 then return "Buy cheapest: " .. X.Num(p.qty) .. " for " .. X.MoneyPlain(p.total), true end
 		return "Buy " .. X.Num(p.qty) .. " for " .. X.MoneyPlain(p.total), true
 	elseif s == "confirm" and b.quote then
 		return "Confirm: " .. X.Num(b.quote.qty) .. " for " .. X.MoneyPlain(b.quote.total), true
@@ -305,8 +306,7 @@ function X.BuyButton()
 	if not X.ahOpen then return "Buy (auction house closed)", false end
 	if s == "ready" and b.plan then
 		if b.plan.commodity then return "Buy " .. X.Num(b.plan.qty) .. " for about " .. X.MoneyPlain(b.plan.total), true end
-		if b.plan.qty > 1 then return "Buy " .. X.Num(b.plan.qty) .. " for " .. X.MoneyPlain(b.plan.total), true end
-		return "Buy for " .. X.MoneyPlain(b.plan.total), true
+		return "Buy 1 for " .. X.MoneyPlain(b.plan.total), true
 	elseif s == "confirm" and b.quote then
 		return "Confirm " .. X.Num(b.quote.qty) .. " for " .. X.MoneyPlain(b.quote.total), true
 	elseif s == "searching" then return "Searching ...", false
@@ -339,11 +339,11 @@ function X.BuyClick()
 			end)
 		else
 			-- the amount sent is the auction's buyoutAmount as the search gave it (the price of one), exactly as the
-			-- game's own Buyout button does; the cost is the whole auction (gold before, to see what was really taken)
-			b.buyingID, b.buyingQty, b.buyingPrice = plan.auctionID, plan.qty, plan.total
+			-- game's own Buyout button does; it buys ONE item for that (gold before, to see what was really taken)
+			b.buyingID, b.buyingListed = plan.auctionID, plan.listed or 1
 			b.buyingOne, b.moneyBefore = plan.buyout, GetMoney and GetMoney() or nil
 			C_AuctionHouse.PlaceBid(plan.auctionID, plan.buyout)
-			setState("buying", "Buying " .. (plan.qty > 1 and (X.Num(plan.qty) .. " ") or "") .. "for " .. X.MoneyPlain(plan.total) .. " ...")
+			setState("buying", "Buying 1 for " .. X.MoneyPlain(plan.buyout) .. " ...")
 		end
 	elseif b.state == "confirm" and b.quote then
 		if b.max and b.quote.unit > b.max then setState("toohigh", "The price is over your max.") return false end
@@ -407,16 +407,21 @@ X.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
 	local b = X.buy
 	if b.state ~= "buying" or not b.buyingID or b.buyingID ~= auctionID then return end
 	b.buyingID = nil
-	-- what it really cost: the gold that went, when that is a believable amount (between the price of one and the whole
-	-- auction - not checked in the game whether a stack costs one buyout or buyout x quantity); else the whole auction
-	local cost = b.buyingPrice
+	-- one press buys ONE item for the price of one (verified in the game). The gold that went is the truth when it is
+	-- already known: about k x the price of one (a little over is allowed) = k bought. In the game the gold often has
+	-- not changed yet when this event comes (0 went): then it is 1 at the price of one - never the whole auction.
+	local one = b.buyingOne or 0
+	local qty, cost = 1, one
 	local now = GetMoney and GetMoney() or nil
-	if type(now) == "number" and type(b.moneyBefore) == "number" and b.buyingOne and cost then
+	if one > 0 and type(now) == "number" and type(b.moneyBefore) == "number" then
 		local went = b.moneyBefore - now
-		if went >= b.buyingOne and went <= cost then cost = went end
+		local k = math.floor(went / one)
+		if k >= 1 and k <= math.max(1, b.buyingListed or 1) and went <= k * one + math.max(1, math.floor(one / 20)) then
+			qty, cost = k, went
+		end
 	end
-	b.moneyBefore, b.buyingOne = nil, nil
-	bought(b.buyingQty or 1, cost)
+	b.moneyBefore, b.buyingOne, b.buyingListed = nil, nil, nil
+	bought(qty, cost)
 end)
 X.On("AUCTION_HOUSE_SHOW_ERROR", function()
 	if X.buy.state == "buying" and X.buy.buyingID then

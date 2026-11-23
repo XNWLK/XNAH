@@ -25,7 +25,7 @@ how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and th
   - the best day and hour to sell.
   - its crafting cost and recipes, your own trades, how many sellers, price walls, what it costs to buy up everything
     cheap, its disenchant value.
-  - **Buy cheapest now**: one press buys the cheapest auction that is not yours, with no "are you sure" box - the
+  - **Buy cheapest now**: one press buys one of the cheapest that is not yours, with no "are you sure" box - the
     button shows the exact price, so check it before you press. Stackable goods (ore, cloth ...) take two presses: the
     first asks the server for the exact price, the second buys; a "How many" box sets how many. After each buy it
     searches again, so you can keep pressing.

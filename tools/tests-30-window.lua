@@ -1,13 +1,11 @@
 -- XNAH test scenes, part 30: the big window (v0.9) - docked beside the game's auction house window (and made smaller
 -- when the screen has not room enough), closing with it when it opened it, the header (views, scan line, scan buttons,
 -- Find, the gear), UI.ShowItem, the tracked list, and "Buy cheapest now": a stack that is not a commodity (one press
--- buys the whole auction), a commodity (two presses: the exact price, then the purchase; how many; no answer in time),
+-- buys ONE item for the price of one), a commodity (two presses: the exact price, then the purchase; how many; no answer in time),
 -- searching again after each purchase, nothing restricted outside a click.
 
 local MAP = 50001
 local KEY = tostring(MAP)
-local ONE = 4999         -- 49s 99c each
-local STACK = ONE * 40   -- 19g 99s 60c for all 40
 
 local function has(text, part) return tostring(text or ""):find(part, 1, true) ~= nil end
 local function items(X) return X.UI.tabs.items.panel end
@@ -281,11 +279,13 @@ local function waitReady(X)
 end
 local function calls() return table.concat(W.restrictedCalls, ",") end
 
-T.scene("buy cheapest: a stack that is not a commodity - one press, the whole auction", function()
+T.scene("buy cheapest: a stack that is not a commodity - one press buys ONE for the price of one", function()
 	local X = W.start()
 	addMap()
-	history(X, KEY, 5000, 5, "Lower Map Fragment")
-	W.list(MAP, ONE, 40, 1, "Ann")     -- 40 at 49s 99c each: the cheapest not yours
+	W.items[MAP].name = "Upper Map Fragment"
+	local EACH = 3413                  -- 34s 13c each (Xn's case in the game, 2026-11-23)
+	history(X, KEY, 5000, 5, "Upper Map Fragment")
+	W.list(MAP, EACH, 7, 1, "Ann")     -- one auction of 7 at 34s 13c each: the cheapest not yours
 	W.list(MAP, 10000, 1, 1, "Bob")    -- one at 1g
 	W.mine(MAP, 3000, 1)               -- yours, cheaper: never bought
 	X.UI.ShowItem(KEY)
@@ -295,37 +295,53 @@ T.scene("buy cheapest: a stack that is not a commodity - one press, the whole au
 	W.openAH()
 	T.check("searched when shown at the auction house", waitReady(X), "ready")
 	T.check("nothing restricted yet", #W.restrictedCalls, 0)
-	T.check("label: the whole stack, the exact price", label(panel.buy), "Buy cheapest: 40 for " .. X.MoneyPlain(STACK))
+	T.check("label: one, at the price of one", label(panel.buy), "Buy 1 for 34s 13c")
 	T.ok("no how-many box (not a commodity)", not panel.qty:IsShown())
-	T.ok("the line under it", has(W.plain(panel.buyNote.text), "One press buys it"), panel.buyNote.text)
-	-- one press: PlaceBid with the price of one (as the game's own Buyout button), the server takes it x 40
+	T.check("the line under it", W.plain(panel.buyNote.text),
+		"Cheapest not yours: 34s 13c each (7 listed in that auction). One press buys one.")
+	-- one press: PlaceBid with the price of one (as the game's own Buyout button): ONE item for 34s 13c, 6 left
 	local money = W.money
-	local boughtEvents = 0
-	X.On("XNAH_BOUGHT", function() boughtEvents = boughtEvents + 1 end)
+	local boughtEvents, boughtQty, boughtTotal = 0, nil, nil
+	X.On("XNAH_BOUGHT", function(_, qty, total) boughtEvents, boughtQty, boughtTotal = boughtEvents + 1, qty, total end)
 	panel.buy:Click()
 	T.check("one restricted call", calls(), "PlaceBid")
-	T.check("amount sent: the price of one", W.bids[1] and W.bids[1].amount, ONE)
+	T.check("amount sent: the price of one", W.bids[1] and W.bids[1].amount, EACH)
 	T.ok("no question asked", not (W.env.XNAHConfirm and W.env.XNAHConfirm:IsShown()) and not (W.env.XNAHDialog and W.env.XNAHDialog:IsShown()))
 	W.waitFor(function() return #W.won > 0 end, 5)
-	T.check("bought the 40", W.won[1] and W.won[1].count, 40)
-	T.check("gold taken: 19g 99s 60c", money - W.money, STACK)
+	T.check("bought one", W.won[1] and W.won[1].count, 1)
+	T.check("gold taken: 34s 13c", money - W.money, EACH)
 	W.advance(0.5)
 	T.check("XNAH_BOUGHT", boughtEvents, 1)
-	local line = W.said("bought 40 ")[1] or ""
-	T.ok("chat: what and for how much", has(line, "bought 40 Lower Map Fragment for " .. W.plain(X.Money(STACK))), line)
-	-- searched again at once: ready for the next cheapest
+	T.check("XNAH_BOUGHT: 1", boughtQty, 1)
+	T.check("XNAH_BOUGHT: 34s 13c", boughtTotal, EACH)
+	local line = W.said("bought 1 ")[1] or ""
+	T.ok("chat: what and for how much", has(line, "bought 1 Upper Map Fragment for " .. W.plain(X.Money(EACH))), line)
+	T.check("6 left in that auction", W.ah[1] and W.ah[1].owner ~= W.me and W.ah[1].count, 6)
+	-- searched again at once: the next one of the same auction
 	T.check("ready again", waitReady(X), "ready")
+	T.check("label again: one at 34s 13c", label(panel.buy), "Buy 1 for 34s 13c")
+	T.ok("the line: 6 listed", has(W.plain(panel.buyNote.text), "(6 listed in that auction)"), panel.buyNote.text)
+	-- the other 6, one per press
+	for i = 2, 7 do
+		panel.buy:Click()
+		W.waitFor(function() return #W.won >= i end, 5)
+		waitReady(X)
+	end
+	T.check("7 presses, 7 bought", #W.won, 7)
+	T.check("all at 34s 13c", money - W.money, EACH * 7)
+	T.check("bought so far", X.buy.bought, 7)
+	T.check("spent so far", X.buy.spent, EACH * 7)
 	T.check("label: the next one", label(panel.buy), "Buy 1 for 1g")
 	panel.buy:Click()
-	W.waitFor(function() return #W.won > 1 end, 5)
-	T.check("second press bought it", W.won[2] and W.won[2].price, 10000)
-	T.check("one call per press", calls(), "PlaceBid,PlaceBid")
+	W.waitFor(function() return #W.won > 7 end, 5)
+	T.check("the press after bought it", W.won[8] and W.won[8].price, 10000)
+	T.check("one call per press", calls(), "PlaceBid,PlaceBid,PlaceBid,PlaceBid,PlaceBid,PlaceBid,PlaceBid,PlaceBid")
 	T.check("then nothing", waitReady(X), "none")
 	T.check("label: nothing", label(panel.buy), "Nothing to buy - search again")
 	T.ok("your own listing left alone", #W.ah == 1 and W.ah[1].owner == W.me)
 	-- pressing now searches again (nothing restricted)
 	panel.buy:Click()
-	T.check("a search, not a purchase", #W.restrictedCalls, 2)
+	T.check("a search, not a purchase", #W.restrictedCalls, 8)
 	-- the ladder shows yours
 	W.advance(2)
 	T.ok("ladder: yours", has(W.screen(panel.ladder), "yours"), W.screen(panel.ladder))
