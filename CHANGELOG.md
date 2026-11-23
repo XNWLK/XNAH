@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.9.0
+
+XNAH is now an analytics addon: it shows the numbers, and you buy and sell with the game's own auction house.
+
+- One big window. It opens beside the game's auction house (Settings: Open with the auction house) and makes itself
+  smaller if it does not fit; /xnah, the minimap button or the key open it anywhere. Views: Items, Market, Your gold,
+  Opportunities; Full scan, Scan tracked, Find and Settings in its header.
+- Items: your tracked items on the left (your watch list), with an "Add an item" box. On the right everything about the
+  picked item: 12 numbers (hover one for what it means), a big graph (7 days, 30 days, 90 days, 1 year, your own sales
+  and buys as dots), what is listed right now by price, the best day and hour to sell, crafting cost and your own
+  trades, sellers, price walls and disenchant value. Picking an item in the game's auction house shows it here.
+  Double-click an item in the list to show it in the game's auction house window.
+- Buy cheapest now: one press buys one of the cheapest that is not yours, with no "are you sure" box - the button
+  shows the exact price. Stackable trade goods take two presses (the first asks the server for the exact price, the
+  second buys), with a How many box. It searches again after each buy, so you can keep pressing.
+- Market: every item seen, with filters (rising, falling, short supply, flooded, tracked, listed now, can be crafted).
+- Your gold: gold and profit today, this week and over 4 weeks, gold per auction house hour, net worth, income against
+  spending, profit per week, best flips, best sellers, recent trades, your characters.
+- Opportunities: a read-only list of items far under their usual price, vendor flips, items under vendor or
+  disenchant value, prices worth resetting and items with few sellers.
+- Removed: Home, the Next step key, the Buy, Sell and Crafting tabs, buy ideas, shopping lists, the sniper, price
+  alerts, posting and the cancel scan, the crafting queue, Open all auction mail, the guide, the small panel and the bar
+  at the auction house window. Their saved data is cleaned up once; your prices, history, tracked items, sales and
+  characters are kept. Sales are still recorded from the auction house mails when you open your mailbox.
+
 ## v0.8.1
 
 - Fixed: items that are sold in stacks but are not trade goods (for example Lower Map Fragment) were read 40 times too
