@@ -309,7 +309,9 @@ local function rowItem(kind, d)
 		local qty = X.Plain(d.totalQuantity)
 		return keyOf(d.itemKey), (qty ~= 0) and X.Plain(d.minPrice) or nil
 	elseif kind == "item" then
-		return keyOf(d.itemKey), X.UnitPrice(X.Plain(d.buyoutAmount), X.Plain(d.quantity))
+		-- the buyout of an item search row is already the price of ONE (also for a stack)
+		local buyout = X.Plain(d.buyoutAmount)
+		return keyOf(d.itemKey), (type(buyout) == "number" and buyout > 0) and buyout or nil
 	elseif kind == "commodity" then
 		local id = X.Plain(d.itemID)
 		return type(id) == "number" and tostring(id) or nil, X.Plain(d.unitPrice)

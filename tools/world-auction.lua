@@ -35,6 +35,7 @@ table.insert(W.onReset, function()
 	W.sounds, W.flashes = {}, 0
 	W.money = 1234567
 	W.buyToBags = false
+	W.bids = {}             -- every PlaceBid: {auctionID, amount}
 end)
 
 -- an auction's id (made the first time it is needed)
@@ -52,8 +53,10 @@ end
 local function removeAuction(a)
 	for i, x in ipairs(W.ah) do if x == a then table.remove(W.ah, i) return end end
 end
-local function isCommodity(id) local it = W.items[id] return it and (it.stack or 1) > 1 end
+local function isCommodity(id) return W.isCommodity(id) end
 local function unitOf(a) return a.buyout and a.buyout > 0 and a.buyout / math.max(1, a.count or 1) or nil end
+-- the price of one of an auction as the game hands it over (whole copper)
+local function oneOf(a) local u = unitOf(a) return u and math.floor(u + 0.5) or nil end
 local function bagCount(id, suffix)
 	local n = 0
 	for _, bag in pairs(W.bags) do
@@ -230,8 +233,9 @@ table.insert(W.onEnv, function(env)
 			out[#out + 1] = {auctionID = a.id, itemKey = {itemID = a.itemID, itemLevel = 0, itemSuffix = a.suffix or 0, battlePetSpeciesID = 0},
 				itemLink = W.link(a.itemID, a.suffix), status = a.status or 0, quantity = a.count,
 				timeLeftSeconds = secs, timeLeft = a.timeLeft,
-				-- an owned commodity auction gives the price of ONE (a guess about the real client, see Post.lua)
-				buyoutAmount = a.commodity and math.floor(unitOf(a) + 0.5) or a.buyout, bidAmount = a.bid}
+				-- your own auction gives the price of ONE, also for a stack of other items (a guess about the real client,
+				-- the same as its item search rows; see Post.lua)
+				buyoutAmount = oneOf(a), bidAmount = a.bid}
 		end
 		return out
 	end
@@ -304,17 +308,22 @@ table.insert(W.onEnv, function(env)
 			W.fire("COMMODITY_PURCHASE_SUCCEEDED")
 		end)
 	end
-	-- buying other items: one auction for its buyout
+	-- buying other items: one whole auction. The amount sent is the price of ONE (the search row's buyoutAmount, as the
+	-- game's own Buyout button sends it); the server takes that x the auction's count. ASSUMED: not checked in the game
+	-- whether a stack costs one buyout or buyout x count - XNAH reads the gold that went (Buy.lua).
 	AH.PlaceBid = function(auctionID, amount)
 		restricted("PlaceBid")
+		W.bids[#W.bids + 1] = {auctionID = auctionID, amount = amount}
 		local a = findAuction(auctionID)
-		if not a or a.owner == W.me or not a.buyout or amount < a.buyout or (W.money or 0) < a.buyout then
+		local one = a and oneOf(a)
+		local price = one and one * (a.count or 1)
+		if not a or a.owner == W.me or not one or type(amount) ~= "number" or amount < one or (W.money or 0) < price then
 			W.after(0.3, function() W.fire("AUCTION_HOUSE_SHOW_ERROR", 1) end)
 			return
 		end
 		removeAuction(a)
-		W.money = W.money - a.buyout
-		W.won[#W.won + 1] = {id = a.itemID, count = a.count, suffix = a.suffix, price = a.buyout}
+		W.money = W.money - price
+		W.won[#W.won + 1] = {id = a.itemID, count = a.count, suffix = a.suffix, price = price}
 		if W.buyToBags then toBags(a.itemID, a.count, a.suffix) end
 		W.after(0.3, function()
 			W.fire("AUCTION_HOUSE_PURCHASE_COMPLETED", auctionID)
@@ -368,7 +377,8 @@ table.insert(W.onEnv, function(env)
 						local mine = a.owner == W.me
 						list[#list + 1] = {itemKey = {itemID = id, itemLevel = 0, itemSuffix = a.suffix or 0, battlePetSpeciesID = 0},
 							owners = {mine and "player" or a.owner}, totalNumberOfOwners = 1, timeLeft = a.timeLeft or 2, auctionID = idOf(a),
-							quantity = a.count or 1, itemLink = W.link(id, a.suffix), buyoutAmount = a.buyout, bidAmount = a.bid,
+							-- as in the game: the buyout of a row is the price of ONE, also when the auction is a stack
+							quantity = a.count or 1, itemLink = W.link(id, a.suffix), buyoutAmount = oneOf(a), bidAmount = a.bid,
 							containsOwnerItem = mine, containsAccountItem = false, containsSocketedItem = false}
 					end
 				end

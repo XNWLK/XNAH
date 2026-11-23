@@ -340,10 +340,9 @@ X.On("OWNED_AUCTIONS_UPDATED", function()
 		if o.status == 0 and o.itemKey then
 			local key = X.KeyFromLink(o.itemLink) or X.KeyOfItemKey(o.itemKey)
 			local qty = o.quantity or 1
-			local commodity = X.live[key] and X.live[key].commodity
-			if commodity == nil then commodity = (X.Try(C_Item.GetItemMaxStackSizeByID, o.itemKey.itemID) or 1) > 1 end
-			-- GUESS (retail): an owned commodity auction's buyout is the price of ONE; other items: of the whole auction
-			local unit = o.buyoutAmount and (commodity and o.buyoutAmount or o.buyoutAmount / math.max(1, qty)) or nil
+			-- the buyout of your own auction is taken as the price of ONE, for stackable goods and other items alike
+			-- (the game's item search gives other items' stacks that way; not checked in the game for your own auctions)
+			local unit = (o.buyoutAmount and o.buyoutAmount > 0) and o.buyoutAmount or nil
 			c.all[#c.all + 1] = {key = key, auctionID = o.auctionID, unit = unit, qty = qty, timeLeft = o.timeLeft,
 				timeLeftSeconds = o.timeLeftSeconds, cost = X.Try(C_AuctionHouse.GetCancelCost, o.auctionID)}
 			if not keys[key] then

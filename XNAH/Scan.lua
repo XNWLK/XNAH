@@ -11,7 +11,10 @@ X.FULL_COOLDOWN = 15 * 60
 X.scan = {state = "idle"} -- idle / waiting / reading / loading / saving / items
 local READ_SLICE, SAVE_SLICE = 800, 400
 
--- unit price of an auction: the buyout is for the whole auction (all `count` of it)
+-- price of one when a buyout is for the whole auction (all `count` of it).
+-- NOT for the game's item search results (one row per auction, ITEM_SEARCH_RESULTS_UPDATED): their buyoutAmount is
+-- already the price of ONE, even for a stack of 40 (the game's own list shows it as it is, and its Buyout button
+-- sends it unchanged). Dividing those by the quantity makes a 40-stack look 40 times too cheap.
 function X.UnitPrice(buyout, count)
 	if not buyout or buyout <= 0 then return nil end
 	return buyout / math.max(1, count or 1)
@@ -322,7 +325,8 @@ end
 X.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", onBrowse)
 X.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", onBrowse)
 
--- the full list of one item (stackable "commodity" items list a price of one directly)
+-- the full list of one item: both kinds of list give the price of ONE directly (stackable "commodity" items as
+-- unitPrice, other items one row per auction with buyoutAmount = the price of one of that auction)
 -- the watch list scan goes on once the item it waits for has answered
 local function answered(keys)
 	local s = X.scan
@@ -345,8 +349,8 @@ X.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
 		if r and r.buyoutAmount and r.buyoutAmount > 0 then
 			local key = X.KeyFromLink(r.itemLink) or keyOf(r.itemKey) or keyOf(itemKey)
 			byKey[key] = byKey[key] or {}
-			-- the buyout is for the whole auction (quantity is 1 for anything that is not stackable)
-			table.insert(byKey[key], {X.UnitPrice(r.buyoutAmount, r.quantity), r.quantity or 1})
+			-- the buyout here is the price of ONE, also when the auction is a stack (never divide it by the quantity)
+			table.insert(byKey[key], {r.buyoutAmount, r.quantity or 1})
 		end
 	end
 	local info = X.Try(C_AuctionHouse.GetItemKeyInfo, itemKey)

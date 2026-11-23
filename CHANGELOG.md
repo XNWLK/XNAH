@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.8.1
+
+- Fixed: items that are sold in stacks but are not trade goods (for example Lower Map Fragment) were read 40 times too
+  cheap. The game's price on such an auction is the price of ONE item, also when the auction is a stack of 40; XNAH
+  divided it by the stack size. Now fixed everywhere: recorded prices, "% usual" in the game's list, the sniper and
+  price alerts, shopping list costs, the undercut check of your own auctions, and buying - the max price is compared
+  with the real price of one, and the Buy button shows what the whole stack costs ("Buy 40 for 19g 99s 60c").
+- What a purchase cost is now taken from the gold that really went.
+- Prices recorded wrongly before fix themselves with the next scan or search of the item.
+
 ## v0.8.0
 
 - Deals and Buy are one tab: 8 tabs became 7 (Home, Market, Item, Buy, Sell, Crafting, Gold). Best buys shows

@@ -133,7 +133,8 @@ function W.fire(event, ...)
 end
 
 -- [[ items ]] W.items[id] = {name, quality, sell (vendor pays), stack (max stack; > 1 = a "commodity" on the auction house),
--- icon, uncached = true (details not loaded until asked), never = true (never loads)}
+-- nocommodity = true (it stacks, but is sold like gear: one auction per stack, a price of one per auction row), icon,
+-- uncached = true (details not loaded until asked), never = true (never loads)}
 W.SUFFIXES = {[-5] = "of the Monkey", [-11] = "of the Eagle", [-19] = "of the Bear", [-23] = "of the Owl", [-31] = "of the Tiger"}
 local QHEX = {[0] = "9d9d9d", "ffffff", "1eff00", "0070dd", "a335ee", "ff8000"}
 function W.itemName(id, suffix)
@@ -589,7 +590,8 @@ end
 
 -- searching one item: stackable items answer with a list of prices of ONE (commodities), gear with one row per auction
 W.commodity, W.itemResults = {}, {}
-local function isCommodity(id) local it = W.items[id] return it and (it.stack or 1) > 1 end
+local function isCommodity(id) local it = W.items[id] return it and (it.stack or 1) > 1 and not it.nocommodity end
+W.isCommodity = isCommodity
 local function sendSearchQuery(itemKey, sorts, separate)
 	if not W.ahOpen then return end
 	if type(itemKey) ~= "table" or not itemKey.itemID then error("SendSearchQuery: bad itemKey") end
@@ -623,7 +625,8 @@ local function sendSearchQuery(itemKey, sorts, separate)
 				if a.itemID == id and (suffix == 0 or (a.suffix or 0) == suffix) and a.buyout and a.buyout > 0 then
 					list[#list + 1] = {itemKey = {itemID = id, itemLevel = 0, itemSuffix = a.suffix or 0, battlePetSpeciesID = 0},
 						owners = {a.owner}, totalNumberOfOwners = 1, timeLeft = 2, auctionID = #list + 1, quantity = a.count or 1,
-						itemLink = W.link(id, a.suffix), buyoutAmount = a.buyout, bidAmount = a.bid}
+						-- as in the game: a row's buyout is the price of ONE, also when the auction is a stack
+						itemLink = W.link(id, a.suffix), buyoutAmount = math.floor(unitOf(a) + 0.5), bidAmount = a.bid}
 				end
 			end
 			table.sort(list, function(x, y) return x.buyoutAmount < y.buyoutAmount end)

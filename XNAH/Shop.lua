@@ -111,7 +111,8 @@ function X.ShopCost(e)
 		if plan.commodity then return plan.total, plan.qty end
 		local total, n = 0, 0
 		for _, o in ipairs(plan.offers) do
-			if n + o.qty <= need then total = total + o.buyout n = n + o.qty end
+			-- the whole auction: its price of one x how many (an auction's buyout is the price of ONE)
+			if n + o.qty <= need then total = total + (o.total or o.unit * o.qty) n = n + o.qty end
 		end
 		return total, n
 	end

@@ -9,7 +9,10 @@
 --   X.BuyIdeas(limit): the best buys right now; X.NextBuy(src): the "Next buy" key (both at the end of this file).
 local ADDON, X = ...
 
-X.live = {} -- [key] = {t, at, commodity, offers = {{unit, qty (not ours), own (ours), auctionID, buyout}}, lowest, ownLowest, qty}
+-- [key] = {t, at, commodity, offers = {{unit (price of one), qty (not ours), own (ours), auctionID, buyout, total}},
+-- lowest, ownLowest, qty}; buyout (other items only) = what the game's Buyout button sends for that auction, total =
+-- what all of that auction costs
+X.live = {}
 X.SEARCH_GAP = 1.0 -- seconds between two searches of ours
 
 local queue, pending, pumping = {}, nil, false
@@ -141,7 +144,9 @@ X.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
 	store(key, offers, true)
 	answered({[key] = true})
 end)
--- other items: one row per auction (its buyout is for the whole auction)
+-- other items: one row per auction. Its buyoutAmount is the price of ONE, also when the auction is a stack of 40
+-- (the game's own list shows it as it is, and its Buyout button sends exactly that amount) - never divide it by the
+-- quantity. The whole auction costs buyoutAmount x quantity.
 X.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
 	if type(itemKey) ~= "table" then return end
 	if not X.Try(C_AuctionHouse.HasFullItemSearchResults, itemKey) then return end
@@ -156,8 +161,8 @@ X.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
 			local count = r.quantity or 1
 			local mine = r.containsOwnerItem == true
 			byKey[key] = byKey[key] or {}
-			table.insert(byKey[key], {unit = r.buyoutAmount / math.max(1, count), qty = mine and 0 or count, own = mine and count or 0,
-				auctionID = r.auctionID, buyout = r.buyoutAmount})
+			table.insert(byKey[key], {unit = r.buyoutAmount, qty = mine and 0 or count, own = mine and count or 0,
+				auctionID = r.auctionID, buyout = r.buyoutAmount, total = r.buyoutAmount * count})
 		end
 	end
 	local keys = {}
@@ -184,7 +189,8 @@ end)
 X.buy = {state = "idle"}
 
 -- what to buy from the offers of a search: commodities = the cheapest units up to `need`, each at most `max`;
--- other items = the cheapest auction (at most `max` each and not more than `need`)
+-- other items = the cheapest auction (at most `max` each and not more than `need`). plan.total = what it all costs
+-- (other items: the whole auction, price of one x how many); plan.buyout = the amount sent with the click
 function X.BuyPlan(key, need, max)
 	local live = X.live[key]
 	if not live then return nil end
@@ -198,9 +204,10 @@ function X.BuyPlan(key, need, max)
 				plan.total = plan.total + take * o.unit
 				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = take}
 			elseif o.qty <= need then
-				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = o.qty, auctionID = o.auctionID, buyout = o.buyout}
+				local all = o.total or o.unit * o.qty
+				plan.offers[#plan.offers + 1] = {unit = o.unit, qty = o.qty, auctionID = o.auctionID, buyout = o.buyout, total = all}
 				if not plan.auctionID then
-					plan.auctionID, plan.buyout, plan.qty, plan.total = o.auctionID, o.buyout, o.qty, o.buyout
+					plan.auctionID, plan.buyout, plan.qty, plan.total = o.auctionID, o.buyout, o.qty, all
 				end
 			end
 		end
@@ -261,7 +268,8 @@ function X.BuyButton()
 	if not X.ahOpen then return "Buy (auction house closed)", false end
 	if s == "ready" and b.plan then
 		if b.plan.commodity then return "Buy " .. X.Num(b.plan.qty) .. " for about " .. X.MoneyPlain(b.plan.total), true end
-		return "Buy for " .. X.MoneyPlain(b.plan.buyout), true
+		if b.plan.qty > 1 then return "Buy " .. X.Num(b.plan.qty) .. " for " .. X.MoneyPlain(b.plan.total), true end
+		return "Buy for " .. X.MoneyPlain(b.plan.total), true
 	elseif s == "confirm" and b.quote then
 		return "Confirm " .. X.Num(b.quote.qty) .. " for " .. X.MoneyPlain(b.quote.total), true
 	elseif s == "searching" then return "Searching ...", false
@@ -285,9 +293,12 @@ function X.BuyClick()
 			C_AuctionHouse.StartCommoditiesPurchase(b.itemID, plan.qty, math.ceil(plan.total / math.max(1, plan.qty)))
 			setState("quoting", "Asking the server for the exact price of " .. X.Num(plan.qty) .. " ...")
 		else
-			b.buyingID, b.buyingQty, b.buyingPrice = plan.auctionID, plan.qty, plan.buyout
+			-- the amount sent is the auction's buyoutAmount as the search gave it (the price of one), exactly as the
+			-- game's own Buyout button does; the cost is the whole auction (gold before, to see what was really taken)
+			b.buyingID, b.buyingQty, b.buyingPrice = plan.auctionID, plan.qty, plan.total
+			b.buyingOne, b.moneyBefore = plan.buyout, GetMoney and GetMoney() or nil
 			C_AuctionHouse.PlaceBid(plan.auctionID, plan.buyout)
-			setState("buying", "Buying for " .. X.MoneyPlain(plan.buyout) .. " ...")
+			setState("buying", "Buying " .. (plan.qty > 1 and (X.Num(plan.qty) .. " ") or "") .. "for " .. X.MoneyPlain(plan.total) .. " ...")
 		end
 	elseif b.state == "confirm" and b.quote then
 		if b.max and b.quote.unit > b.max then setState("toohigh", "The price is over your max.") return false end
@@ -349,7 +360,16 @@ X.On("AUCTION_HOUSE_PURCHASE_COMPLETED", function(auctionID)
 	local b = X.buy
 	if b.state ~= "buying" or not b.buyingID or b.buyingID ~= auctionID then return end
 	b.buyingID = nil
-	bought(b.buyingQty or 1, b.buyingPrice)
+	-- what it really cost: the gold that went, when that is a believable amount (between the price of one and the whole
+	-- auction - not checked in the game whether a stack costs one buyout or buyout x quantity); else the whole auction
+	local cost = b.buyingPrice
+	local now = GetMoney and GetMoney() or nil
+	if type(now) == "number" and type(b.moneyBefore) == "number" and b.buyingOne and cost then
+		local went = b.moneyBefore - now
+		if went >= b.buyingOne and went <= cost then cost = went end
+	end
+	b.moneyBefore, b.buyingOne = nil, nil
+	bought(b.buyingQty or 1, cost)
 end)
 X.On("AUCTION_HOUSE_SHOW_ERROR", function()
 	if X.buy.state == "buying" and X.buy.buyingID then
