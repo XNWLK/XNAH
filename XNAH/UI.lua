@@ -1,4 +1,4 @@
--- The XNAH window: tabs (Home, Market, Item, Buy, Sell, Crafting, Gold; Settings from the title bar), shared pieces
+-- The XNAH window: tabs (Market, Item, Gold; Settings from the title bar), shared pieces
 -- for them (a sortable table, item cells, the right-click item menu, a yes/no question), the key binding.
 -- Each tab lives in its own file and registers itself with UI.AddTab; this file is loaded before them.
 local ADDON, X = ...
@@ -22,12 +22,11 @@ function UI.AddTab(key, title, build, refresh, order, hidden)
 	table.sort(UI.order, function(a, b) return UI.tabs[a].n < UI.tabs[b].n end)
 end
 
--- pages that were joined into others (v0.7, v0.8: Deals went into Buy, Sell and Crafting): old names still open the
+-- pages that were joined into others (Trends into Market, Ledger and Characters into Gold): old names still open the
 -- right page
-UI.ALIASES = {trends = "market", strategies = "buy", deals = "buy", ledger = "gold", wealth = "gold", settings = "scan"}
+UI.ALIASES = {trends = "market", ledger = "gold", wealth = "gold", settings = "scan"}
 -- and the view of the new page they open (a setting the page reads when it is shown)
-UI.ALIAS_VIEWS = {ledger = {"goldView", "items"}, wealth = {"goldView", "chars"}, deals = {"buyView", "best"},
-	strategies = {"buyView", "adjust"}}
+UI.ALIAS_VIEWS = {ledger = {"goldView", "items"}, wealth = {"goldView", "chars"}}
 
 -- the page an old or current name opens
 function UI.TabKey(key)
@@ -81,7 +80,7 @@ function UI.Refresh(now)
 	if now then run() else X.Debounce("ui", 0.2, run) end
 end
 for _, e in ipairs({"XNAH_PRICES", "XNAH_SCAN", "XNAH_RECIPES", "XNAH_WATCH", "XNAH_AH", "XNAH_ANALYSIS", "XNAH_LEDGER",
-	"XNAH_INVENTORY", "XNAH_QUEUE", "XNAH_SHOP", "XNAH_HOME", "XNAH_IGNORE"}) do
+	"XNAH_INVENTORY", "XNAH_IGNORE"}) do
 	X.On(e, function() UI.Refresh() end)
 end
 
@@ -113,19 +112,14 @@ local function build()
 	frame.title:SetPoint("TOPLEFT", 12, -10)
 	local close = K.Button(frame, "X", 24, 20, function() frame:Hide() end)
 	close:SetPoint("TOPRIGHT", -6, -6)
-	-- the guide (Guide.lua) - how every page works
-	local guide = K.Button(frame, "Guide", 64, 20, function() if X.ShowGuide then X.ShowGuide() end end)
-	guide:SetPoint("RIGHT", close, "LEFT", -4, 0)
-	K.Tooltip(guide, "Guide", "How every page of XNAH works and how to use it to make gold.")
 	-- Settings (a page without a tab button)
 	local settings = K.Button(frame, "Settings", 78, 20, function() selectTab("scan") end)
-	settings:SetPoint("RIGHT", guide, "LEFT", -4, 0)
+	settings:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	K.Tooltip(settings, "Settings", "Scans, prices, tooltips and the other settings.")
-	guide = settings
 	-- quick search (Quick.lua): any item or recipe by name
 	if UI.QuickSearchBox then
 		local box = UI.QuickSearchBox(frame)
-		box:SetPoint("RIGHT", guide, "LEFT", -10, 0)
+		box:SetPoint("RIGHT", settings, "LEFT", -10, 0)
 		local findLabel = K.Label(frame, "Find", "GameFontNormalSmall", "RIGHT")
 		findLabel:SetPoint("RIGHT", box, "LEFT", -8, 0)
 	end
@@ -244,17 +238,13 @@ function UI.ItemTooltip(owner, key)
 	end
 	GameTooltip:Show()
 end
--- right-click menu on an item row: open, watch / unwatch, price alert, search on the auction house
+-- right-click menu on an item row: open, watch / unwatch, search on the auction house, never suggest
 function UI.ItemMenu(anchor, key)
 	local items = {
 		{text = X.ItemText(key), isTitle = true},
 		{text = "Open item page", func = function() UI.ShowItem(key) end},
 		{text = X.Watched(key) and "Remove from watch list" or "Add to watch list", func = function() X.SetWatched(key, not X.Watched(key)) end},
 	}
-	-- a chat line and a sound when any scan finds it at or under your price (X.AskAlert asks for that price)
-	if X.AskAlert then
-		items[#items + 1] = {text = "Price alert ...", func = function() X.AskAlert(key) end}
-	end
 	if X.ahOpen then
 		items[#items + 1] = {text = "Search on the auction house now", func = function()
 			X.ShowOnAuctionHouse(key)

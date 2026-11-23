@@ -7,6 +7,7 @@
 --   vbuy  = {[itemID] = {p = copper per one, lim = true if limited stock, at = t, from = "NPC name"}}
 --   recipes = {[recipeID] = see Craft.lua}
 --   watch = {[key] = true}          the watch list (starred items)
+--   cleanup = 1                     the saved data of the features taken out after v0.8.1 was deleted (X.CleanRemoved)
 -- }
 -- An item key is the item ID as text ("2589"), or "id:suffix" for an item with a random bonus ("15210:-19", "of the
 -- Bear"): those sell for very different prices.
@@ -57,6 +58,32 @@ function X.InitDB()
 		for _, it in pairs(r.items or {}) do if it.n == "" then it.n = nil end end
 	end
 	X.db = db
+	X.CleanRemoved(db)
+end
+
+-- [[ after v0.8.1 XNAH became a price and analysis addon ]] once (db.cleanup = 1): the saved bits that only the removed
+-- pages and helpers used go (shopping lists, crafting queue, posting rules, the sniper, strategies, the guide, the Home page,
+-- Open all mail, the Next step key). Prices, history, the watch list (with its highest prices), the ledger, your
+-- characters, recipes and the settings still used are never touched.
+local REMOVED_DATA = {"shop", "queue", "onWay", "strategies", "postRules", "sellTick", "sellList", "mailLast", "guideSeen"}
+local REMOVED_SETTINGS = {"guideAtLogin", "homeFirst", "homeScanHours", "mailButton", "postFloor", "postCeiling",
+	"postUndercut", "postDuration", "routineCancel", "snipeWait", "snipeSound", "alertSound", "buyView", "shopList",
+	"dealSpeedHide", "dealSpeedMin", "craftView", "craftProf", "craftMine", "dealsHidden", "strategySel"}
+local REMOVED_PAGES = {home = true, buy = true, sell = true, craft = true, deals = true, strategies = true}
+function X.CleanRemoved(db)
+	if (db.cleanup or 0) >= 1 then return end
+	for _, k in ipairs(REMOVED_DATA) do db[k] = nil end
+	local s = db.settings
+	for _, k in ipairs(REMOVED_SETTINGS) do s[k] = nil end
+	if REMOVED_PAGES[s.tab] then s.tab = nil end
+	-- remembered sorting of the lists on those pages ("buy:1" = page buy, first list)
+	if type(s.sorts) == "table" then
+		for k in pairs(s.sorts) do
+			local page = type(k) == "string" and k:match("^([^:]+):")
+			if page and REMOVED_PAGES[page] then s.sorts[k] = nil end
+		end
+	end
+	db.cleanup = 1
 end
 function X.S()
 	return X.db.settings
@@ -132,7 +159,7 @@ local function joinRealm(to, r)
 			end
 		end
 	end
-	-- gold notes per day and character (Home), time at the auction house per day (Gold)
+	-- gold notes per day and character (X.GoldNumbers, Ledger.lua), time at the auction house per day (Gold)
 	if type(r.homeGold) == "table" then
 		to.homeGold = to.homeGold or {}
 		for day, chars in pairs(r.homeGold) do
@@ -761,7 +788,7 @@ function X.HistoryRaw(it, from)
 end
 
 -- [[ items never to suggest ]] XNAHDB.ignore[key] = true (right-click an item: Never suggest buying this). Xn: grey
--- junk gets listed at silly prices and then looks like a bargain. Buy ideas (strategies, deals, the Buy page) leave
+-- junk gets listed at silly prices and then looks like a bargain. Deals (X.Deals) leave
 -- these out, and grey items too (their only real value is what a vendor pays).
 function X.Ignored(key)
 	return X.db.ignore ~= nil and X.db.ignore[tostring(key)] == true
@@ -770,7 +797,6 @@ function X.SetIgnored(key, on)
 	X.db.ignore = X.db.ignore or {}
 	X.db.ignore[tostring(key)] = on and true or nil
 	X.Fire("XNAH_IGNORE")
-	if X.StrategyUpdate then X.StrategyUpdate() end
 end
 function X.IgnoredList()
 	local out = {}
@@ -786,7 +812,7 @@ function X.BuyIdea(key, it)
 	return true
 end
 
--- [[ watch list ]] XNAHDB.watch[key] = true, or {max = copper} with a highest price to buy at (sniper alerts)
+-- [[ watch list ]] XNAHDB.watch[key] = true, or {max = copper} with a highest price to buy at (the price you would pay)
 function X.Watched(key)
 	return X.db.watch[key] ~= nil
 end

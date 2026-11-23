@@ -234,7 +234,7 @@ table.insert(W.onEnv, function(env)
 				itemLink = W.link(a.itemID, a.suffix), status = a.status or 0, quantity = a.count,
 				timeLeftSeconds = secs, timeLeft = a.timeLeft,
 				-- your own auction gives the price of ONE, also for a stack of other items (a guess about the real client,
-				-- the same as its item search rows; see Post.lua)
+				-- the same as its item search rows)
 				buyoutAmount = oneOf(a), bidAmount = a.bid}
 		end
 		return out

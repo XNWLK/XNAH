@@ -1,12 +1,12 @@
 -- Item tab: everything about one item - prices now and over time (graph), fair prices to buy and sell at, ways to make
 -- gold with it, its recipe and what it is used in. UI.ShowItem(key) opens it; "Back" goes to the item before.
--- Layout (940 x 550): header 48 high (Buy, Search, Watch list); below it the numbers (left, 300 wide: ten plain rows,
+-- Layout (940 x 550): header 48 high (Search, Watch list); below it the numbers (left, 300 wide: ten plain rows,
 -- or all the numbers with "More numbers") and the graph area (right, 630 wide: a row of buttons, the graph 238 high, a
 -- row of names under it - or the best-time charts); under those the profit box (left) and the crafting box (right).
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
-local GREY, GREEN, RED, YELLOW = "|cff999999", "|cff4ade80", "|cfff87171", "|cffffd100"
+local GREY, GREEN, RED = "|cff999999", "|cff4ade80", "|cfff87171"
 local NONE = "|cff666666-|r"
 local RANGES = {{"1 day", 86400}, {"7 days", 7 * 86400}, {"30 days", 30 * 86400}, {"90 days", 90 * 86400}, {"All", nil}}
 local rangeIdx = 3
@@ -195,7 +195,7 @@ local function buildGraph(panel, body)
 	end
 end
 
--- [[ Watch list button ]] one menu for the watch list, the highest price to pay and the shopping list
+-- [[ Watch list button ]] one menu for the watch list and the highest price to pay
 local function askMax(key)
 	local cur = X.WatchMax(key)
 	K.Ask("Highest price to buy " .. X.ItemName(key) .. " at (each; empty = none)", cur and X.MoneyPlain(cur) or "", false, function(text)
@@ -203,17 +203,6 @@ local function askMax(key)
 		if not X.Watched(key) then X.SetWatched(key, true) end
 		X.SetWatchMax(key, c)
 	end, "Set")
-end
-local function askShop(key)
-	local fair = X.FairPrices(key)
-	local price = fair or X.Price(key)
-	local list = (X.ShopLists and X.ShopLists()[1]) or "Shopping"
-	K.Ask2("Add " .. X.ItemName(key) .. " to a shopping list", {"How many", "20"},
-		{"Max price each", price and X.MoneyPlain(price) or "", "List: " .. list},
-		function(qty, max)
-			X.ShopAdd(list, key, tonumber(qty) or 1, X.ParseMoney(max))
-			X.Print("added to the shopping list \"" .. list .. "\"")
-		end, "Add")
 end
 local function listsMenu(anchor, key)
 	local watched = X.Watched(key) and true or false
@@ -230,27 +219,7 @@ local function listsMenu(anchor, key)
 		end}
 	end
 	if wmax then items[#items + 1] = {text = "No highest price", func = function() X.SetWatchMax(key, nil) end} end
-	if X.ShopAdd then items[#items + 1] = {text = "Add to the shopping list ...", func = function() askShop(key) end} end
 	K.Menu(anchor, items)
-end
-
--- [[ Buy button stand-in ]] until the Buy tab's button exists: shows the item's listings in the game's auction house
--- window (buy them there). Same use as the real one: btn:SetItem(key, qty, maxEach, source).
-local function standInBuy(parent, w, h)
-	local b = K.Button(parent, "Buy", w, h, function(self)
-		if self.key and X.ahOpen then X.ShowOnAuctionHouse(self.key) end
-	end)
-	function b:SetItem(key, qty, maxEach)
-		self.key = key
-		if X.ahOpen then
-			self:SetText(maxEach and ("Buy at or under " .. X.MoneyPlain(maxEach)) or "Buy")
-			self:SetEnabled(true)
-		else
-			self:SetText("Open the auction house")
-			self:SetEnabled(false)
-		end
-	end
-	return b
 end
 
 local function build(panel)
@@ -316,13 +285,13 @@ local function build(panel)
 		end)
 	end)
 
-	-- [[ the buttons: Watch list (a menu), Search, Buy ]]
+	-- [[ the buttons: Watch list (a menu), Search ]]
 	panel.lists = K.Button(panel, "Watch list", 150, 22, function(self)
 		if UI.itemKey then listsMenu(self, UI.itemKey) end
 	end)
 	panel.lists:SetPoint("TOPRIGHT", 0, -25)
-	K.Tooltip(panel.lists, "Watch list and shopping list", "Put the item on the watch list (watch list scans and the " ..
-		"sniper on the Buy tab look for it), set the highest price you would pay for one, or add it to your shopping list.")
+	K.Tooltip(panel.lists, "Watch list", "Put the item on the watch list (watch list scans look for it) or set the " ..
+		"highest price you would pay for one.")
 	panel.ah = K.Button(panel, "Search on the auction house", 190, 22, function()
 		if UI.itemKey then
 			X.ShowOnAuctionHouse(UI.itemKey)
@@ -332,13 +301,6 @@ local function build(panel)
 	panel.ah:SetPoint("RIGHT", panel.lists, "LEFT", -6, 0)
 	K.Tooltip(panel.ah, "Search on the auction house", "Looks this item up now and records its prices. " ..
 		"The game's auction house window shows its listings too.")
-	-- Buy: buys what is listed at or under the fair price to buy (check, buy, confirm - one click each)
-	panel.buy = UI.BuyButton and UI.BuyButton(panel, 190, 22) or standInBuy(panel, 190, 22)
-	if not panel.buy:GetScript("OnEnter") then
-		K.Tooltip(panel.buy, "Buy", "Buys this item from the auction house at or under the fair price to buy (see " ..
-			"the numbers on the left). Click to look up the listings, click again to buy; stackable items ask once " ..
-			"more to confirm the total.")
-	end
 
 	panel.hint = K.Label(panel, "Pick an item on the Market tab or type a name above.", "GameFontDisable", "CENTER")
 	panel.hint:SetPoint("CENTER", 0, 20)
@@ -393,17 +355,6 @@ local function build(panel)
 		X.S().itemMore = not X.S().itemMore
 		refresh(panel)
 	end)
-	-- price alert: a chat line and a sound when any scan or search finds it at or under this price
-	panel.alert = K.Flat(nums, 156, 18)
-	panel.alert:SetPoint("BOTTOMRIGHT", -8, 6)
-	panel.alert.label:SetJustifyH("CENTER")
-	panel.alert:SetScript("OnClick", function()
-		if UI.itemKey and X.AskAlert then X.AskAlert(UI.itemKey) end
-	end)
-	K.Tooltip(panel.alert, "Price alert", "Click to set the price: when any scan or search finds this item listed at or " ..
-		"under it, XNAH says so in chat with a sound, and it shows in the Hits list on the Buy tab (buy it there). " ..
-		"Nothing is bought by itself. Leave the box empty to remove the alert. Same price as the watch list's highest " ..
-		"price to pay.")
 
 	buildGraph(panel, body)
 
@@ -613,7 +564,6 @@ local function moreRows(s)
 		{"Your trades", s.ledger and (((s.ledger.sold or 0) > 0 or (s.ledger.bought or 0) > 0) and
 			(GREY .. "sold |r" .. X.Num(s.ledger.sold or 0) .. GREY .. ", bought |r" .. X.Num(s.ledger.bought or 0) ..
 			(s.ledger.sellThrough and (GREY .. ", " .. string.format("%.0f%%", s.ledger.sellThrough * 100) .. " sell|r") or "")) or NONE) or NONE},
-		{"Strategies", s.marks and #s.marks > 0 and (YELLOW .. table.concat(s.marks, ", ") .. "|r") or NONE},
 		{"First seen", st.first and X.Date(st.first * 86400 + 43200, "%b %d") or NONE},
 	}
 end
@@ -903,7 +853,6 @@ refresh = function(panel)
 	panel.name:SetShown(has)
 	panel.sub:SetShown(has)
 	panel.lists:SetShown(has)
-	panel.buy:SetShown(has)
 	panel.ah:SetShown(has and X.ahOpen == true)
 	if not has then return end
 
@@ -911,7 +860,6 @@ refresh = function(panel)
 	if X.SaleRate then s.rate, s.rateHours = X.SaleRate(key) end
 	if X.DEValue then s.de = X.DEValue(key) end
 	if X.LedgerItem then s.ledger = X.LedgerItem(key) end
-	if X.StrategyMarks then s.marks = X.StrategyMarks(key) end
 	if X.BestDay then s.bestDay = X.BestDay(key) end
 	if X.Owned then
 		local total, parts = X.Owned(key)
@@ -931,18 +879,8 @@ refresh = function(panel)
 	end
 	panel.sub:SetText(GREY .. sub .. "|r")
 	local wmax = X.WatchMax(key)
-	panel.alert:SetLabel(wmax and ("Alert under " .. X.MoneyPlain(wmax)) or "Alert me under ...")
-	panel.alert:SetShown(X.AskAlert ~= nil)
 	panel.lists:SetText(X.Watched(key) and (wmax and ("Watched, max " .. X.MoneyPlain(wmax)) or "Watched") or "Watch list")
 	panel.ah:SetEnabled(X.scan and X.scan.state == "idle")
-	-- Buy: set again only when the item or the price changes (it walks its own steps: buy, confirm)
-	local buyFor = key .. "/" .. tostring(s.fairBuy)
-	if panel.buyFor ~= buyFor or not UI.BuyButton then
-		panel.buyFor = buyFor
-		panel.buy:SetItem(key, nil, s.fairBuy, "item")
-	end
-	panel.buy:ClearAllPoints()
-	panel.buy:SetPoint("RIGHT", panel.ah:IsShown() and panel.ah or panel.lists, "LEFT", -6, 0)
 
 	fillNumbers(panel, key, s)
 	fillView(panel, key, s)

@@ -1,5 +1,5 @@
 -- The Settings page (tab key "scan", no tab button: the Settings button in the title bar opens it): start and watch
--- scans, the last scans, the mailbox button, every setting, the size of the saved data.
+-- scans, the last scans, every setting, the size of the saved data.
 -- Also here: the minimap button, and the small XNAH bar on top of the auction house window.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
@@ -209,9 +209,6 @@ local function buildSettings(p)
 		X.S().minimap.hide = not on
 		UI.UpdateMinimap()
 	end)
-	get, set = boolSetting("alertSound")
-	check(250, -266, "Sound with price alerts", get, set,
-		"A sound when a scan or search finds a watched item at or under your alert price (right-click an item: Price alert).")
 	get, set = boolSetting("debug")
 	check(10, -290, "Debug messages in chat", get, set)
 	check(250, -290, "All my characters are on one realm", function() return X.S().oneRealm end, function(on)
@@ -257,44 +254,6 @@ local function buildSettings(p)
 	binds[#binds + 1] = function() hidden:SetText("Never suggested as a buy: " .. #X.IgnoredList()) end
 end
 
--- [[ the mailbox ]] a box under the last scans: the "Open all auction mail" button (Mail.lua) and what it took last
-local function updateMailBox(p)
-	local b = p.mailBox
-	if not b then return end
-	b.check:SetChecked(X.S().mailButton and true or false)
-	local last = X.MailLast and X.MailLast()
-	if last and last.t then
-		b.last:SetText("|cff999999Last time (" .. X.Ago(last.t) .. "): " .. (last.text or "") .. "|r")
-	else
-		b.last:SetText("|cff999999Not used yet.|r")
-	end
-end
-
-local function buildMailBox(p)
-	local b = K.Panel(p, LEFT_W, 86, {0, 0, 0, 0.25})
-	b:SetPoint("TOPLEFT", 0, -420)
-	p.mailBox = b
-	local title = K.Label(b, "Mailbox", "GameFontNormal")
-	title:SetPoint("TOPLEFT", 10, -8)
-	b.check = K.Check(b, "Show \"Open all auction mail\" at the mailbox", function(on)
-		X.S().mailButton = on
-		if X.UpdateMailButton then X.UpdateMailButton() end
-	end)
-	b.check:SetPoint("TOPLEFT", 8, -26)
-	K.Tooltip(b.check, "Open all auction mail", "A button next to the game's mail window: it takes the gold and items of " ..
-		"every auction house mail (sold, bought, expired, cancelled), one after the other, and stops when your bags are full. " ..
-		"Other mails are left alone. Everything is written in the ledger (tab Gold).")
-	b.last = K.Label(b, "")
-	b.last:SetPoint("TOPLEFT", 10, -60)
-	b.last:SetWidth(LEFT_W - 20)
-	b.last:SetWordWrap(false)
-end
-
-X.On("XNAH_MAIL", function()
-	local tab = UI.tabs.scan
-	if tab and tab.panel and tab.panel:IsShown() then updateMailBox(tab.panel) end
-end)
-
 -- guild price sharing and the price export were taken out in v0.7: their saved bits go
 X.On("XNAH_LOGIN", function()
 	local db = X.db
@@ -315,7 +274,6 @@ local function refresh(p)
 	for i = #scans, math.max(1, #scans - 9), -1 do rows[#rows + 1] = scans[i] end
 	p.scans:SetRows(rows, "No scans on this realm yet.")
 	local items, bytes = X.DataSize()
-	updateMailBox(p)
 	p.size:SetText("Saved price data: " .. X.Num(items) .. " items (all realms), about " ..
 		X.Num(math.max(1, bytes / 1024)) .. " KB")
 end
@@ -325,7 +283,6 @@ local function build(p)
 	local st = K.Label(p, "Last 10 scans on this realm", "GameFontNormal")
 	st:SetPoint("TOPLEFT", 0, -192)
 	p.scans = K.Table(p, LEFT_W, 10 * 18 + 4, SCAN_COLUMNS)
-	buildMailBox(p)
 	p.scans:SetPoint("TOPLEFT", 0, -228)
 	p.size = K.Label(p, "")
 	p.size:SetPoint("TOPLEFT", 0, -516)
@@ -415,15 +372,6 @@ local function updateBar()
 	bar.full:SetEnabled(fullScanAllowed())
 	bar.watch:SetEnabled(X.ahOpen == true and X.scan.state == "idle")
 	bar.text:SetText(X.scan.text or "|cff999999Full scan: every auction at once.  Watch list: your starred items.|r")
-	-- the Next step key (Next.lua): what the next press does
-	bar.shownPeek = nil
-	if X.DoNextPeek and X.scan.state == "idle" then
-		local peek = X.Try(X.DoNextPeek)
-		if peek and peek.text then
-			bar.text:SetText(peek.text)
-			bar.shownPeek = peek.text
-		end
-	end
 end
 local function buildBar()
 	bar = CreateFrame("Frame", "XNAHAuctionBar", UIParent, "BackdropTemplate")
@@ -440,16 +388,8 @@ local function buildBar()
 	K.Tooltip(bar.watch, "Scan the watch list", "Searches your starred items one by one (any time).")
 	bar.open = K.Button(bar, "XNAH", 60, 22, function() X.Toggle() end)
 	bar.open:SetPoint("LEFT", bar.watch, "RIGHT", 4, 0)
-	bar.next = K.Button(bar, "Next step", 90, 22, function()
-		-- only what the text next to it says (when things changed since, this press only shows the new step)
-		if X.DoNext then X.DoNext("button", bar.shownPeek) end
-		updateBar()
-	end)
-	bar.next:SetPoint("LEFT", bar.open, "RIGHT", 4, 0)
-	K.Tooltip(bar.next, "Next step", "Each click does what the text next to it says: buy, confirm, cancel an undercut " ..
-		"auction or post the next ticked item. Your Next step key (key bindings, AddOns, XNAH) does the same.")
 	bar.text = K.Label(bar, "")
-	bar.text:SetPoint("LEFT", bar.next, "RIGHT", 8, 0)
+	bar.text:SetPoint("LEFT", bar.open, "RIGHT", 8, 0)
 	bar.text:SetPoint("RIGHT", -8, 0)
 	bar.text:SetWordWrap(false)
 	local acc = 0
@@ -482,4 +422,3 @@ function UI.UpdateAHBar(open, try)
 end
 X.On("XNAH_AH", function(open) UI.UpdateAHBar(open == true) end)
 X.On("XNAH_SCAN", updateBar)
-X.On("XNAH_ROUTINE", updateBar)

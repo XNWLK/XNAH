@@ -31,9 +31,6 @@ const GUARDED = {
   TooltipDataProcessor: "the game's tooltip line hooks (Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua); tested before use",
   AuctionHouseFrame: "the auction house window (Blizzard_AuctionHouseUI, load on demand); tested before use",
   AuctionHouseFrameDisplayMode: "the auction house window's table of views (Blizzard_AuctionHouseFrame.lua, a Lua table); tested before use",
-  SOUNDKIT:"the game's table of sound ids (a Lua table, not on the lists); tested before use, number fallback",
-  XNAH_Next: "key binding function of the one-key routine (Bindings.xml)", BINDING_NAME_XNAH_NEXT: "key binding label",
-  XNAH_NextBuy: "key binding function of Next buy (Bindings.xml)", BINDING_NAME_XNAH_NEXTBUY: "key binding label",
 };
 const strip = src => src.replace(/--\[(=*)\[[\s\S]*?\]\1\]/g, ' ').replace(/--[^\n]*/g, ' ')
   .replace(/\[(=*)\[[\s\S]*?\]\1\]/g, m => '"' + ' '.repeat(Math.max(0, m.length - 2)) + '"');
@@ -85,9 +82,7 @@ fs.readdirSync(ADDON).filter(f => f.endsWith('.lua') && true).forEach(file => {
     'Cancel',                                                    // the ticker object C_Timer.NewTicker returns
     'SetHyperlink',                                              // GameTooltip: a Lua accessor of the game (not on the C list); only called behind 'if GameTooltip.SetHyperlink'
     'SetBackdrop', 'SetBackdropColor', 'SetBackdropBorderColor',  // from BackdropTemplate (a Lua mixin, on the Mixins list); only called behind 'if frame.SetBackdrop'
-    'SetWeeks',                                                  // the Gold tab's profit-per-week bars (UILedger.lua)
-    'SetBagAndSlot',                                             // ItemLocationMixin (a Lua mixin, on the Mixins list), made with CreateFromMixins (Post.lua)
-    'SetItem']);                                                 // XNAH's Buy button (UIBuy.lua, UI.BuyButton)
+    'SetWeeks']);                                                // the Gold tab's profit-per-week bars (UILedger.lua)
   const ms = new Set();
   (code.match(/:([A-Za-z_]\w*)\s*\(/g) || []).forEach(c => ms.add(c.slice(1).replace(/\s*\($/, '')));
   ms.forEach(n => { if (own.has(n)) return; checked.methods++; if (!widget.has(n)) say(file, 'method :' + n + '() is not in the Forever client'); });

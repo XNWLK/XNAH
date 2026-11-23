@@ -81,14 +81,6 @@ function X.TooltipLines(key, count)
 		local profit = s.craftProfit and ("  " .. (s.craftProfit >= 0 and "|cff4ade80" or "|cfff87171") .. X.MoneyPlain(s.craftProfit * count) .. "|r") or ""
 		lines[#lines + 1] = {"  Crafting cost", X.Money(s.craft * count, true) .. profit}
 	end
-	-- strategies (Strategies page) that list this item, for those with "mark on tooltips" on
-	if X.StrategyMarks then
-		local marks = X.StrategyMarks(key)
-		if marks and #marks > 0 then
-			if #lines == 0 then lines[#lines + 1] = {head, ""} end
-			lines[#lines + 1] = {"  Strategy", "|cffffd100" .. table.concat(marks, ", ") .. "|r"}
-		end
-	end
 	if S.tipDE and X.DEValue then
 		local de = X.DEValue(key)
 		if de then

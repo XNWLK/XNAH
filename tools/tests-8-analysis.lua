@@ -1,6 +1,6 @@
 -- XNAH test scenes, part 8: analysis - sales speed from two full scans, the best hours to post, disenchanting values,
--- gear under its disenchanting value, walls and reset chances, sellers from searches, and how the Deals and Market pages
--- show them (the Trends page is gone: Rising / Falling on Market, the best time to post on Deals - Sell ideas).
+-- gear under its disenchanting value, walls and reset chances, sellers from searches, and how the Market and item pages
+-- show them.
 
 -- runs the jobs that follow a full scan (sales speed, market shape)
 local function settle() W.advance(2) end
@@ -266,7 +266,7 @@ T.scene("analysis: sellers from a search", function()
 	T.check("few sellers list: the sword", sword and sword.sellers, 3)
 end)
 
-T.scene("analysis: the Deals and Market pages show it", function()
+T.scene("analysis: the Market and item pages show it", function()
 	local X = W.start()
 	W.openAH()
 	deWorld(X)
@@ -284,65 +284,33 @@ T.scene("analysis: the Deals and Market pages show it", function()
 	W.buyOut(2592, 1, 3)
 	W.buyOut(2589, 1, 3)
 	scanAt(X)
-	-- the ideas leave out small profits by default (Adjust ideas): take them all here
-	X.SetStrategyParam("de", "minProfit", 0)
-	X.SetStrategyParam("reset", "minTotal", 0)
 	X.UI.Toggle()
 	local frame = X.UI.Frame()
-	X.UI.Open("deals") -- the old name: opens Buy, Best buys
-	W.advance(3) -- the ideas are worked out in slices
-	X.UI.Refresh(true)
-	T.check("deals opens the Buy tab", X.UI.current, "buy")
-	local panel = X.UI.tabs.buy.panel
-	local text = W.screen(panel)
-	T.ok("best buys: sells a day column", text:find("Sells a day", 1, true) ~= nil)
-	-- one list of buy ideas: the gear under its disenchanting value, the linen reset
-	local rows = panel.bestList.items or {}
-	local blue, linen
-	for _, r in ipairs(rows) do
-		if r.key == tostring(G.blue) then blue = r end
-		if r.key == "2589" then linen = r end
-	end
-	T.ok("buy ideas: the blue to disenchant", blue ~= nil and blue.idea == "de", text)
-	T.ok("buy ideas: says disenchant", text:find("disenchant:", 1, true) ~= nil, text)
-	T.ok("buy ideas: Linen", linen ~= nil, text)
-	-- the speed filter: on with a high minimum hides items of known speed, keeps items without a known speed
-	X.S().dealSpeedMin = 100000
-	W.click("Hide items that sell under", panel)
-	W.advance(0.3)
-	T.check("filter switched on", X.S().dealSpeedHide, true)
-	for _, r in ipairs(panel.bestList.items or {}) do T.ok("filter: no known slow seller", r.rate == nil, r.key) end
-	W.click("Hide items that sell under", panel)
-	W.advance(0.3)
-	T.check("filter switched off", X.S().dealSpeedHide, false)
-	-- the best time to post (the old Trends page): on the sell ideas (tab Sell)
-	X.UI.Open("sell")
-	W.advance(0.3)
-	panel = X.UI.tabs.sell.panel
-	W.click("Sell ideas", panel)
-	W.advance(0.3)
-	text = W.screen(panel)
-	T.ok("sell ideas: the best hour", text:find("Most sales happen about", 1, true) ~= nil, text)
-	-- rising / falling (the old Trends page): on the Market page
+	-- rising / falling and sells a day: on the Market page
 	X.UI.Open("market")
-	W.advance(3)
+	W.advance(3) -- the rows are worked out in slices
 	X.UI.Refresh(true)
-	panel = X.UI.tabs.market.panel
+	local panel = X.UI.tabs.market.panel
+	T.ok("market: sells a day column", W.screen(panel):find("Sells a day", 1, true) ~= nil)
 	W.click("Rising", panel)
 	W.advance(0.3)
 	T.ok("market: Rising works", W.screen(panel) ~= "")
 	W.click("Rising", panel)
-	-- an empty start: every view says something
+	-- the item page: sells a day, and the disenchant value with More numbers
+	T.ok("linen: a sales estimate", X.SaleRate("2589") ~= nil)
+	X.UI.ShowItem(tostring(G.blue))
+	W.advance(0.5)
+	X.S().itemMore = true
+	X.UI.Refresh(true)
+	local text = W.screen(X.UI.tabs.item.panel)
+	T.ok("item: disenchant value", text:find("Disenchant value", 1, true) ~= nil, text)
+	X.S().itemMore = false
+	-- an empty start: the Market page says something
 	X = W.start()
 	X.UI.Toggle()
-	for _, v in ipairs({{"buy", "Best buys"}, {"sell", "Sell ideas"}, {"craft", "Make ideas"}}) do
-		X.UI.Open(v[1])
-		W.advance(0.3)
-		local p = X.UI.tabs[v[1]].panel
-		W.click(v[2], p)
-		W.advance(0.3)
-		T.ok(v[1] .. " / " .. v[2] .. ": empty text", W.screen(p):find("No prices yet", 1, true) ~= nil)
-	end
+	X.UI.Open("market")
+	W.advance(0.5)
+	T.ok("empty market: no error", W.screen(X.UI.tabs.market.panel) ~= "")
 	T.ok("window", frame ~= nil)
 end)
 

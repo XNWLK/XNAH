@@ -1,5 +1,5 @@
 -- XNAH test scenes, part 24: the item page made calmer - ten plain rows (with "More numbers" for the rest), the fair
--- prices to buy and to sell (X.FairPrices), the Buy button, one Watch list button, honest ways to make gold.
+-- prices to buy and to sell (X.FairPrices), one Watch list button (no Buy button), honest ways to make gold.
 
 local DAY, HOUR = 86400, 3600
 
@@ -116,7 +116,7 @@ T.scene("item page: ten plain rows, More numbers, the fair price lines", functio
 	T.ok("little history: no Fair prices name", not has(W.screen(panel), "Fair prices"))
 end)
 
-T.scene("item page: Buy, Search and one Watch list button", function()
+T.scene("item page: Search and one Watch list button, no Buy button", function()
 	local X = W.start()
 	daily(X, "2589", "Linen Cloth", 12, function(n) return 100 + n * 10, math.floor((100 + n * 10) * 1.2) end)
 	W.list(2589, 120, 20, 3)
@@ -125,42 +125,19 @@ T.scene("item page: Buy, Search and one Watch list button", function()
 	W.advance(0.5)
 	local panel = itemPanel(X)
 	local buy = X.FairPrices("2589")
-	T.ok("a Buy button", panel.buy and panel.buy:IsShown())
-	T.check("its item and highest price: the fair price to buy", panel.buyFor, "2589/" .. tostring(buy))
+	T.ok("no Buy button", panel.buy == nil and W.findButton("Buy", panel) == nil)
+	T.ok("no price alert button", panel.alert == nil and W.findButton("Alert me", panel) == nil)
 	T.ok("search hidden while the auction house is closed", not panel.ah:IsShown())
-	if not X.UI.BuyButton then
-		T.ok("stand-in: closed", has(W.plain(panel.buy:GetText() or ""), "Open the auction house"))
-	end
 	W.openAH()
 	W.advance(0.5)
 	T.ok("search shown with the auction house open", panel.ah:IsShown())
-	if not X.UI.BuyButton then
-		T.ok("stand-in: open", has(W.plain(panel.buy:GetText() or ""), "Buy at or under"), panel.buy:GetText())
-	else
-		-- the Buy tab's own button: this item, at most the fair price to buy each, every one at or under it
-		T.check("real Buy button: the item", panel.buy.key, "2589")
-		T.check("real Buy button: highest price each = fair price to buy", panel.buy.max, buy)
-		T.check("real Buy button: as many as are at or under it", panel.buy.qty, nil)
-		T.check("real Buy button: from the item page", panel.buy.source, "item")
-		T.ok("real Buy button: ready", panel.buy:IsEnabled() and has(W.plain(panel.buy:GetText() or ""), "Buy"), panel.buy:GetText())
-		local before = W.plain(panel.buy:GetText() or "")
-		panel.buy:Click()
-		W.advance(0.5)
-		local after = W.plain(panel.buy:GetText() or "")
-		T.ok("real Buy button: a click starts it (no purchase yet)", after ~= before or has(after, "Checking"), before .. " -> " .. after)
-		T.ok("real Buy button: nothing bought on the first click", not has(after, "Bought"), after)
-		-- a refresh (new prices) does not reset its steps
-		local state = after
-		X.UI.Refresh(true)
-		W.advance(0.1)
-		T.check("real Buy button: a refresh keeps its step", W.plain(panel.buy:GetText() or ""), state)
-	end
-	local old = {"Add to watch list", "Max price", "Shopping list"}
+	local old = {"Add to watch list", "Max price", "Shopping list", "Add to the shopping list"}
 	for _, t in ipairs(old) do T.ok("one button instead of: " .. t, W.findButton(t, panel) == nil) end
 	-- the Watch list menu
 	W.click("Watch list", panel)
 	local menu = openMenu()
 	T.ok("a menu", menu ~= nil)
+	T.ok("no shopping list in the menu", menu == nil or W.findButton("shopping list", menu) == nil)
 	if menu then W.click("On the watch list", menu) end
 	W.advance(0.6)
 	T.check("watched", X.Watched("2589") and true or false, true)

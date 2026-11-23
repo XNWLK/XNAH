@@ -536,7 +536,7 @@ X.On("ITEM_DATA_LOAD_RESULT", function(id, ok) if ok and id then X.NameLoaded(id
 X.On("GET_ITEM_INFO_RECEIVED", function(id, ok) if ok and id then X.NameLoaded(id) end end)
 X.On("XNAH_LOGIN", function() X.After(5, X.FillNames) end)
 
--- [[ keeping the last full scan small ]] sales speed and strategies keep every listing of the last full scan for the
+-- [[ keeping the last full scan small ]] sales speed and Shape.lua keep every listing of the last full scan for the
 -- session (about 300,000 of them). As small tables that is tens of megabytes the game has to sweep through - a cause of
 -- stutter, more so with several game windows. So a few seconds after the scan each item's listings become one string
 -- "price*100,count,band;..." (base 36); row.list unpacks it again whenever something reads it (a fresh table each time).
@@ -589,7 +589,7 @@ function X.Perf()
 	X.Print(string.format("memory: %s (all addons' Lua: %.0f MB)", kb and string.format("%.1f MB", kb / 1024) or "?",
 		(select(2, pcall(collectgarbage, "count")) or 0) / 1024))
 	X.Print("busy: " .. (X.JobList and X.JobList() or "?") .. "; names to look up: " .. #nameQueue ..
-		"; scan: " .. tostring(X.scan.state) .. (X.SnipeOn and X.SnipeOn() and "; sniper ON" or ""))
+		"; scan: " .. tostring(X.scan.state))
 	local items, bytes = X.DataSize()
 	X.Print("saved data: " .. X.Num(items) .. " items, about " .. string.format("%.1f MB", bytes / 1048576))
 	X.Print("time spent in XNAH in the last 60 s: " .. string.format("%.0f ms", X.PerfTime and X.PerfTime() or 0) ..

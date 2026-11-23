@@ -1,5 +1,5 @@
 -- XNAH test scenes, part 25 (round 12, helper G): the Gold tab's numbers (profit per week, flips, auction house time
--- and gold per hour) and the mailbox's "Open all auction mail".
+-- and gold per hour), your gold of the day and week (X.GoldNumbers), and the saved data of removed features cleaned.
 
 local H = 3600
 
@@ -177,172 +177,127 @@ T.scene("settings: a hidden page, no guild sharing or export, old sharing data c
 	local text = W.screen(tab.panel)
 	T.ok("scan box", text:find("Full scan", 1, true) ~= nil, text)
 	T.ok("settings", text:find("Auction house cut", 1, true) ~= nil)
-	T.ok("mailbox box", text:find("Open all auction mail", 1, true) ~= nil)
+	T.ok("no mailbox box", text:find("Open all auction mail", 1, true) == nil)
 	T.ok("no sharing box", text:find("Guild", 1, true) == nil)
 	T.ok("no export", text:find("Export", 1, true) == nil)
-	-- the mailbox check box turns the button off and on
-	W.click("Open all auction mail", tab.panel)
-	T.check("mail button off", X.S().mailButton, false)
-	W.click("Open all auction mail", tab.panel)
-	T.check("mail button on", X.S().mailButton, true)
 end)
 
--- [[ the mailbox ]]
-local function bagCount(id)
-	local n = 0
-	for _, bag in pairs(W.bags) do for _, s in pairs(bag) do if s.id == id then n = n + s.count end end end
-	return n
-end
-local function mailBar() return W.env.XNAHMailBar end
-
-T.scene("mail: open all auction mail takes gold and items, logs them, leaves other mail", function()
+T.scene("gold: gold of the day and week, sales and the best seller (X.GoldNumbers)", function()
 	local X = W.start()
 	W.advance(5)
-	W.money = 100000
+	local n = X.GoldNumbers()
+	T.check("gold of this character", n.gold, 1234567)
+	T.check("gold today: nothing changed yet", n.goldToday, 0)
+	T.check("one character", n.chars, 1)
+	W.setMoney(1234567 + 50000)
+	W.advance(3)
+	n = X.GoldNumbers()
+	T.check("gold today: +5g", n.goldToday, 50000)
+	T.check("gold this week: +5g", n.goldWeek, 50000)
+	-- sales and a purchase today, a sale 3 days ago, an old sale 10 days ago
 	W.addMail(W.mailSold(2589, 1000, 20, "Ann Lee", 50))
-	W.addMail(W.mailWon(2592, 400, 10, "Bob Stone"))
-	W.addMail(W.mailExpired(2770, 5))
-	W.addMail(W.mailCancelled(3576, 2))
-	W.addMail(W.mailPending(2589, 2000, 20, "Cid Moss", 100))
-	local friend = W.addMail({sender = "Ann Lee", subject = "for you", money = 500, items = {{id = 2589, count = 3}}})
-	local cod = W.addMail(W.mailExpired(2589, 1))
-	cod.cod = 100 -- cash on delivery: never taken
+	W.addMail(W.mailSold(2592, 5000, 5, "Bob Stone", 250))
+	W.addMail(W.mailWon(2770, 400, 10, "Cid Moss"))
+	W.addMail(W.mailAgo(W.mailSold(2592, 2000, 2, "Dee Fox", 100), 3))
+	W.addMail(W.mailAgo(W.mailSold(4306, 99999, 1, "Old Buyer", 0), 10))
+	W.addMail(W.mailExpired(2840, 4))
 	W.openMail()
-	W.advance(1)
-	local text = W.screen(mailBar())
-	T.ok("the bar shows what waits", text:find("4 auction house mails", 1, true) ~= nil, text)
-	-- Xn: never automatic - opening the mailbox and waiting takes nothing; only the button does
-	W.advance(30)
-	T.check("opening the mailbox takes nothing", #W.mailTakes, 0)
-	W.click("Open all auction mail")
-	T.check("the first take straight from the click", #W.mailTakes, 1)
-	T.ok("running: the button stops", W.findButton("Stop", mailBar()) ~= nil)
-	W.advance(10)
-	T.check("gold taken", W.money, 100000 + 950)
-	T.check("wool in the bags", bagCount(2592), 10)
-	T.check("ore in the bags", bagCount(2770), 5)
-	T.check("tin in the bags", bagCount(3576), 2)
-	T.check("four takes", #W.mailTakes, 4)
-	local gap = 99
-	for i = 2, #W.mailTakes do gap = math.min(gap, W.mailTakes[i].t - W.mailTakes[i - 1].t) end
-	T.ok("a pause between takes", gap >= 0.2, gap)
-	T.check("the friend's mail is untouched", friend.money, 500)
-	T.ok("the friend's item is untouched", friend.items[1] ~= nil)
-	T.ok("cash on delivery untouched", cod.items[1] ~= nil)
-	T.check("left: friend, cash on delivery, sale pending", #W.mail, 3)
-	local L = X.Ledger()
-	T.check("ledger: sale (and the pending one)", #L.sales, 2)
-	T.check("ledger: purchase", #L.buys, 1)
-	T.check("ledger: expired (and the cash on delivery one)", #L.expired, 2)
-	T.check("ledger: cancelled", #L.cancelled, 1)
-	local said = W.said("took 9s 50c and 17 items from 4 auction house mails")
-	T.check("told in chat", #said, 1)
-	T.ok("saved for the Settings page", X.MailLast() and X.MailLast().text:find("17 items", 1, true) ~= nil)
-	text = W.screen(mailBar())
-	T.ok("the bar says what it took", text:find("took 9s 50c", 1, true) ~= nil, text)
-	local again = W.findButton("Open all auction mail", mailBar())
-	T.ok("nothing more to open", again == nil or again.disabled)
-	-- the ledger did not count anything twice
+	n = X.GoldNumbers()
+	T.check("today: income after the cut", n.today.income, 950 + 4750)
+	T.check("today: units sold", n.today.units, 25)
+	T.check("today: spent", n.today.spent, 400)
+	T.check("today: bought", n.today.bought, 10)
+	T.check("today: expired", n.today.expired, 4)
+	T.check("week: income (3 days ago counts, 10 days ago does not)", n.week.income, 950 + 4750 + 1900)
+	T.check("week: units", n.week.units, 27)
+	T.check("week: profit = income - spent", n.profitWeek, 950 + 4750 + 1900 - 400)
+	T.check("best seller this week: Wool Cloth", n.best and n.best.key, "2592")
+	T.check("best seller: what it brought", n.best and n.best.income, 4750 + 1900)
+	T.check("best seller: units", n.best and n.best.units, 7)
+	T.check("two items in the top list", #n.top, 2)
+	T.check("the old sale is not in the top list", n.top[3], nil)
+	-- the scan numbers
+	T.check("no full scan yet", n.lastFull, nil)
+	T.check("auction house closed", n.ahOpen, false)
+	-- the next day: today starts again, the week keeps yesterday
 	W.closeMail()
-	W.openMail()
-	T.check("ledger: still 2 sales", #X.Ledger().sales, 2)
-end)
-
-T.scene("mail: bags full - gold is still taken, items wait", function()
-	local X = W.start()
-	W.advance(5)
-	W.money = 0
-	W.bagRoom = 1
-	W.addMail(W.mailWon(2592, 400, 10, "Bob Stone"))
-	W.addMail(W.mailExpired(2770, 5))
-	W.addMail(W.mailSold(2589, 1000, 20, "Ann Lee", 50))
-	W.openMail()
-	W.advance(1)
-	W.click("Open all auction mail")
-	W.advance(10)
-	T.check("gold taken", W.money, 950)
-	T.check("one item taken", W.bagRoom, 0)
-	T.check("one item mail left", #W.mail, 1)
-	T.check("told: bags full", #W.said("bags are full"), 1)
-	T.ok("not running", not X.MailRunning())
-end)
-
-T.scene("mail: a mail that just came is in the ledger before it is taken", function()
-	local X = W.start()
-	W.advance(5)
-	W.openMail()
-	W.advance(1)
-	W.addMail(W.mailSold(2589, 1000, 20, "Ann Lee", 50)) -- the ledger reads it 0.5 s later ...
-	W.advance(0.35)                                      -- (the button shows it after 0.3 s)
-	W.click("Open all auction mail")                     -- ... but the click comes first
-	W.advance(5)
-	T.check("taken", #W.mail, 0)
-	T.check("in the ledger", #X.Ledger().sales, 1)
-end)
-
-T.scene("mail: closing the mailbox stops; the button can be switched off", function()
-	local X = W.start()
-	W.advance(5)
-	for i = 1, 5 do W.addMail(W.mailExpired(2770, i)) end
-	W.openMail()
-	W.advance(1)
-	W.click("Open all auction mail")
-	W.advance(0.1)
-	W.closeMail()
+	W.advance(86400)
+	n = X.GoldNumbers()
+	T.check("next day: gold today starts at 0", n.goldToday, 0)
+	T.check("next day: the week still has +5g", n.goldWeek, 50000)
+	T.check("next day: no sales today", n.today.income, 0)
+	T.check("next day: the week keeps them", n.week.income, 950 + 4750 + 1900)
+	W.setMoney(1234567 + 50000 - 20000)
 	W.advance(3)
-	T.ok("stopped after the first", #W.mailTakes <= 2, #W.mailTakes)
-	T.check("told: closed", #W.said("mailbox was closed"), 1)
-	T.ok("not running", not X.MailRunning())
-	-- clicking Stop
-	W.openMail()
-	W.advance(1)
-	W.click("Open all auction mail")
-	W.click("Stop", mailBar())
-	W.advance(3)
-	T.check("told: stopped", #W.said("(stopped)"), 1)
-	W.closeMail()
-	X.S().mailButton = false
-	W.openMail()
-	W.advance(1)
-	T.ok("switched off: no button", W.findButton("Open all auction mail") == nil)
+	n = X.GoldNumbers()
+	T.check("next day: spent 2g", n.goldToday, -20000)
+	T.check("next day: week +3g", n.goldWeek, 30000)
+	-- a reload keeps the notes of the day
+	X = W.reload()
+	W.advance(5)
+	n = X.GoldNumbers()
+	T.check("after a reload: today", n.goldToday, -20000)
+	T.check("after a reload: week", n.goldWeek, 30000)
+	-- 10 days later: only the last 7 days count; old notes are dropped after 15 days
+	W.advance(10 * 86400)
+	n = X.GoldNumbers()
+	T.check("10 days later: week = 0 (nothing changed)", n.goldWeek, 0)
+	W.advance(10 * 86400)
+	X.GoldNumbers()
+	local days = 0
+	for _ in pairs(X.Realm().homeGold) do days = days + 1 end
+	T.ok("old gold notes dropped", days <= 15, days)
 end)
 
-T.scene("mail: when the game blocks timed takes, one mail per click", function()
+T.scene("gold: the saved data of removed features is deleted once, the rest is kept", function()
 	local X = W.start()
-	W.advance(5)
-	W.mailBlocked = true
-	for i = 1, 3 do W.addMail(W.mailExpired(2770, i)) end
-	W.openMail()
-	W.advance(1)
-	W.click("Open all auction mail")
-	W.advance(3)
-	T.check("the click's take worked", bagCount(2770) > 0, true)
-	T.check("told: a click per mail", #W.said("click per mail"), 1)
-	for _ = 1, 6 do
-		local b = W.findButton("Take next auction mail", mailBar())
-		if not b then break end
-		b:Click()
-		W.advance(1)
+	local db = X.db
+	-- saved by the removed features (shopping lists, crafting queue, posting, sniper, strategies, guide, Home, mail)
+	db.shop = {Mats = {items = {{key = "2589", qty = 5}}}}
+	db.queue = {[123] = {mode = "craft", n = 2}}
+	db.onWay = {[2589] = {{5, 1, "Me"}}}
+	db.strategies = {usual = {on = true}}
+	db.postRules = {["2589"] = {floor = 50}}
+	db.sellTick = {["2589"] = true}
+	db.sellList = {}
+	db.mailLast = {t = 1, text = "x"}
+	db.guideSeen = "0.8.1"
+	local S = X.S()
+	S.homeFirst, S.snipeWait, S.alertSound, S.postFloor, S.buyView, S.craftView = true, 10, true, 80, "best", "recipes"
+	S.dealsHidden, S.strategySel, S.mailButton, S.routineCancel, S.guideAtLogin = {}, "usual", true, true, true
+	S.tab = "buy"
+	S.sorts = {["buy:1"] = {2, true}, ["market:1"] = {3, false}, ["craft:2"] = {1, false}}
+	-- kept: the watch list with a highest price, prices, ledger, settings in use
+	X.SetWatched("2589", true)
+	X.SetWatchMax("2589", 77)
+	X.Record("2589", X.Now() - 3600, 100, 110, 50, 5)
+	X.Ledger().sales[1] = {t = X.Now(), key = "2589", count = 1, money = 100}
+	S.cut = 7
+	db.cleanup = nil
+	X = W.reload()
+	W.advance(2)
+	db, S = X.db, X.S()
+	for _, k in ipairs({"shop", "queue", "onWay", "strategies", "postRules", "sellTick", "sellList", "mailLast", "guideSeen"}) do
+		T.check("deleted: " .. k, db[k], nil)
 	end
-	T.check("all taken by clicks", #W.mail, 0)
-	T.check("all ore", bagCount(2770), 6)
-	T.ok("no Lua error", true)
-end)
-
-T.scene("mail: the bar goes when the mail window closes, even without the closed signal", function()
-	local X = W.start()
-	W.advance(5)
-	W.addMail(W.mailSold(2589, 1000, 20, "Ann Lee", 50))
-	W.openMail()
+	for _, k in ipairs({"homeFirst", "snipeWait", "alertSound", "postFloor", "buyView", "craftView", "dealsHidden",
+		"strategySel", "mailButton", "routineCancel", "guideAtLogin"}) do
+		T.check("setting deleted: " .. k, S[k], nil)
+	end
+	T.ok("the tab of a removed page is forgotten", S.tab ~= "buy", S.tab)
+	T.check("sorting of a removed page deleted", S.sorts["buy:1"], nil)
+	T.check("sorting of a removed page deleted (2)", S.sorts["craft:2"], nil)
+	T.ok("sorting of Market kept", S.sorts["market:1"] ~= nil)
+	T.check("done once", db.cleanup, 1)
+	T.ok("watch list kept", X.Watched("2589"))
+	T.check("its highest price kept", X.WatchMax("2589"), 77)
+	T.ok("prices kept", X.Items()["2589"] ~= nil and X.Items()["2589"].cur ~= nil)
+	T.check("ledger kept", #X.Ledger().sales, 1)
+	T.check("setting in use kept", S.cut, 7)
+	T.ok("settings still filled in", S.staleHours ~= nil and S.uiScale ~= nil)
+	-- once only: a field of the same name set later stays
+	db.shop = {kept = true}
+	X = W.reload()
 	W.advance(1)
-	T.ok("the bar is shown at the mailbox", W.env.XNAHMailBar and W.env.XNAHMailBar:IsShown())
-	-- Xn walked away: the game hid its mail window, but no MAIL_CLOSED came
-	W.mailFrame:Hide()
-	T.ok("the bar is gone", not W.env.XNAHMailBar:IsShown())
-	-- back at the mailbox: it comes again
-	W.closeMail()
-	W.openMail()
-	W.advance(1)
-	T.ok("shown again at the next visit", W.env.XNAHMailBar:IsShown())
-	T.check("the bar belongs to the mail window", W.env.XNAHMailBar:GetParent(), W.mailFrame)
+	T.ok("not cleaned twice", X.db.shop ~= nil and X.db.shop.kept == true)
 end)

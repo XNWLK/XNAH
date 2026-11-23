@@ -159,10 +159,6 @@ local function buildPanel()
 		panel.lines[i] = right
 	end
 	local afterLines = -72 - #LINES * 16 - 4
-	panel.marks = K.Label(body, "", "GameFontHighlightSmall")
-	panel.marks:SetPoint("TOPLEFT", 10, afterLines)
-	panel.marks:SetWidth(PW - 20)
-	panel.marks:SetWordWrap(true)
 	panel.graphTitle = K.Label(body, GREY .. "Last 30 days:|r |cffffd100market value|r, |cff4ade80lowest|r", "GameFontHighlightSmall")
 	panel.graphTitle:SetPoint("TOPLEFT", 10, afterLines - 32)
 	panel.graph = K.Graph(body, PW - 12, 132)
@@ -179,7 +175,7 @@ local function buildPanel()
 		if A.key then X.SetWatched(A.key, not X.Watched(A.key)) end
 	end)
 	panel.watch:SetPoint("LEFT", panel.open, "RIGHT", 8, 0)
-	K.Tooltip(panel.watch, "Watch list", "Starred items: the watch list scan searches them, and the sniper looks for them.")
+	K.Tooltip(panel.watch, "Watch list", "Starred items: the watch list scan searches them.")
 	panel.max = K.Button(body, "Max price", bw, 22, function()
 		local key = A.key
 		if not key then return end
@@ -191,8 +187,7 @@ local function buildPanel()
 		end, "Set")
 	end)
 	panel.max:SetPoint("TOPLEFT", panel.open, "BOTTOMLEFT", 0, -4)
-	K.Tooltip(panel.max, "Max price", "Puts the item on the watch list with the highest price you would pay for one. " ..
-		"With the sniper on (Buy tab) XNAH tells you when one is listed at or under it.")
+	K.Tooltip(panel.max, "Max price", "Puts the item on the watch list with the highest price you would pay for one.")
 
 	-- the columns in the game's list (for the whole panel, also when no item is picked)
 	panel.cols = K.Check(panel, "Extra columns in the list", function(on)
@@ -226,9 +221,6 @@ refreshPanel = function()
 	elseif s.cur and s.cur.t then panel.sub:SetText("Prices from " .. X.Ago(s.cur.t) .. ((s.st and s.st.days > 0) and (", " .. s.st.days .. " day" .. (s.st.days > 1 and "s" or "") .. " of history") or ""))
 	else panel.sub:SetText("") end
 	for i, l in ipairs(LINES) do panel.lines[i]:SetText(l[2](s)) end
-
-	local marks = X.StrategyMarks and X.StrategyMarks(key) or {}
-	panel.marks:SetText(#marks > 0 and ("|cffe6b422Strategies:|r " .. table.concat(marks, ", ")) or "")
 
 	local hist = X.History(key, X.Now() - 30 * 86400)
 	local mkt, low, qty = {}, {}, {}

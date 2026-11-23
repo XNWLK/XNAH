@@ -44,7 +44,6 @@ local HELP = {
 	"/xnah watch - scan the watch list (auction house open)",
 	"/xnah <item name or link> - show that item",
 	"/xnah raw [n] - print the first n auctions of the last full scan as the game gives them (to check prices)",
-	"/xnah guide - the guide to every page",
 	"/xnah perf - what XNAH is doing and how much memory it uses",
 	"/xnah size 120 - window size in % (60 to 160; 100 = normal)",
 	"/xnah debug - more messages",
@@ -70,8 +69,6 @@ SlashCmdList.XNAH = function(msg)
 		X.Print("window size: " .. math.floor(X.S().uiScale * 100 + 0.5) .. "%")
 	elseif cmd == "perf" then
 		X.Perf()
-	elseif cmd == "guide" then
-		if X.ShowGuide then X.ShowGuide() end
 	elseif cmd == "debug" then
 		X.S().debug = not X.S().debug
 		X.Print("debug " .. (X.S().debug and "on" or "off"))

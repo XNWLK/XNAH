@@ -181,3 +181,9 @@ function W.mailCancelled(id, count, suffix)
 	return {sender = "Auction House", subject = "Auction canceled: " .. W.itemName(id, suffix), money = 0,
 		items = {{id = id, count = count or 1, suffix = suffix}}}
 end
+
+-- W.mailAgo(mail, days): the mail arrived `days` days ago (it has 30 - days days left, as auction house mails do)
+function W.mailAgo(m, days)
+	m.daysLeft = 30 - days
+	return m
+end

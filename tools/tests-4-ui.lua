@@ -162,6 +162,9 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	W.ahWindow() -- the auction house window as the game has it (its search bar is reached by "Search on the auction house")
 	tenDays(X)
 	T.ok("tabs registered", #X.UI.order > 0, #X.UI.order)
+	local keys = {}
+	for _, k in ipairs(X.UI.order) do keys[#keys + 1] = k end
+	T.check("the tabs that are left", table.concat(keys, ","), "market,item,gold,scan")
 	-- with the auction house open
 	X.UI.Toggle() -- the full window (/xnah opens the simple one: tests-17)
 	local frame = X.UI.Frame()
@@ -173,23 +176,12 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 		X.UI.ShowItem("2589")
 		exercise(X, key, stats)
 	end
-	-- every view of the tabs with views (v0.8: Buy has Best buys, lists and Adjust ideas; Sell has Sell ideas, Crafting
-	-- has Make ideas), each kept shown while it is used
+	-- every view of the Gold tab (Overview, By item, Recent, Characters), each kept shown while it is used
 	local function viewsOf(X, open)
-		local function setting(name, value)
-			return {name = value, set = function()
-				if X.S()[name] == value then return false end
-				X.S()[name] = value
-				return true
-			end}
-		end
-		for _, v in ipairs({"best", "lists", "adjust"}) do exercise(X, "buy", stats, setting("buyView", v)) end
-		for _, v in ipairs({"recipes", "queue", "make"}) do exercise(X, "craft", stats, setting("craftView", v)) end
-		for _, v in ipairs({"worth", "cancel", "sell", "ideas"}) do
-			exercise(X, "sell", stats, {name = v, set = function()
-				local p = X.UI.tabs.sell.panel
-				if not p or p.view == v then return false end
-				p.view = v
+		for _, v in ipairs({"overview", "items", "recent", "chars"}) do
+			exercise(X, "gold", stats, {name = v, set = function()
+				if X.S().goldView == v then return false end
+				X.S().goldView = v
 				return true
 			end})
 		end

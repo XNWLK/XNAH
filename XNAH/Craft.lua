@@ -184,7 +184,7 @@ X.On("NEW_RECIPE_LEARNED", function() X.Debounce("tradeskill", 1, readRecipes) e
 -- [[ costs ]]
 -- crafts with a waiting time (transmutes, Mooncloth...): a character can make one only now and then, so they are never
 -- counted as a way to get a reagent (the elemental transmutes go round in a circle: Water -> Undeath -> Water, and
--- would make every essence look as cheap as the cheapest one). The Cooldown crafts strategy lists them.
+-- would make every essence look as cheap as the cheapest one).
 X.CRAFT_COOLDOWNS = { -- recipe (spell) -> hours between crafts on WoW Forever
 	[17187] = 47,                    -- Transmute: Arcanite
 	[17559] = 23, [17560] = 23, [17561] = 23, [17562] = 23, -- elemental transmutes

@@ -609,3 +609,197 @@ X.On("XNAH_LOGIN", function()
 	nameCache = {}
 	prune(X.Now())
 end)
+
+-- [[ your gold in numbers ]] (was the Home page's; feeds the "Your gold" view)
+--   X.GoldNumbers() -> {gold (all characters of this realm), goldToday, goldWeek (changes; nil before XNAH has seen
+--     the gold), goldDays (days the 7-day change covers), chars, today = {income (sales after the cut), units, sales
+--     (mails), spent, bought, expired, cancelled}, week = the same for the last 7 days (today included), profitWeek
+--     (income - spent), top = {{key, name, income, units}, ...} (best sellers of the last 7 days, at most 5), best =
+--     top[1], worth, worthWeek (net worth and its change over 7 days), lastFull, scanAge (seconds), scanLeft (seconds
+--     until the server allows the next full scan), scanReady, scanning, ahOpen}
+-- Gold of the day: XNAH notes each character's gold the first time it sees it on a day:
+--   X.Realm().homeGold = {[day] = {[character] = copper}}  (15 days kept; day = your local calendar day)
+-- "Today" = gold now minus that; "7 days" = gold now minus the oldest note of the last 7 days.
+-- Kept cheap: the numbers are worked out again only after something changed (or a minute passed).
+do
+	local GOLD_KEEP_DAYS = 15
+	local MAX_AGE = 60 -- seconds: the numbers are worked out again at least this often
+	local TOP = 5
+
+	-- the start of your local day (midnight where you are), and a number for it
+	local function dayStart(t)
+		t = t or X.Now()
+		local tt = date("*t", t)
+		if type(tt) ~= "table" or not tt.hour then return t - t % DAY end
+		return t - (tt.hour * 3600 + tt.min * 60 + tt.sec)
+	end
+	X.GoldDayStart = dayStart
+	local function dayOf(t) return math.floor((dayStart(t) + DAY / 2) / DAY) end
+
+	-- your characters of this realm (both factions): {[name] = record}
+	local function realmChars()
+		local rk = X.realmKey or X.RealmKey()
+		local out = {}
+		for k, c in pairs((X.db and X.db.chars) or {}) do
+			if c.realm == rk then out[k] = c end
+		end
+		return out
+	end
+	local function goldBook()
+		local r = X.Realm()
+		r.homeGold = r.homeGold or {}
+		return r.homeGold
+	end
+	-- notes each character's gold once a day (the first time it is seen that day)
+	function X.RecordGold()
+		if not X.db then return end
+		local book = goldBook()
+		local today = dayOf()
+		local g = book[today]
+		if not g then
+			g = {}
+			book[today] = g
+		end
+		for k, c in pairs(realmChars()) do
+			if c.money and g[k] == nil then g[k] = c.money end
+		end
+		for d in pairs(book) do
+			if d <= today - GOLD_KEEP_DAYS then book[d] = nil end
+		end
+	end
+
+	local function newSums() return {income = 0, units = 0, sales = 0, spent = 0, bought = 0, expired = 0, cancelled = 0} end
+
+	local function goldNumbers(n)
+		local book = goldBook()
+		local today = dayOf()
+		if not book[today] then -- a new day while playing: it starts with the gold now
+			X.RecordGold()
+			book = goldBook()
+		end
+		local total, chars, dToday, dWeek, any, oldest = 0, 0, 0, 0, false, today
+		for k, c in pairs(realmChars()) do
+			if c.money then
+				total = total + c.money
+				chars = chars + 1
+				local base = book[today] and book[today][k]
+				if base then
+					dToday = dToday + c.money - base
+					any = true
+				end
+				for d = today - 6, today do
+					local v = book[d] and book[d][k]
+					if v then
+						dWeek = dWeek + c.money - v
+						if d < oldest then oldest = d end
+						break
+					end
+				end
+			end
+		end
+		n.gold, n.chars = total, chars
+		n.goldToday = any and dToday or nil
+		n.goldWeek = any and dWeek or nil
+		n.goldDays = today - oldest + 1
+	end
+
+	local function ledgerNumbers(n, now)
+		local today, week = newSums(), newSums()
+		n.today, n.week = today, week
+		n.top = {}
+		local L = X.Ledger and X.Ledger()
+		if not L then return end
+		local t0 = dayStart(now)
+		local w0 = t0 - 6 * DAY
+		local by = {}
+		for _, e in ipairs(L.sales or {}) do
+			local t = e.t or 0
+			if t >= w0 then
+				local inc, units = (e.money or 0) - (e.cut or 0), e.count or 1
+				week.income, week.units, week.sales = week.income + inc, week.units + units, week.sales + 1
+				if t >= t0 then today.income, today.units, today.sales = today.income + inc, today.units + units, today.sales + 1 end
+				local id = e.key or ("n:" .. tostring(e.name))
+				local b = by[id]
+				if not b then
+					b = {key = e.key, name = e.name, income = 0, units = 0}
+					by[id] = b
+				end
+				b.income, b.units = b.income + inc, b.units + units
+			end
+		end
+		for _, e in ipairs(L.buys or {}) do
+			local t = e.t or 0
+			if t >= w0 then
+				week.spent, week.bought = week.spent + (e.money or 0), week.bought + (e.count or 1)
+				if t >= t0 then today.spent, today.bought = today.spent + (e.money or 0), today.bought + (e.count or 1) end
+			end
+		end
+		for _, what in ipairs({"expired", "cancelled"}) do
+			for _, e in ipairs(L[what] or {}) do
+				local t = e.t or 0
+				if t >= w0 then
+					week[what] = week[what] + (e.count or 1)
+					if t >= t0 then today[what] = today[what] + (e.count or 1) end
+				end
+			end
+		end
+		local list = {}
+		for _, b in pairs(by) do list[#list + 1] = b end
+		table.sort(list, function(a, b)
+			if a.income ~= b.income then return a.income > b.income end
+			return tostring(a.key or a.name) < tostring(b.key or b.name)
+		end)
+		for i = 1, math.min(TOP, #list) do n.top[i] = list[i] end
+		n.best = n.top[1]
+	end
+
+	local function worthNumbers(n, now)
+		if not X.WorthHistory then return end
+		local points = X.WorthHistory(nil, now - 8 * DAY)
+		local last = points[#points]
+		if not last then return end
+		n.worth = last[2]
+		for _, p in ipairs(points) do
+			if p[1] >= now - 7.5 * DAY and p ~= last then
+				n.worthWeek = last[2] - p[2]
+				break
+			end
+		end
+	end
+
+	local numbers, numbersAt, numbersDirty = nil, 0, true
+	function X.GoldNumbers()
+		local now = X.Now()
+		if not numbers or numbersDirty or now - numbersAt >= MAX_AGE then
+			local n = {}
+			goldNumbers(n)
+			ledgerNumbers(n, now)
+			worthNumbers(n, now)
+			n.profitWeek = n.week.income - n.week.spent
+			numbers, numbersAt, numbersDirty = n, now, false
+		end
+		-- these change by the second: always now
+		local n = numbers
+		n.lastFull = X.Realm().lastFull
+		n.scanAge = n.lastFull and math.max(0, now - n.lastFull) or nil
+		n.scanLeft = X.FullScanLeft()
+		n.scanReady = X.FullScanReady()
+		n.scanning = X.scan.state ~= "idle"
+		n.ahOpen = X.ahOpen == true
+		return n
+	end
+	-- work the numbers out again on the next call (also for the tests)
+	function X.GoldNumbersForget()
+		numbersDirty = true
+	end
+
+	for _, e in ipairs({"XNAH_LEDGER", "XNAH_INVENTORY", "XNAH_PRICES"}) do
+		X.On(e, X.GoldNumbersForget)
+	end
+	X.On("XNAH_INVENTORY", function() X.Debounce("xnah-gold-day", 2, X.RecordGold) end)
+	-- before this session changes any gold: the notes of the day start from what was saved last time
+	X.On("XNAH_LOGIN", function()
+		X.RecordGold()
+		numbersDirty = true
+	end)
+end

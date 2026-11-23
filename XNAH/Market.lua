@@ -19,7 +19,7 @@ function X.Deals(opts)
 	local out = {}
 	for key, it in pairs(X.Items()) do
 		local cur = it.cur
-		if cur and cur.min and (cur.qty or 0) > 0 and X.Fresh(it) and (not X.BuyIdea or X.BuyIdea(key, it)) then
+		if cur and cur.min and (cur.qty or 0) > 0 and X.Fresh(it) and X.BuyIdea(key, it) then
 			local usual, st = X.Usual(key)
 			if usual and st.days >= S.minSamples then
 				local pct = cur.min / usual * 100
