@@ -12,6 +12,20 @@ end
 
 -- [[ movers ]] kind = "up" (price rising), "down" (falling), "short" (supply far under its 7-day average while the
 -- price holds or rises: a chance to sell), "flood" (supply far over: wait before selling)
+-- X.MoveKinds(trend, supply, qty7) -> "up" / "down" / nil (the price), "short" / "flood" / nil (the number listed): the
+-- rules in one place (the Market view's Rising / Falling / Short supply / Flooded buttons use them too). The caller checks
+-- first that the price is fresh and the item has enough days of history.
+function X.MoveKinds(trend, supply, qty7)
+	local p, s
+	if trend then
+		if trend > 0 then p = "up" elseif trend < 0 then p = "down" end
+	end
+	if supply and (qty7 or 0) >= 5 then
+		if supply <= -40 and (trend or 0) >= -5 then s = "short" elseif supply >= 60 then s = "flood" end
+	end
+	return p, s
+end
+
 function X.Movers(kind, limit)
 	local S = X.S()
 	local out = {}
@@ -20,10 +34,11 @@ function X.Movers(kind, limit)
 			local st = X.Stats(it)
 			if st.days >= S.minSamples then
 				local v
-				if kind == "up" and st.trend and st.trend > 0 then v = st.trend
-				elseif kind == "down" and st.trend and st.trend < 0 then v = -st.trend
-				elseif kind == "short" and st.supply and st.supply <= -40 and (st.trend or 0) >= -5 and (st.qty7 or 0) >= 5 then v = -st.supply
-				elseif kind == "flood" and st.supply and st.supply >= 60 and (st.qty7 or 0) >= 5 then v = st.supply end
+				local p, s = X.MoveKinds(st.trend, st.supply, st.qty7)
+				if kind == "up" and p == "up" then v = st.trend
+				elseif kind == "down" and p == "down" then v = -st.trend
+				elseif kind == "short" and s == "short" then v = -st.supply
+				elseif kind == "flood" and s == "flood" then v = st.supply end
 				if v then
 					out[#out + 1] = {key = key, v = v, trend = st.trend, supply = st.supply, price = X.Price(key), avg7 = st.avg7,
 						qty = it.cur.qty, qty7 = st.qty7}
