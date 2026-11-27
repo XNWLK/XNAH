@@ -82,6 +82,7 @@ const report = run(`
     -- slowest step (seconds) and where, and the errors
     local function fill(label, fn)
       W.errors = {}
+      local chatFrom = #W.chat
       W.maxStepTime, W.maxStepWhere = 0, "-"
       local t0 = os.clock()
       local ok, e = pcall(fn)
@@ -96,6 +97,11 @@ const report = run(`
         tostring(W.maxStepWhere), waited > 600 and "  STILL WORKING after 10 min" or "",
         #W.errors > 0 and ("  ERRORS: " .. #W.errors) or "")
       for i = 1, math.min(#W.errors, 3) do out[#out + 1] = "      " .. tostring(W.errors[i]):sub(1, 400) end
+      -- errors XNAH caught and printed in chat (X.OnError) while this step ran
+      for i = chatFrom + 1, #W.chat do
+        local l = W.plain(W.chat[i])
+        if l:lower():find("error", 1, true) then out[#out + 1] = "      chat: " .. l:sub(1, 400) end
+      end
       local names = {}
       for name, dt in pairs(jobMax) do if dt > 0.05 then names[#names + 1] = string.format("%s %.0f ms", name, dt * 1000) end end
       table.sort(names)
@@ -142,6 +148,43 @@ const report = run(`
       "every page (%+d more)", before, atLogin, atLogin - before, after, after - atLogin)
     local items, bytes = X.DataSize()
     out[#out + 1] = string.format("X.DataSize: %d items, about %d bytes of history", items, bytes)
+    -- the Your data window: data health, every export (all days), then a slim down - in memory only (this tool never
+    -- writes the file)
+    out[#out + 1] = ""
+    out[#out + 1] = "your data:"
+    fill("data: open the window (health)", function() UI.OpenData() end)
+    local res = X.DataHealth()
+    if res then
+      out[#out + 1] = string.format("  health: %d items, about %d bytes in all (the file has %d)", res.items, res.total, before)
+      for _, p in ipairs(res.parts) do
+        if p.bytes > 0 then out[#out + 1] = string.format("    %-40s %10d bytes", p.name, p.bytes) end
+      end
+      local bits = {}
+      for _, d in ipairs(X.UNSEEN_DAYS) do bits[#bits + 1] = d .. " days " .. res.unseen[d] end
+      out[#out + 1] = "  not seen for: " .. table.concat(bits, ", ") .. "; never seen with a price " .. res.never
+      bits = {}
+      for _, d in ipairs(X.SLIM_DAYS) do
+        local s = res.slim[d]
+        bits[#bits + 1] = string.format("%d days %d items %d KB (%d kept)", d, s.n, math.floor(s.bytes / 1024), s.kept)
+      end
+      out[#out + 1] = "  slim down would remove: " .. table.concat(bits, "; ")
+    end
+    for _, e in ipairs(X.EXPORTS) do
+      local got
+      fill("data: export " .. e.title, function()
+        X.Export(e.key, {key = best, days = 0}, function(r) got = r end)
+      end)
+      if got then
+        out[#out + 1] = string.format("      %d of %d rows, %d characters%s", got.rows, got.total, got.bytes, got.cut and " (cut)" or "")
+      end
+    end
+    local slim
+    fill("data: slim down 180 days", function() X.DataSlim(180, function(B) slim = B end) end)
+    if slim then
+      local after2 = #W.saveText(W.env.XNAHDB)
+      out[#out + 1] = string.format("      removed %d items (about %d bytes); written out now %d bytes (%+d)", slim.removed,
+        slim.bytes, after2, after2 - after)
+    end
   end
   return table.concat(out, "\\n")
 `, '=dryrun');
