@@ -32,6 +32,7 @@ local RANGES = {{"7 days", 7 * DAY}, {"30 days", 30 * DAY}, {"90 days", 90 * DAY
 local HOW = {vendor = "vendor", ah = "auction", craft = "crafted"}
 X.Default("itemRange", 2)  -- the graph's range (an index of RANGES)
 X.Default("graphHide", {}) -- names under the graph clicked off: {mkt, low, bars, fair, sales, buys = true}
+X.Default("usualBand", true) -- the usual range band on the price graphs (Overview and Compare)
 
 X.Default("itemPage", "overview") -- the page shown on the right (its key)
 
@@ -434,9 +435,18 @@ local LEGEND = {
 	{"bars", "Listed", {0.54, 0.64, 1}, "The faint bars: how many were listed at each scan."},
 	{"fair", "Fair prices", {0.85, 0.85, 0.85}, "Two thin flat lines: the fair price to buy (lower) and the fair price " ..
 		"to sell (upper), worked out from the last 14 days."},
+	{"band", "Usual range", {0.6, 0.5, 0.12}, "The soft band behind the lines: where the market value usually sat in " ..
+		"the 30 days up to each day (the middle half of its day prices - the same days as the usual price). A red dot: " ..
+		"the price was well over it; a green dot: well under it."},
 	{"sales", "Your sales", SALE, "Your own sales of this item (from the ledger): a dot at the price of one. Hover it for the details."},
 	{"buys", "Your buys", BUY, "Your own purchases of this item (from the ledger): a dot at the price of one. Hover it for the details."},
 }
+
+-- a name under the graph clicked off? (the usual range has its own setting, shared with the Compare page)
+local function legendHidden(k)
+	if k == "band" then return not X.S().usualBand end
+	return X.S().graphHide[k]
+end
 
 local function buildGraph(panel, a)
 	panel.ranges = {}
@@ -448,7 +458,7 @@ local function buildGraph(panel, a)
 		b:SetScript("OnClick", function() X.S().itemRange = i refresh(panel) end)
 		panel.ranges[i] = b
 	end
-	local note = K.Label(a, GREY .. "Prices of one. Hover the graph for the numbers; click a name under it to hide or show it.|r",
+	local note = K.Label(a, GREY .. "Prices of one. Hover for the numbers, right-click to add a note, click a name below to hide it.|r",
 		"GameFontHighlightSmall", "RIGHT")
 	note:SetPoint("TOPRIGHT", 0, RANGE_Y - 3)
 	note:SetWidth(AW - 260)
@@ -470,14 +480,14 @@ local function buildGraph(panel, a)
 		b.key, b.base = e[1], e[2]
 		b:SetScript("OnClick", function()
 			local hide = X.S().graphHide
-			hide[e[1]] = (not hide[e[1]]) or nil
+			if e[1] == "band" then X.S().usualBand = not X.S().usualBand else hide[e[1]] = (not hide[e[1]]) or nil end
 			refresh(panel)
 		end)
 		b:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:AddLine(e[2])
 			GameTooltip:AddLine(e[4], 1, 1, 1, true)
-			GameTooltip:AddLine(X.S().graphHide[e[1]] and "Hidden - click to show it." or "Click to hide it.", 0.6, 0.6, 0.6)
+			GameTooltip:AddLine(legendHidden(e[1]) and "Hidden - click to show it." or "Click to hide it.", 0.6, 0.6, 0.6)
 			GameTooltip:Show()
 		end)
 		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -502,7 +512,6 @@ end
 
 -- the names under the graph, left to right; info = {sales, buys (in all), inSales, inBuys (in the range), fair}
 local function layoutLegend(panel, info)
-	local hide = X.S().graphHide
 	local x = 0
 	for _, b in ipairs(panel.legend) do
 		local k = b.key
@@ -513,11 +522,14 @@ local function layoutLegend(panel, info)
 			show, text = info.buys > 0, "Your buys (" .. info.inBuys .. ")"
 		elseif k == "fair" then
 			show = info.fair
+		elseif k == "band" then
+			show = info.band
 		end
 		local w = 0
+		local off = legendHidden(k)
 		if show then
-			b.label:SetText(hide[k] and (GREY .. text .. "|r") or text)
-			b.sw:SetAlpha(hide[k] and 0.25 or 1)
+			b.label:SetText(off and (GREY .. text .. "|r") or text)
+			b.sw:SetAlpha(off and 0.25 or 1)
 			w = math.min(AW - x, (b.label:GetUnboundedStringWidth() or 60) + 14)
 			b.label:SetWidth(math.max(1, w - 12))
 			b:SetWidth(math.max(1, w))
@@ -558,9 +570,12 @@ local function fillGraph(panel, key, fairBuy, fairSell)
 		levels[1] = {v = fairSell, color = FAIRSELL, label = "Fair to sell"}
 		levels[2] = {v = fairBuy, color = FAIRBUY, label = "Fair to buy"}
 	end
+	-- the usual range behind the lines; the market value's points well outside it get a dot
+	local band = X.UsualBand and X.UsualBand(key, from) or {}
 	panel.graph:SetSeries(series, {bars = (not hide.bars) and qty or nil, barsLabel = "Listed", empty = empty, marks = marks,
-		levels = levels})
-	layoutLegend(panel, {sales = nSales, buys = nBuys, inSales = #sales, inBuys = #buys, fair = fairBuy ~= nil and #hist > 0})
+		levels = levels, band = X.S().usualBand and #band > 0 and {points = band, check = (not hide.mkt) and 1 or nil} or nil})
+	layoutLegend(panel, {sales = nSales, buys = nBuys, inSales = #sales, inBuys = #buys, fair = fairBuy ~= nil and #hist > 0,
+		band = #band > 0 and #hist > 0})
 end
 
 -- [[ box 1: on the auction house now ]] a price ladder from the last search (every price step, how many there)

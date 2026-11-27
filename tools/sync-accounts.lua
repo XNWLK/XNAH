@@ -5,7 +5,8 @@
 --   - the ledger entries (sales, purchases, expired, cancelled) of those characters, and their gold history
 --     (realm goldHist; your own postings, ledger.posts, stay with each account: only its own mails are matched with them);
 --   - prices: per item the newest observation of any account (a scan on one account helps all; the item's Patterns
---     grid, item.pw, is the newest one of any account), vendor prices, recipes and which characters know them.
+--     grid, item.pw, is the newest one of any account), vendor prices, recipes and which characters know them;
+--   - your notes on the graphs (realm notes): per day the one written (or removed) last on any account.
 -- In:  ACCTS = {{label = "wow1", db = XNAHDB table or nil}, ...}, NOW = seconds
 -- Out: SYNC.out[i] = text of the new XNAH.lua of ACCTS[i]; SYNC.report = lines
 SYNC = {out = {}, report = {}}
@@ -44,6 +45,20 @@ local function pwT(it)
 	return t and t ~= "" and tonumber(t, 36) or 0
 end
 local grids = {} -- [rk] = {[key] = pw}: the newest grid of each item, of any account
+-- your notes on the graphs (realm notes = {[day] = {t = written, x = text}}; a removed note is {t} without text): per
+-- day the one written last on any account, so a note added on one account shows on all, and one removed stays removed
+local notes = {} -- [rk] = {[day] = note}
+for _, a in ipairs(ACCTS) do
+	for rk, r in pairs(a.db and a.db.realms or {}) do
+		if type(r.notes) == "table" then
+			notes[rk] = notes[rk] or {}
+			for day, e in pairs(r.notes) do
+				local have = notes[rk][day]
+				if type(e) == "table" and (not have or (e.t or 0) > (have.t or 0)) then notes[rk][day] = e end
+			end
+		end
+	end
+end
 for _, a in ipairs(ACCTS) do
 	local db = a.db
 	if db then
@@ -117,6 +132,20 @@ for i, a in ipairs(ACCTS) do
 		end
 		if m.lastFull and (not r.lastFull or m.lastFull > r.lastFull) then r.lastFull = m.lastFull end
 	end
+	local noteCount = 0
+	for rk, list in pairs(notes) do
+		local r = db.realms[rk] or {items = {}, scans = {}}
+		db.realms[rk] = r
+		local mine = type(r.notes) == "table" and r.notes or {}
+		for day, e in pairs(list) do
+			local have = mine[day]
+			if not have or (e.t or 0) > (have.t or 0) then
+				if e.x and not (have and have.x == e.x) then noteCount = noteCount + 1 end
+				mine[day] = copy(e)
+			end
+		end
+		r.notes = mine
+	end
 	db.vsell, db.vbuy, db.recipes, db.known = copy(vsell), copy(vbuy), copy(recipes), copy(known)
 	-- ledger: this account's own entries + the other accounts' own entries
 	local moved = 0
@@ -154,7 +183,7 @@ for i, a in ipairs(ACCTS) do
 	end
 	db.sync = {at = NOW, label = a.label, accounts = labels}
 	say(a.label .. ": " .. imported .. " characters from other accounts, " .. prices .. " newer prices, " .. moved ..
-		" ledger entries of other accounts")
+		" ledger entries of other accounts" .. (noteCount > 0 and (", " .. noteCount .. " notes") or ""))
 	SYNC.out[i] = db
 end
 

@@ -218,6 +218,14 @@ local function buildControls(page, w)
 		K.Tooltip(b, d[2], d[3])
 		page.modes[d[1]] = b
 	end
+	-- the usual range of the item picked (price only; the same setting as on the Overview)
+	page.bandBtn = K.Flat(page, 84, 18)
+	page.bandBtn:SetPoint("TOPLEFT", #defs * 78 + 4, -54)
+	page.bandBtn:SetLabel("Usual range")
+	page.bandBtn.label:SetJustifyH("CENTER")
+	page.bandBtn:SetScript("OnClick", function() X.S().usualBand = not X.S().usualBand fill(page, UI.itemKey) end)
+	K.Tooltip(page.bandBtn, "Usual range", "Shows or hides the soft band behind the line of the item picked: where its " ..
+		"market value usually sat in the 30 days up to each day. A red dot: well over it; a green dot: well under it.")
 	page.ranges = {}
 	for i, r in ipairs(RANGES) do
 		local b = K.Flat(page, 56, 18)
@@ -295,8 +303,12 @@ fill = function(page, key)
 		empty = ever and "No prices in this time - pick a longer range" or
 			"No prices yet - a scan or a search at the auction house brings the first"
 	end
+	page.bandBtn:SetShown(mode == "price")
+	page.bandBtn:SetSelected(S.usualBand and true or false)
+	local band = mode == "price" and S.usualBand and X.UsualBand and X.UsualBand(key, from) or nil
 	page.graph:SetSeries(series, {legend = true, labels = mode == "pct" and "percent" or "money", empty = empty,
-		levels = mode == "pct" and {{v = 100, color = {0.6, 0.6, 0.6}, label = "start"}} or nil})
+		levels = mode == "pct" and {{v = 100, color = {0.6, 0.6, 0.6}, label = "start"}} or nil,
+		band = band and #band > 0 and {points = band, check = 1} or nil})
 	-- the table
 	local rows = {}
 	for i, k in ipairs(keys) do

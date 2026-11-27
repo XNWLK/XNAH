@@ -27,6 +27,14 @@
 --       {labels = "percent", legend = true, levels = {{v = 100, color = {0.6, 0.6, 0.6}, label = "start"}}})
 --   Old calls (no legend, no labels) draw exactly as before.
 --
+-- The usual range (optional): opts.band = {points = {{t, lo, hi}, ...} (X.UsualBand), check = index of the series to
+--   compare with it (optional), color = {r, g, b, alpha} (optional), label = "Usual range"} - a soft shaded band behind
+--   the lines; the points of the `check` line well outside it get a small dot (red: dearer, green: cheaper) and the
+--   mouse-over box tells the range. Its values count for the scale (only inside the time drawn).
+-- Your notes (GraphNotes.lua): every graph shows the notes of the days it covers as thin upright lines (opts.notes =
+--   false: none); the mouse near a line shows its text in the box; a right-click adds, changes or removes a note.
+--   g.Redraw() draws the last SetSeries again (after a note changed).
+--
 -- Also here: X.BestTimes(key) (price by weekday and by hour of the day) and K.TimeBars (its little bar charts).
 local ADDON, X = ...
 local K = X.K
@@ -128,6 +136,67 @@ local function hex(c)
 end
 K.ColorCode = hex
 
+-- [[ the usual range band ]] (drawn by SetSeries when opts.band is given)
+local BAND_COLOR = {1, 0.82, 0, 0.12}
+local ABOVE, BELOW = {0.97, 0.44, 0.44}, {0.29, 0.87, 0.5}
+local BAND_HALF = 4 * 86400 -- a band step reaches at most this far from its day (older history: one point a week)
+-- the band of the day of t (or of the days just before, for the weekly history): {t, lo, hi} or nil
+local function bandOn(byDay, t)
+	local d = math.floor(t / 86400)
+	for k = 0, 6 do
+		local b = byDay[d - k]
+		if b then return b end
+	end
+	return nil
+end
+-- "well outside": more than half the band's height past its edge (and at least 5% of its middle)
+local function outside(b, v)
+	local margin = math.max((b[3] - b[2]) / 2, (b[2] + b[3]) / 2 * 0.05)
+	if v > b[3] + margin then return "above" end
+	if v < b[2] - margin then return "below" end
+	return nil
+end
+-- one shaded step of the band
+local function bandRect(plot, pool, x1, x2, y1, y2, c)
+	pool.n = pool.n + 1
+	local r = pool[pool.n]
+	if not r then
+		r = plot:CreateTexture(nil, "BACKGROUND", nil, 3)
+		pool[pool.n] = r
+	end
+	r:SetColorTexture(c[1], c[2], c[3], c[4] or BAND_COLOR[4])
+	r:ClearAllPoints()
+	r:SetPoint("BOTTOMLEFT", plot, "BOTTOMLEFT", x1, y1)
+	r:SetSize(math.max(1, x2 - x1), math.max(1, y2 - y1))
+	r:Show()
+end
+-- the band (a step per day, reaching halfway to the next day with a band) and the dots of the checked line's points
+-- well outside it
+local function drawBand(plot, pool, data, pw, ph, xOf, dot)
+	local b = data.band
+	local pts, y = b.pts, b.y
+	for i, p in ipairs(pts) do
+		local x = xOf(p[1])
+		local prev, nxt = pts[i - 1], pts[i + 1]
+		local xa = prev and math.max((xOf(prev[1]) + x) / 2, xOf(p[1] - BAND_HALF)) or xOf(p[1] - 43200)
+		local xb = nxt and math.min((xOf(nxt[1]) + x) / 2, xOf(p[1] + BAND_HALF)) or xOf(p[1] + 43200)
+		xa, xb = math.max(0, xa), math.min(pw, xb)
+		local ya, yb = math.max(0, y(p[2])), math.min(ph, y(p[3]))
+		if xb - xa >= 0.5 and yb >= ya then bandRect(plot, pool, xa, xb, ya, yb, b.color) end
+	end
+	local s = b.line
+	if not s then return end
+	for _, p in ipairs(s.pts) do
+		local v = p[2]
+		local r = v and bandOn(b.byDay, p[1])
+		local how = r and outside(r, v)
+		if how then
+			dot(how == "above" and ABOVE or BELOW, 4, xOf(p[1]), s.y(v))
+			data.outside[#data.outside + 1] = {t = p[1], v = v, how = how}
+		end
+	end
+end
+
 -- the value range of a scale with a little room above and below
 local function padded(lo, hi)
 	local pad = (hi - lo) * 0.08
@@ -190,6 +259,7 @@ function K.Graph(parent, w, h)
 	local dots, nDots = {}, 0
 	local bars, nBars = {}, 0
 	local spots, nSpots = {}, 0
+	local bandPool = {n = 0} -- the shaded steps of the usual range
 	local function line(color, width)
 		nLines = nLines + 1
 		local l = lines[nLines]
@@ -267,7 +337,7 @@ function K.Graph(parent, w, h)
 		marker:Hide()
 		tip:Hide()
 		for _, d in ipairs(hoverDots) do d:Hide() end
-		g.hoverIdx, g.lastCx = nil, nil
+		g.hoverIdx, g.lastCx, g.hoverNote = nil, nil, nil
 	end
 
 	-- the value of series `s` at time t: the point at t, else the nearest one
@@ -281,8 +351,8 @@ function K.Graph(parent, w, h)
 		return best and best[2]
 	end
 
-	local function showHover(idx)
-		g.hoverIdx = idx
+	local function showHover(idx, note)
+		g.hoverIdx, g.hoverNote = idx, note
 		local m = data.marks[idx]
 		marker:ClearAllPoints()
 		marker:SetPoint("TOP", plot, "TOPLEFT", m.x, 0)
@@ -291,10 +361,15 @@ function K.Graph(parent, w, h)
 		local fmt = data.format
 		local text = "|cffffd100" .. (data.span < 2 * 86400 and date("%H:%M", m.t) .. "  " .. dayText(m.t) or
 			dayText(m.t) .. "  " .. date("%H:%M", m.t)) .. "|r"
+		if note then text = text .. "\n|cffffee8cYour note, " .. dayText(note.t) .. ":|r " .. note.text end
+		local band = data.band and bandOn(data.band.byDay, m.t)
 		for i, s in ipairs(data.series) do
 			local v = valueAt(s, m.t)
 			local c = s.color
-			text = text .. "\n" .. hex(c) .. (s.label or "") .. "|r  " .. (v and fmt(v) or "|cff666666-|r")
+			local how = band and v and s == data.band.line and outside(band, v)
+			text = text .. "\n" .. hex(c) .. (s.label or "") .. "|r  " .. (v and fmt(v) or "|cff666666-|r") ..
+				(how == "above" and "  |cfff87171well over the usual range|r" or "") ..
+				(how == "below" and "  |cff4ade80well under the usual range|r" or "")
 			local d = hoverDots[i]
 			if not d then
 				d = plot:CreateTexture(nil, "OVERLAY", nil, 2)
@@ -313,6 +388,10 @@ function K.Graph(parent, w, h)
 		for i = #data.series + 1, #hoverDots do hoverDots[i]:Hide() end
 		for _, lv in ipairs(data.levels or {}) do
 			text = text .. "\n" .. hex(lv.color) .. (lv.label or "") .. "|r  " .. fmt(lv.v)
+		end
+		if band then
+			text = text .. "\n" .. hex(data.band.color) .. (data.band.label or "Usual range") .. "|r  " .. fmt(band[2]) ..
+				" - " .. fmt(band[3])
 		end
 		if data.bars then
 			local v = valueAt(data.bars, m.t)
@@ -356,9 +435,12 @@ function K.Graph(parent, w, h)
 			local d = math.abs(m.x - cx)
 			if not bd or d < bd then best, bd = i, d end
 		end
-		if best and best ~= self.hoverIdx then showHover(best) end
+		local note = g.notes and g.notes.near(cx) -- your note when the mouse is at its line
+		if best and (best ~= self.hoverIdx or note ~= self.hoverNote) then showHover(best, note) end
 	end
 	plot:EnableMouse(true)
+	-- your notes on the graph (GraphNotes.lua: the lines, the right-click menu)
+	g.notes = X.GraphNoteLayer and X.GraphNoteLayer(g, plot, pw, ph)
 	plot:SetScript("OnEnter", function() g:SetScript("OnUpdate", follow) end)
 	plot:SetScript("OnLeave", function()
 		g:SetScript("OnUpdate", nil)
@@ -401,7 +483,11 @@ function K.Graph(parent, w, h)
 	function g:SetSeries(series, opts)
 		opts = opts or {}
 		series = series or {}
+		g.lastSeries, g.lastOpts = series, opts
 		hideHover()
+		for i = 1, bandPool.n do bandPool[i]:Hide() end
+		bandPool.n = 0
+		if g.notes then g.notes.draw(nil) end
 		for i = 1, nLines do lines[i]:Hide() end
 		for i = 1, nDots do dots[i]:Hide() end
 		for i = 1, nBars do bars[i]:Hide() end
@@ -414,7 +500,7 @@ function K.Graph(parent, w, h)
 		nLines, nDots, nBars, nSpots = 0, 0, 0, 0
 		local fmt, minStep = formatOf(opts)
 		data = {series = {}, marks = {}, trades = {}, format = fmt, minStep = minStep, labels = opts.labels or "money",
-			barsLabel = opts.barsLabel, span = 0, legend = {}}
+			barsLabel = opts.barsLabel, span = 0, legend = {}, outside = {}, notes = {}}
 
 		-- thin out, find the time and value ranges (lo / hi: left scale, rlo / rhi: right scale)
 		local t0, t1, lo, hi, rlo, rhi
@@ -427,7 +513,8 @@ function K.Graph(parent, w, h)
 			if #pts > 0 then
 				local right = s.right and true or false
 				local color = s.color or K.GRAPH_COLORS[(i - 1) % #K.GRAPH_COLORS + 1]
-				data.series[#data.series + 1] = {pts = pts, color = color, width = s.width or 2, label = s.label, right = right}
+				data.series[#data.series + 1] = {pts = pts, color = color, width = s.width or 2, label = s.label, right = right,
+					src = i}
 				for _, p in ipairs(pts) do
 					time(p[1])
 					local v = p[2]
@@ -473,6 +560,25 @@ function K.Graph(parent, w, h)
 			time(p[1])
 		end
 		if barMax > 0 then data.bars = {pts = barPts} end
+		-- the usual range: its days inside the time drawn (their values count for the left scale)
+		local band = opts.band
+		if lo and band and band.points then
+			local pts, byDay = {}, {}
+			for _, p in ipairs(sorted(band.points)) do
+				if p[1] and p[2] and p[3] and p[1] >= t0 - 43200 and p[1] <= t1 + 43200 then
+					pts[#pts + 1] = p
+					byDay[math.floor(p[1] / 86400)] = p
+					if p[2] < lo then lo = p[2] end
+					if p[3] > hi then hi = p[3] end
+				end
+			end
+			if #pts > 0 then
+				local check
+				for _, s in ipairs(data.series) do if band.check and s.src == band.check and not s.right then check = s end end
+				data.band = {pts = pts, byDay = byDay, color = band.color or BAND_COLOR, label = band.label or "Usual range",
+					line = check}
+			end
+		end
 		if not lo then
 			g.empty:SetText(opts.empty or "No price history yet - scan the auction house")
 			g.empty:Show()
@@ -522,6 +628,11 @@ function K.Graph(parent, w, h)
 			for _, p in ipairs(barPts) do
 				if p[2] and p[2] > 0 then bar(xOf(p[1]), bw, math.max(1, p[2] / barMax * ph * 0.25)) end
 			end
+		end
+		-- the usual range (behind the lines) and the dots of prices well outside it
+		if data.band then
+			data.band.y = yOf
+			drawBand(plot, bandPool, data, pw, ph, xOf, dot)
 		end
 
 		-- lines; a point with no neighbour gets a dot (a lone price between gaps)
@@ -635,6 +746,13 @@ function K.Graph(parent, w, h)
 				legendBg:Show()
 			end
 		end
+
+		-- your notes on the days drawn
+		if g.notes and opts.notes ~= false then data.notes = g.notes.draw(t0, t1, xOf) end
+	end
+	-- the last SetSeries again (a note was added, changed or removed)
+	g.Redraw = function()
+		if g.lastSeries then g:SetSeries(g.lastSeries, g.lastOpts) end
 	end
 
 	return g
@@ -1116,4 +1234,66 @@ function X.FairPrices(key)
 	end
 	fairCache[it] = {t = it.cur and it.cur.t, hour = hour, buy = buy, sell = sell, note = note, days = days}
 	return buy, sell, note, days
+end
+
+-- [[ the usual range ]] X.UsualBand(key, from) -> {{t, lo, hi}, ...} oldest first, one per day with a day price from
+-- `from` (server seconds) on; t = noon of the day (like the day points of X.History).
+-- Each day's range = the middle half of the day prices (market value, else the lowest price) of the 30 days up to and
+-- including that day: lo = the 25th percentile, hi = the 75th. The same days and the same prices as XNAH's "usual
+-- price" (X.Usual: the 30-day average, X.Stats), with the same silly prices left out (far off the middle of those 30
+-- days), so today's usual price sits inside today's range. Days with fewer than BAND_MIN day prices in their 30 days
+-- get no range (a new item; history over 60 days old is one point a week, so 4 is enough there).
+-- Kept until the item's day points change or a new day starts (not saved).
+local BAND_DAYS, BAND_MIN, BAND_LO, BAND_HI = 30, 4, 0.25, 0.75
+X.BAND = {days = BAND_DAYS, min = BAND_MIN, lo = BAND_LO, hi = BAND_HI}
+local bandCache = setmetatable({}, {__mode = "k"})
+
+-- the value at part q (0-1) of a sorted list, between its neighbours
+local function quantile(list, q)
+	local n = #list
+	if n == 0 then return nil end
+	local pos = (n - 1) * q + 1
+	local i = math.floor(pos)
+	local f = pos - i
+	if i >= n then return list[n] end
+	return list[i] + (list[i + 1] - list[i]) * f
+end
+X.Quantile = quantile
+
+local function bandOf(it)
+	local today = X.Day()
+	local c = bandCache[it]
+	if c and c.d == it.d and c.today == today then return c.band end
+	local days = X.UnpackPoints(it.d)
+	local band = {}
+	local first = 1
+	for i, p in ipairs(days) do
+		while days[first][1] <= p[1] - BAND_DAYS do first = first + 1 end
+		local vals = {}
+		for k = first, i do
+			local v = days[k][3] or days[k][2]
+			if v and v > 0 then vals[#vals + 1] = v end
+		end
+		if #vals >= BAND_MIN then
+			local mid = X.Median(vals)
+			local kept = {}
+			for _, v in ipairs(vals) do if not X.CrazyPrice(v, mid) then kept[#kept + 1] = v end end
+			if #kept >= BAND_MIN then
+				table.sort(kept)
+				band[#band + 1] = {p[1] * 86400 + 43200, quantile(kept, BAND_LO), quantile(kept, BAND_HI)}
+			end
+		end
+	end
+	bandCache[it] = {d = it.d, today = today, band = band}
+	return band
+end
+
+function X.UsualBand(key, from)
+	local it = key and X.Items()[tostring(key)]
+	if not (it and it.d) then return {} end
+	local all = bandOf(it)
+	if not from then return all end
+	local out = {}
+	for _, b in ipairs(all) do if b[1] >= from then out[#out + 1] = b end end
+	return out
 end

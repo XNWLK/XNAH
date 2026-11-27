@@ -3,7 +3,7 @@
 -- XNAHDB = {
 --   v = 1, settings = {...},
 --   realms = {["Realm <id>"] = {items = {[key] = item}, scans = {scan, ...} (oldest first, the last X.MAX_SCANS),
---     lastFull = t}},
+--     lastFull = t, notes = {[day] = {t, x}} (your notes on the graphs, GraphNotes.lua)}},
 --     scan = {t, kind ("full" or what a search scan was for), items, auctions, secs (how long it took), skipped,
 --       full scans also: gold (copper: every buyout listed, price of one x count, added up), units (how many items were
 --       listed), sellers (different sellers, only when the game gives seller names in the full scan - on Forever it
@@ -184,6 +184,7 @@ local function joinRealm(to, r)
 		for day, secs in pairs(r.ahTime) do to.ahTime[day] = (to.ahTime[day] or 0) + secs end
 		if r.ahTimeFirst and (not to.ahTimeFirst or r.ahTimeFirst < to.ahTimeFirst) then to.ahTimeFirst = r.ahTimeFirst end
 	end
+	if X.MergeNotes then X.MergeNotes(to, r) end -- your notes on the graphs (GraphNotes.lua)
 	for field, v in pairs(r) do
 		if to[field] == nil then to[field] = v end
 	end

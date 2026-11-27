@@ -24,6 +24,7 @@ Core.lua
 UIKit.lua
 UI.lua
 Graph.lua
+GraphNotes.lua
 UIMarket.lua
 UIItem.lua
 Patterns.lua
