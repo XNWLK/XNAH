@@ -26,7 +26,8 @@ end
 
 -- the real pages of each view, in order
 local TRENDS = {{"index", "Market index"}, {"groups", "Item groups"}, {"size", "Auction house size"}, {"changes", "What changed"}}
-local ITEMS = {{"overview", "Overview"}, {"patterns", "Patterns"}, {"compare", "Compare"}, {"sellers", "Sellers"}, {"craft", "Crafting"}}
+local ITEMS = {{"overview", "Overview"}, {"patterns", "Patterns"}, {"compare", "Compare"}, {"sellers", "Sellers"}, {"craft", "Crafting"},
+	{"related", "Moves with"}}
 local GOLD = {{"overview", "Overview"}, {"items", "Best sellers"}, {"recent", "Recent"}, {"chars", "Characters"},
 	{"history", "Gold over time"}, {"results", "Your items"}}
 local function keysOf(list, extra)
