@@ -45,5 +45,7 @@ UITrendsGroups.lua
 UITrendsSize.lua
 UITrendsChanges.lua
 UIScan.lua
+DataTools.lua
+UIData.lua
 AHPanel.lua
 Quick.lua

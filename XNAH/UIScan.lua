@@ -335,6 +335,11 @@ local function build(p)
 		end)
 	end)
 	del:SetPoint("TOPLEFT", LEFT_W - 160, -H + 40)
+	-- the Your data window (UIData.lua): data health, slim down, export
+	local data = K.Button(p, "Your data ...", 160, 22, function() if UI.OpenData then UI.OpenData() end end)
+	data:SetPoint("TOPLEFT", LEFT_W - 160, -H + 70)
+	K.Tooltip(data, "Your data", "How big and how old the saved data is, what takes the room, Slim down (removes items " ..
+		"not seen for a long time), and copying prices, sales and gold into a spreadsheet. Also: /xnah data")
 	buildSettings(p)
 end
 

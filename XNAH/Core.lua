@@ -60,6 +60,7 @@ local HELP = {
 	"/xnah tracked - search your tracked items (auction house open)",
 	"/xnah <item name or link> - show that item",
 	"/xnah settings - the settings",
+	"/xnah data - your data: how big it is, slim it down, copy it into a spreadsheet",
 	"/xnah raw [n] - print the first n auctions of the last full scan as the game gives them (to check prices)",
 	"/xnah perf - what XNAH is doing and how much memory it uses",
 	"/xnah size 120 - window size in % (60 to 160; 100 = normal)",
@@ -79,6 +80,8 @@ SlashCmdList.XNAH = function(msg)
 		X.ScanItems()
 	elseif cmd == "settings" or cmd == "options" then
 		X.UI.Open("scan")
+	elseif cmd == "data" then
+		if X.UI.OpenData then X.UI.OpenData() end
 	elseif cmd == "raw" then
 		X.RawDump(tonumber(rest) or 5)
 	elseif cmd == "size" then
