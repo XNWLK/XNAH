@@ -2,7 +2,7 @@
 ## Title: XNAH
 ## Notes: Auction house numbers for buying and selling in the game's own auction house: full scans, price history with graphs, usual prices and trends, what is listed now, best time to sell, market trends, crafting costs, your profit and net worth. One button buys the cheapest auction of an item. Type /xnah
 ## Author: Xn
-## Version: 0.10.0
+## Version: 0.11.0
 ## SavedVariables: XNAHDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 

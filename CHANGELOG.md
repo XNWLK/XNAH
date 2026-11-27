@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.11.0
+
+Your own notes on the graphs, a usual price range, a page of items that move together, a window for your data, and a
+much faster Market view.
+
+- Items, tracked list: each row has a small line of the price over the last 7 days - green when the price went up,
+  red when it went down, grey when it stayed about the same. Click the "7 days" title to sort by the biggest rise.
+  Settings can hide the lines.
+- Your own notes on the graphs: right-click a graph to add a note for that day ("patch", "new raid opened"). Every
+  graph over time shows it as a thin line; point at the line to read it, right-click it to change or remove it. Notes
+  are kept per realm (up to 200, one a day) and Sync accounts carries them between your accounts.
+- Usual range, on the item's price graph and on Compare (as prices): a soft band that shows where the price usually
+  sat in the 30 days up to each day (the middle half of its day prices, the same days as the usual price). A price
+  well over it gets a red dot, well under it a green dot. Click "Usual range" to hide or show it.
+- Items, new page Moves with: the items whose prices went up and down on the same days as the picked item (ore and
+  its bars, a herb and its potion), and the ones that moved the opposite way, over the last 30 or 90 days.
+- Moves with says how closely in words (Very closely, Closely, A bit, Opposite); point at a row for the number and
+  the days it is based on. The ups and downs of the whole auction house are taken out first, and items with only a
+  few listed are left out. Click an item to show it; "+ Compare" puts it on the Compare graph. It reminds you that
+  moving together does not prove one causes the other, and warns you while there are only a few weeks of prices.
+- New Your data window (Settings: "Your data ...", or /xnah data). It shows when the last full scan and the last scan
+  of your tracked items ran; how many items, scans and sales are kept; how big your saved data is in all and per
+  part, and which items take the most room; and how many items were not seen for 30, 60, 90 or 180 days.
+- Your data, Slim down: removes items not seen for 30, 60, 90, 180 or 365 days. It first tells you how many and how
+  much room that frees, and asks inside the window. It never removes tracked, compared, traded or owned items, or the
+  item shown now. The saved file gets smaller at the next /reload or logout.
+- Your data, Export: copies an item's daily prices, your sales and buys, your characters' gold over time or your
+  tracked list, ready to paste into a spreadsheet. Columns are split by tabs, prices are in gold with a decimal point,
+  and you can pick the last 30 days, 90 days or everything. A very long list keeps the newest rows and says so.
+- Market: much faster on a big auction house. Sorting by a column, the filter buttons and the search no longer make
+  the game hitch: the work is spread over a few frames ("Sorting..." shows meanwhile), and a column sorted once is
+  kept, so going back to it or flipping its direction is instant. The small 7-day lines in the Market list are drawn
+  a moment after the rows.
+- Point at a column title to see what it means, now also in Market, the tracked list, the older Your gold pages
+  (Overview flips, Best sellers, Recent, Characters, Your bags) and the list of scans in Settings; also on the Market
+  All and Quality buttons and the search box.
+- Fixed: the dates of some sales and buys read from auction mails showed as "?" on the Your gold Recent page (and
+  could break the trade dots on the item's graph), because their time had a fraction of a second. New mail times are
+  saved in whole seconds.
+- Fixed: the Market list's empty text still pointed to a bar that is no longer there.
+
 ## v0.10.0
 
 More numbers: a new Trends view for the whole auction house, and more pages for one item and for your own gold.
