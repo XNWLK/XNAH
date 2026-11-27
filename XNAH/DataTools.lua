@@ -437,7 +437,7 @@ X.ExportGold = gold
 local function clean(s)
 	return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("[\t\r\n]", " "))
 end
-local function day(d) return date("%Y-%m-%d", d * DAY + DAY / 2) end
+local function day(d) return date("%Y-%m-%d", math.floor(d) * DAY + DAY / 2) end
 local function num(n) return type(n) == "number" and tostring(X.Round(n)) or "" end
 
 -- each maker: opts -> {header, list (newest first unless keepOrder), format(entry) -> line, note}

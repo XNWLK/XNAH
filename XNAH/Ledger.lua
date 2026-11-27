@@ -519,6 +519,7 @@ end
 -- put up (late = true). No seconds at all: now (late).
 local function postTime(now, secs)
 	if type(secs) ~= "number" then return now, true end
+	secs = math.floor(secs)
 	if secs > DURATIONS[2] and secs <= DURATIONS[3] then return now - (DURATIONS[3] - secs), nil end
 	for _, d in ipairs(DURATIONS) do
 		if secs <= d then return now - (d - secs), true end
@@ -698,7 +699,8 @@ local function readMail()
 		end
 		if kind and name and name ~= "" then
 			count = (count and count > 0) and count or 1
-			local arrival = now - (MAIL_DAYS - (tonumber(daysLeft) or MAIL_DAYS)) * DAY
+			-- whole seconds (daysLeft has a fraction of a day): a time with a fraction breaks date() of newer Lua
+			local arrival = math.floor(now - (MAIL_DAYS - (tonumber(daysLeft) or MAIL_DAYS)) * DAY)
 			if arrival > now then arrival = now end
 			local b = math.floor(arrival / BUCKET + 0.5)
 			local base = kind .. "|" .. name .. "|" .. tostring(who or "") .. "|" .. tostring(money or 0) .. "|" .. count
@@ -791,7 +793,7 @@ do
 	-- the start of your local day (midnight where you are), and a number for it
 	local function dayStart(t)
 		t = t or X.Now()
-		local tt = date("*t", t)
+		local tt = date("*t", math.floor(t))
 		if type(tt) ~= "table" or not tt.hour then return t - t % DAY end
 		return t - (tt.hour * 3600 + tt.min * 60 + tt.sec)
 	end

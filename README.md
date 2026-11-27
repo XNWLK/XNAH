@@ -14,14 +14,17 @@ One big window. It opens by itself beside the game's auction house (setting "Ope
 itself smaller to fit there; `/xnah`, the minimap button or a key binding open it anywhere. On top: the four views,
 how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and the Settings gear.
 
-- **Items**: your tracked items on the left (add any item, its price, % of its usual price, trend and a 7-day line;
-  double-click one to put its name in the game's auction house search box - then press Enter there to search),
-  and everything about the item you pick on the right, on five pages:
+- **Items**: your tracked items on the left (add any item, its price, % of its usual price, trend and a small line of
+  its last 7 days - green when it went up, red when it went down; sort by it, or hide it in Settings; double-click an
+  item to put its name in the game's auction house search box - then press Enter there to search),
+  and everything about the item you pick on the right, on six pages:
   - **Overview**:
     - 12 numbers, each explained in plain words when you point at it: cheapest now, market value, usual price, now vs
       usual, trend, ups and downs, sells a day, listed vs normal, **fair price to buy**, **fair price to sell**, vendor
       price, crafting cost.
-    - a big price graph (7 days, 30 days, 90 days, a year) with your own sales and buys as dots.
+    - a big price graph (7 days, 30 days, 90 days, a year) with your own sales and buys as dots, and a soft band of
+      its **usual range** (where the price sat in the 30 days up to each day): a red dot when the price was well over
+      it, a green dot when well under it. Click "Usual range" under the graph to hide it.
     - what is listed right now, as a price ladder (every price and how many are there).
     - the best time to sell: a small weekday x time-of-day grid (green = cheaper, red = dearer), the best day and hour.
     - its crafting cost and recipes, your own trades, how many sellers, price walls, what it costs to buy up everything
@@ -30,12 +33,18 @@ how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and th
     (server time), learned from every scan and search and remembered for weeks (recent weeks count most); how jumpy
     its price is (the month's low and high, where today sits); about how many sell a day and how much gold that is.
   - **Compare**: the item and up to 4 more on one graph (ore against bars, a herb against its potion), as prices or as
-    % change from the start, with each one's price now and its change over 7 and 30 days.
+    % change from the start, with each one's price now and its change over 7 and 30 days (the usual range band
+    shows here too, for prices).
   - **Sellers**: how many sellers it has over time, how much of it the biggest seller has, how often the price gets
     cut, and who sells it right now. Seller numbers need searches of that one item (**Scan tracked**, or picking the
     item in the game's auction house): the full scan of the whole auction house gives no seller names.
   - **Crafting**: what crafting it cost on each day against what it sold for after the auction house cut, the margin
     over time, and the recipes that use it, each with its margin now.
+  - **Moves with**: the items whose prices go up and down on the same days as this one (ore and its bars, a herb and
+    its potion), and the few that move the opposite way, over 30 or 90 days. Moves of the whole auction house are
+    taken out first, and links that could be pure chance are left out; moving together does not prove one causes the
+    other. **+ Compare** puts an item on the Compare graph. It needs a few weeks of prices to be sure (a warning shows
+    until then).
   - **Buy cheapest now** (above every page): one press buys one of the cheapest that is not yours, with no "are you
     sure" box - the button shows the exact price, so check it before you press. Stackable goods (ore, cloth ...) take
     two presses: the first asks the server for the exact price, the second buys; a "How many" box sets how many. After
@@ -44,7 +53,8 @@ how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and th
   Picking an item in the game's auction house shows it here.
 - **Market**: every item ever seen on your auction house in one sortable list - lowest price, market value, trend,
   how many are listed, how many sell a day, and a small line of its last 7 days. Filters: **Rising**, **Falling**,
-  **Short supply**, **Flooded**, Tracked, Listed now, Can be crafted, quality, and a search box.
+  **Short supply**, **Flooded**, Tracked, Listed now, Can be crafted, quality, and a search box. Sorting, filters and
+  search stay smooth on a big auction house: the work is spread over several frames instead of freezing the game.
 - **Your gold**: gold today and this week, profit, gold per hour at the auction house, net worth; income vs spent per
   day (a graph), profit per week, your flips (best and worst), your best sellers, every recent sale and purchase, and
   the gold and items of all your characters. Two more pages:
@@ -70,7 +80,15 @@ Also:
 - **Price history** for every item: every scan for 7 days, a summary per day for 60 days, then one per week for a year.
   **Silly prices are left out** (a price far off the item's typical price never makes a normal price look like a
   bargain). Right-click any item to track it, search it on the auction house, or never have it suggested again.
-  Many lists explain a column when you point at its title.
+  Lists explain a column when you point at its title.
+- **Your notes on the graphs**: right-click any graph over time to add a few words to a day ("patch day", "new raid");
+  every graph shows them as a thin line, and pointing at it shows the note. Right-click near a note to change or
+  remove it. Up to 200 notes, one per day, kept per realm.
+- **Your data** (the "Your data ..." button in Settings, or `/xnah data`): how big and how old your saved data is,
+  what takes the room, **Slim down** (removes items not seen for a long time - never your tracked items, items in
+  Compare, items in your sales and buys, or items your characters own), and **exports** you can paste into a
+  spreadsheet: the price history of one item, your sales and buys (with profit), the gold of each character, and your
+  tracked items now.
 - **In the game's auction house window**: extra columns (% of the usual price, sells a day) in its lists.
 - **Your sales** are read from the auction house mails when you open your mailbox.
 - **Welcome back**: at login, how many of your auctions ran out and how much gold waits in your mailboxes; at the
@@ -89,6 +107,7 @@ Also:
 | `/xnah tracked` | search your tracked items (auction house open) |
 | `/xnah <item name or link>` | show that item |
 | `/xnah settings` | the settings |
+| `/xnah data` | your data: its size, slim it down, export it to a spreadsheet |
 | `/xnah raw 5` | print the first auctions of the last full scan as the game gives them |
 | `/xnah perf` | how much memory and time XNAH uses |
 | `/xnah size 120` | window size in % (or drag its bottom right corner) |
@@ -99,7 +118,7 @@ Also:
 ## Several WoW accounts
 
 Each WoW account keeps its own saved data. To see the characters of all your accounts in Your gold, Characters (and share
-their sales and the newest prices), double-click `Sync accounts.cmd` in the XNAH project folder on your PC (from GitHub, not the AddOns folder; needs Node.js). It
+their sales, the newest prices and your graph notes), double-click `Sync accounts.cmd` in the XNAH project folder on your PC (from GitHub, not the AddOns folder; needs Node.js). It
 waits until every game window is closed, backs up the files and joins them. Run it again whenever you want the other
 accounts to be up to date. Optional names for the accounts: `private/sync-accounts.json`
 `{"labels": {"ACCOUNTFOLDER": "main"}}`.

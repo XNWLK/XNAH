@@ -153,9 +153,11 @@ end
 function X.Day(t)
 	return math.floor((t or X.Now()) / 86400)
 end
+-- t may have a fraction of a second (old sale times worked out from a mail's days left): whole seconds only, as the
+-- date() of newer Lua refuses a fraction
 function X.Date(t, fmt)
 	if not t then return "-" end
-	return date(fmt or "%Y-%m-%d %H:%M", t)
+	return date(fmt or "%Y-%m-%d %H:%M", math.floor(t))
 end
 -- "5m ago", "3h ago", "2d ago"
 function X.Ago(t)

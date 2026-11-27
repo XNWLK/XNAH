@@ -128,7 +128,7 @@ local function formatOf(opts)
 end
 
 local function dayText(t)
-	return (date("%b %d", t):gsub(" 0", " "))
+	return (date("%b %d", math.floor(t)):gsub(" 0", " "))
 end
 
 local function hex(c)
@@ -359,8 +359,8 @@ function K.Graph(parent, w, h)
 		marker:SetPoint("BOTTOM", plot, "BOTTOMLEFT", m.x, 0)
 		marker:Show()
 		local fmt = data.format
-		local text = "|cffffd100" .. (data.span < 2 * 86400 and date("%H:%M", m.t) .. "  " .. dayText(m.t) or
-			dayText(m.t) .. "  " .. date("%H:%M", m.t)) .. "|r"
+		local text = "|cffffd100" .. (data.span < 2 * 86400 and date("%H:%M", math.floor(m.t)) .. "  " .. dayText(m.t) or
+			dayText(m.t) .. "  " .. date("%H:%M", math.floor(m.t))) .. "|r"
 		if note then text = text .. "\n|cffffee8cYour note, " .. dayText(note.t) .. ":|r " .. note.text end
 		local band = data.band and bandOn(data.band.byDay, m.t)
 		for i, s in ipairs(data.series) do
@@ -607,7 +607,7 @@ function K.Graph(parent, w, h)
 		for k = 1, n do
 			local t = t0 + (t1 - t0) * (k - 1) / (n - 1)
 			local fs = xlab[k]
-			fs:SetText(data.span < 2 * 86400 and date("%H:%M", t) or dayText(t))
+			fs:SetText(data.span < 2 * 86400 and date("%H:%M", math.floor(t)) or dayText(t))
 			fs:ClearAllPoints()
 			if k == 1 then
 				fs:SetJustifyH("LEFT")

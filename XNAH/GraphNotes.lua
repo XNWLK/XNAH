@@ -118,7 +118,7 @@ function X.NotesChanged()
 end
 
 local function dayText(day)
-	local t = day * DAY + DAY / 2
+	local t = math.floor(day * DAY + DAY / 2)
 	local text = (date("%b %d", t):gsub(" 0", " "))
 	if date("%Y", t) ~= date("%Y", X.Now()) then text = text .. " " .. date("%Y", t) end
 	return text

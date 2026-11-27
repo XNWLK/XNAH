@@ -135,9 +135,10 @@ local function addHours(t1, t2, units, minutes)
 	end
 	local t = t1
 	while t < t2 do
-		local h = tonumber(date("%H", t)) or 0
-		local m = tonumber(date("%M", t)) or 0
-		local s = tonumber(date("%S", t)) or 0
+		local ti = math.floor(t)
+		local h = tonumber(date("%H", ti)) or 0
+		local m = tonumber(date("%M", ti)) or 0
+		local s = tonumber(date("%S", ti)) or 0
 		local stop = math.min(t2, t + 3600 - m * 60 - s)
 		if stop <= t then stop = t + 1 end
 		local part = (stop - t) / gap
@@ -296,7 +297,7 @@ local function bestDay(it, today)
 		local d = p[1]
 		local r = byDay[d] and againstNeighbours(byDay, d)
 		if r then
-			local t = date("*t", d * 86400 + 43200)
+			local t = date("*t", math.floor(d) * 86400 + 43200)
 			local w = t and t.wday
 			if w and sum[w] then
 				sum[w], cnt[w] = sum[w] + r, cnt[w] + 1

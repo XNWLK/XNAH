@@ -220,3 +220,54 @@ T.scene("item page: an empty database and unknown items do no harm", function()
 	X.UI.ShowItem("2589:-19")
 	W.advance(0.3)
 end)
+
+-- regression (dry run on real saved data, 2026-11-27): sale times worked out from a mail's days left had a fraction of a
+-- second; the item graph's sale dots and the Recent page formatted them with date(), which newer Lua refuses
+T.scene("item page: sale times with a fraction of a second (old saved data, mails)", function()
+	local X = W.start()
+	W.advance(5)
+	daily(X, "2589", "Linen Cloth", 12, function(n) return 100 + n * 10, 120 + n * 10 end)
+	X.Record("2589", X.Now() - 60, 120, 170, 80, 8, "Linen Cloth", 1)
+	local Lg = X.Ledger()
+	local t1, t2 = X.Now() - 3 * DAY + 0.9436, X.Now() - DAY - 0.0225
+	table.insert(Lg.sales, {t = t1, key = "2589", name = "Linen Cloth", count = 2, money = 400, cut = 20, char = "Xn Ascalon"})
+	table.insert(Lg.buys, {t = t2, key = "2589", name = "Linen Cloth", count = 1, money = 150, char = "Xn Ascalon"})
+	X.UI.ShowItem("2589")
+	W.advance(0.5)
+	local panel = itemPanel(X)
+	local info = panel.graph.GetInfo()
+	local sale, buy
+	for _, m in ipairs(info.trades) do
+		if m.t == t1 then sale = m elseif m.t == t2 then buy = m end
+	end
+	T.ok("sale dot drawn", sale ~= nil and sale.text ~= nil)
+	T.ok("sale dot: its date", sale and has(W.plain(sale.text), X.Date(math.floor(t1), "%b %d %H:%M")), sale and sale.text)
+	T.ok("buy dot: its date", buy and has(W.plain(buy.text), X.Date(math.floor(t2), "%b %d %H:%M")), buy and buy.text)
+	-- the mouse on the sale dot: the hover box with its time
+	local mx
+	for _, m in ipairs(info.marks) do if m.t == t1 then mx = m.x end end
+	W.cursor = {mx, 10}
+	W.hover(panel.graph.plot, mx, 10)
+	W.advance(0.1)
+	local tip = panel.graph.tip:IsShown() and W.plain(panel.graph.tip.text:GetText() or "") or ""
+	W.unhover(panel.graph.plot)
+	T.ok("hover: the time", has(tip, W.env.date("%H:%M", math.floor(t1))), tip)
+	T.check("X.Date: a fraction is fine", X.Date(t1, "%Y-%m-%d %H:%M:%S"), W.env.date("%Y-%m-%d %H:%M:%S", math.floor(t1)))
+	-- a sale mail with a fraction of a day left: saved in whole seconds
+	local m = W.mailSold(2592, 900, 3, "Ann Lee", 45)
+	m.daysLeft = 29.4567
+	W.addMail(m)
+	W.openMail()
+	W.advance(1)
+	local wool
+	for _, e in ipairs(Lg.sales) do if e.key == "2592" then wool = e end end
+	T.ok("mail sale: whole seconds", wool and wool.t == math.floor(wool.t), wool and wool.t)
+	W.closeMail()
+	-- the Recent page of Your gold: the When column shows the old sale's date (not "?")
+	X.UI.Open("gold")
+	W.advance(2)
+	local gp = X.UI.tabs.gold.panel
+	W.click("Recent", gp)
+	W.advance(1)
+	T.ok("recent: the date of the old sale", has(W.screen(gp), X.Date(t1, "%b %d  %H:%M")), W.screen(gp))
+end)
