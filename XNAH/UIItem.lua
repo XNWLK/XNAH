@@ -79,54 +79,56 @@ end
 local refresh -- below
 
 -- [[ the tracked list ]]
+X.Default("listSpark", true) -- the small 7-day price line in each row of the tracked list (Settings can hide it)
+local function sparkOn() return X.S().listSpark ~= false end
+-- the line of an item (false: none; nil: not worked out yet, next frame - at most a few ms of work a frame)
+local function sparkOf(key) if sparkOn() then return X.Spark(key, true) end return false end
 local LIST_COLUMNS = {
 	{"Item", 96, "LEFT", text = function(r) return X.ItemIcon(X.KeyID(r.key), 12) .. " " .. X.ItemText(r.key) end,
-		sort = function(r) return (X.ItemName(r.key) or r.key):lower() end, desc = false},
+		sort = function(r) return (X.ItemName(r.key) or r.key):lower() end, desc = false,
+		tip = "The items you track. Click one to see everything about it on the right, right-click it for more (like Stop tracking), " ..
+			"double-click it to put its name in the auction house search box."},
 	{"Cheapest", 62, "RIGHT", text = function(r)
 		local it = X.Items()[r.key]
 		local cur = it and it.cur
 		if not cur then return NONE end
 		if (cur.qty or 0) == 0 then return GREY .. "none|r" end
 		return UI.MoneyCell(cur.min, not X.Fresh(it))
-	end, sort = function(r) local it = X.Items()[r.key] return it and it.cur and (it.cur.qty or 0) > 0 and it.cur.min or nil end, desc = false},
-	{"% usual", 44, "RIGHT", text = function(r) return pctText(pctOf(r.key)) end, sort = function(r) return pctOf(r.key) end, desc = false},
+	end, sort = function(r) local it = X.Items()[r.key] return it and it.cur and (it.cur.qty or 0) > 0 and it.cur.min or nil end, desc = false,
+		tip = "The lowest price of one at the last scan or search. \"none\": none were listed then. Grey: the price is old."},
+	{"% usual", 44, "RIGHT", text = function(r) return pctText(pctOf(r.key)) end, sort = function(r) return pctOf(r.key) end, desc = false,
+		tip = "The cheapest price now against the usual price (its average over the last 30 days). Under 100% (green): " ..
+			"cheaper than usual. Over 100% (red): dearer than usual."},
 	{"", 14, "CENTER", text = function(r)
 		local it = X.Items()[r.key]
 		return it and X.Arrow(X.Stats(it).trend) or ""
-	end, sort = function(r) local it = X.Items()[r.key] return it and X.Stats(it).trend or nil end},
-	{"7 days", 34, "LEFT", text = function() return "" end},
+	end, sort = function(r) local it = X.Items()[r.key] return it and X.Stats(it).trend or nil end,
+		tip = "Which way the price went over the last 14 days. Green plus: rising (two: fast). Red minus: falling (two: " ..
+			"fast). Grey =: about the same."},
+	-- the line itself is drawn over this cell (drawSpark); "-" when there is no line (fewer than 2 days with a price)
+	{"7 days", 34, "LEFT", text = function(r)
+		if not sparkOn() or sparkOf(r.key) ~= false then return "" end
+		return GREY .. "  -|r"
+	end, sort = function(r) local c = sparkOf(r.key) return c and c.change or nil end,
+		tip = function()
+			if not sparkOn() then return "The 7-day price lines are hidden. Turn them back on in Settings (the gear)." end
+			return "The price over the last 7 days as a small line, one point a day. Green: up 3% or more from the first " ..
+				"day to the last. Red: down 3% or more. Grey: about the same. Sorting by it: the biggest move up first."
+		end},
 }
 
--- the 7-day line of a row (UI.MarketSpark: the Market view's line of an item), drawn with a few line pieces
+-- the 7-day line of a row (Sparkline.lua), a few line pieces made once per row (rows are reused while scrolling)
 local function drawSpark(rowFrame, key)
 	local s = rowFrame.xnahSpark
 	if not s then
-		s = CreateFrame("Frame", nil, rowFrame)
-		s:SetSize(SPARK_W, SPARK_H)
-		s:SetPoint("RIGHT", rowFrame, "RIGHT", -3, 0)
-		s.lines = {}
+		s = K.Sparkline(rowFrame, SPARK_W, SPARK_H)
+		local cell = rowFrame.cols and rowFrame.cols[5]
+		if cell then s:SetPoint("LEFT", cell, "LEFT", 1, 0) else s:SetPoint("RIGHT", rowFrame, "RIGHT", -3, 0) end
 		rowFrame.xnahSpark = s
 	end
-	local c = key and UI.MarketSpark and X.Try(UI.MarketSpark, key)
-	local n = 0
-	if type(c) == "table" and type(c.pts) == "table" then
-		local col = c.color or {0.7, 0.7, 0.7}
-		for i = 2, #c.pts do
-			n = n + 1
-			local l = s.lines[n]
-			if not l then
-				l = s:CreateLine(nil, "ARTWORK")
-				l:SetThickness(1.5)
-				s.lines[n] = l
-			end
-			local a, b = c.pts[i - 1], c.pts[i]
-			l:SetColorTexture(col[1], col[2], col[3], 0.95)
-			l:SetStartPoint("BOTTOMLEFT", s, a[1] * SPARK_W, a[2] * SPARK_H)
-			l:SetEndPoint("BOTTOMLEFT", s, b[1] * SPARK_W, b[2] * SPARK_H)
-			l:Show()
-		end
-	end
-	for i = n + 1, #s.lines do s.lines[i]:Hide() end
+	local c = key and sparkOf(key)
+	s:SetData(c or nil)
+	s:SetShown(c and true or false)
 end
 
 -- an item picked in the "Add an item" box: on the tracked list, and shown
@@ -176,7 +178,8 @@ local function buildList(panel)
 	end, "Double-click: put its name in the auction house search box")
 	tbl:SetPoint("TOPLEFT", 0, -62)
 	tbl:SortBy(1, false)
-	-- after each redraw (sorting, scrolling): the 7-day lines, and the item shown marked
+	-- after each redraw (sorting, scrolling): the 7-day lines, and the item shown marked; lines that had to wait for the
+	-- next frame: sorted and drawn again then
 	local base = tbl.Refresh
 	function tbl:Refresh()
 		base(self)
@@ -187,6 +190,7 @@ local function buildList(panel)
 				rowFrame:SetSelected(r.key == UI.itemKey)
 			end
 		end
+		if X.SparkBusy() then X.SparkAgain(self, function() if self:IsVisible() then self:Sort() end end) end
 	end
 	panel.tbl = tbl
 end
@@ -194,6 +198,7 @@ end
 local function fillList(panel)
 	local rows = {}
 	for key in pairs(X.db.watch) do rows[#rows + 1] = {key = key} end
+	LIST_COLUMNS[5][1] = sparkOn() and "7 days" or "" -- (the title goes with the lines when Settings hides them)
 	panel.tbl:SetRows(rows, "Nothing tracked yet.\nType a name in Add an item.")
 	local key = UI.itemKey
 	if key and not X.Watched(key) then

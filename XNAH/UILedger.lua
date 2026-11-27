@@ -86,8 +86,14 @@ local function fit(columns, w)
 	local out = {}
 	for i, c in ipairs(columns) do out[i] = c end
 	local first = columns[1]
-	out[1] = {first[1], math.max(140, w - 20 - fixed), first[3], text = first.text, sort = first.sort, desc = first.desc}
+	out[1] = {first[1], math.max(140, w - 20 - fixed), first[3], text = first.text, sort = first.sort, desc = first.desc,
+		tip = first.tip}
 	return out
+end
+-- the hover line of each column title: tips = {text, ...} in the order of the columns
+local function addTips(columns, tips)
+	for i, c in ipairs(columns) do c.tip = tips[i] end
+	return columns
 end
 
 -- [[ the tables ]]
@@ -103,6 +109,15 @@ local FLIP_COLS = {
 	end, sort = function(r) return r.pct end},
 	{"Total", 80, "RIGHT", text = function(r) return signed(r.profit) end, sort = function(r) return r.profit end},
 }
+addTips(FLIP_COLS, {
+	"An item you bought on the auction house and later sold there again.",
+	"How many you bought and then sold again (units you farmed or crafted are not counted here).",
+	"What you paid for one, on average.",
+	"What one sale brought, on average, after the auction house cut.",
+	"Sold at minus bought at: what you made on each one. Green: a gain. Red: a loss.",
+	"The profit as a share of what you paid: +50% = you got back what you paid and half of it again.",
+	"The profit of all of them together.",
+})
 local function sellThrough(r)
 	if not r.sellThrough then return NONE end
 	local pct = r.sellThrough * 100
@@ -130,7 +145,22 @@ local ITEM_COLS = {
 	{"Last", 70, "RIGHT", text = function(r) return (r.last or 0) > 0 and (GREY .. X.Ago(r.last) .. "|r") or NONE end,
 		sort = function(r) return r.last end},
 }
-local WHAT = {sold = GREEN .. "sold|r", bought = "|cff8aa4ffbought|r", expired = GREY .. "expired|r", cancelled = GREY .. "cancelled|r"}
+addTips(ITEM_COLS, {
+	"Every item you sold or bought on the auction house (from the mails XNAH read in your mailbox).",
+	"How many you sold.",
+	"What your sales of it brought, after the auction house cut.",
+	"What one sold for, on average, after the auction house cut.",
+	"How many you sold a day over the last 30 days.",
+	"How many you bought.",
+	"What you paid for one, on average.",
+	"What your sales brought after the cut, minus what the ones you sold cost you (at your average buying price). " ..
+		"Ones you farmed or crafted cost nothing here.",
+	"How many came back to you unsold: ran out (expired) or taken down by you (cancelled).",
+	"Of all you put up, the share that sold: sold / (sold + expired + cancelled). Green: 60% or more. Yellow: 30% or " ..
+		"more. Red: under 30%.",
+	"When the last mail about it came (a sale, a purchase or one that came back).",
+})
+local WHAT ={sold = GREEN .. "sold|r", bought = "|cff8aa4ffbought|r", expired = GREY .. "expired|r", cancelled = GREY .. "cancelled|r"}
 local RECENT_COLS = {
 	{"Item", 300, "LEFT", text = itemCell, sort = itemSort, desc = false},
 	{"When", 120, "LEFT", text = function(r) return X.Date(r.t, "%b %d  %H:%M") end, sort = function(r) return r.t end},
@@ -150,6 +180,16 @@ local RECENT_COLS = {
 	end, sort = function(r) return r.money and r.money / math.max(1, r.count or 1) end},
 	{"Character", 150, "LEFT", text = function(r) return r.char or "?" end, sort = function(r) return r.char or "" end, desc = false},
 }
+addTips(RECENT_COLS, {
+	"The item the mail is about.",
+	"When the mail came (your computer's clock).",
+	"sold: one of your auctions sold (\"money on the way\": the money mail has not come yet). bought: you won or bought " ..
+		"an auction. expired: it ran out unsold and came back. cancelled: you took it down.",
+	"How many were in it.",
+	"A sale: what it brought after the auction house cut. A purchase (minus): what you paid.",
+	"The money of one, when there were 2 or more.",
+	"The character whose mailbox got the mail.",
+})
 
 -- [[ profit per week ]] a bar chart: green bars over the middle line (profit), red ones under it (loss); hovering a bar
 -- tells the week's numbers
