@@ -29,11 +29,13 @@ UIItem.lua
 Patterns.lua
 Sellers.lua
 CraftHistory.lua
+Related.lua
 Heatmap.lua
 UIItemPatterns.lua
 UIItemCompare.lua
 UIItemSellers.lua
 UIItemCraft.lua
+UIItemRelated.lua
 UILedger.lua
 UIWealth.lua
 UIGoldHistory.lua
