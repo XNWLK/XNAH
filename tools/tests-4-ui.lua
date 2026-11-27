@@ -164,7 +164,7 @@ T.scene("ui: every tab, every button, with a 10-day market", function()
 	T.ok("tabs registered", #X.UI.order > 0, #X.UI.order)
 	local keys = {}
 	for _, k in ipairs(X.UI.order) do keys[#keys + 1] = k end
-	T.check("the views", table.concat(keys, ","), "items,market,gold,opps,scan")
+	T.check("the views", table.concat(keys, ","), "items,market,gold,trends,scan")
 	-- with the auction house open (it opened the window by itself, beside it)
 	X.UI.Open()
 	local frame = X.UI.Frame()

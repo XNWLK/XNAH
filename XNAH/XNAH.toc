@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: XNAH
-## Notes: Auction house numbers for buying and selling in the game's own auction house: full scans, price history with graphs, usual prices and trends, what is listed now, best time to sell, opportunities (cheap listings, vendor flips, few sellers), crafting costs, your profit and net worth. One button buys the cheapest auction of an item. Type /xnah
+## Notes: Auction house numbers for buying and selling in the game's own auction house: full scans, price history with graphs, usual prices and trends, what is listed now, best time to sell, market trends, crafting costs, your profit and net worth. One button buys the cheapest auction of an item. Type /xnah
 ## Author: Xn
 ## Version: 0.9.0
 ## SavedVariables: XNAHDB
@@ -26,9 +26,24 @@ UI.lua
 Graph.lua
 UIMarket.lua
 UIItem.lua
+Patterns.lua
+Sellers.lua
+CraftHistory.lua
+Heatmap.lua
+UIItemPatterns.lua
+UIItemCompare.lua
+UIItemSellers.lua
+UIItemCraft.lua
 UILedger.lua
 UIWealth.lua
-UIOpps.lua
+UIGoldHistory.lua
+UIGoldItems.lua
+UITrends.lua
+Trends.lua
+UITrendsIndex.lua
+UITrendsGroups.lua
+UITrendsSize.lua
+UITrendsChanges.lua
 UIScan.lua
 AHPanel.lua
 Quick.lua

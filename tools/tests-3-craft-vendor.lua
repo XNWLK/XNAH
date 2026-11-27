@@ -1,5 +1,5 @@
 -- XNAH test scenes, part 3: vendors (what they sell, flips, auctions under the vendor price), crafting (recipes, costs),
--- deals and movers over 10 days, tooltip lines and slash commands.
+-- cheap listings and movers over 10 days, tooltip lines and slash commands.
 
 T.scene("vendor: merchant prices, cheapest kept, flips and below-vendor auctions", function()
 	local X = W.start()
@@ -210,7 +210,24 @@ T.scene("craft: a recipe with a missing reagent price does not top the list", fu
 	T.check("shirt: no profit shown (its cost is incomplete)", shirt and shirt.profit, nil)
 end)
 
-T.scene("market: deals and movers over 10 days", function()
+-- items listed now at 60% of their usual price or less, with at least 10s to gain after the cut (what the removed
+-- Opportunities view called "far under usual"; worked out here from X.Usual, the numbers it stood on)
+local function cheapNow(X)
+	local out = {}
+	for key, it in pairs(X.Items()) do
+		local cur = it.cur
+		if cur and cur.min and (cur.qty or 0) > 0 and X.Fresh(it) and X.BuyIdea(key, it) then
+			local usual, st = X.Usual(key)
+			if usual and st.days >= 3 and cur.min <= usual * 0.6 and X.AfterCut(usual) - cur.min >= 1000 then
+				out[#out + 1] = {key = key, buy = cur.min, profit = X.AfterCut(usual) - cur.min}
+			end
+		end
+	end
+	table.sort(out, function(a, b) return a.profit > b.profit end)
+	return out
+end
+
+T.scene("market: cheap listings and movers over 10 days", function()
 	local X = W.start()
 	W.makeMarket(21, 300, {lastDay = 9, uncached = 0})
 	W.openAH()
@@ -220,7 +237,7 @@ T.scene("market: deals and movers over 10 days", function()
 		T.ok("full scan day " .. day, T.fullScan(X))
 		W.advance(86400 - (W.NOW - t0))
 	end
-	local deals = X.Deals()
+	local deals = cheapNow(X)
 	local set = {}
 	for _, r in ipairs(deals) do set[r.key] = r end
 	local expected, found = 0, 0
@@ -236,9 +253,6 @@ T.scene("market: deals and movers over 10 days", function()
 	local stray = {}
 	for _, r in ipairs(deals) do if not allowed[r.key] then stray[#stray + 1] = r.key end end
 	T.check("deals: no ordinary item listed as a deal", table.concat(stray, ","), "")
-	local sorted = true
-	for i = 2, #deals do if deals[i].profit > deals[i - 1].profit then sorted = false end end
-	T.ok("deals: best profit first", sorted)
 	-- movers
 	local function has(list, ids)
 		local s, miss = {}, {}
@@ -268,7 +282,7 @@ T.scene("market: deals and movers over 10 days", function()
 	-- everything survives a reload
 	local n = #deals
 	X = W.reload()
-	T.check("after reload: same deals", #X.Deals(), n)
+	T.check("after reload: same deals", #cheapNow(X), n)
 	local items, bytes = X.DataSize()
 	T.note(string.format("10 days, %d items, 1 full scan a day: DataSize %d bytes (%.0f per item), saved file %d bytes",
 		items, bytes, bytes / items, W.savedSize()))

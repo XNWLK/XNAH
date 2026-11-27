@@ -1,5 +1,5 @@
 -- XNAH test scenes, part 22: the Market page (Rising / Falling buttons, Sells a day, the 7-day line in each row) and the
--- numbers behind it: deals (X.Deals) and movers (X.Movers).
+-- numbers behind it: movers (X.Movers).
 
 local IDS = {rise = 80101, fall = 80102, flat = 80103, hide = 80104, herb = 80105, flood = 80106, potion = 80107, root = 80108}
 local function key(name) return tostring(IDS[name]) end
@@ -66,7 +66,7 @@ T.scene("market and deals: Market - Rising / Falling, Sells a day, the 7-day lin
 	for _, s in ipairs({"Rising", "Falling", "Sells a day", "7 days", "Trend"}) do
 		T.ok("shows " .. s, text:find(s, 1, true) ~= nil)
 	end
-	T.ok("no Trends tab", X.UI.tabs.trends == nil)
+	T.ok("the Trends view is a view of its own (not the Market view)", X.UI.tabs.trends ~= nil and X.UI.tabs.trends.title == "Trends")
 	-- the 7-day line: worked out per item, green up, red down
 	local up, down, flat = X.UI.MarketSpark(key("rise")), X.UI.MarketSpark(key("fall")), X.UI.MarketSpark(key("flat"))
 	T.ok("line: rising goes up", up and up.change > 3, up and up.change)
@@ -128,26 +128,10 @@ end)
 
 local function find(rows, k) for _, r in ipairs(rows) do if r.key == k then return r end end end
 
-T.scene("market and deals: X.Deals and X.Movers", function()
+T.scene("market and deals: X.Movers", function()
 	local X = W.start()
 	market(X)
-	-- deals: listed at or under 60% of the usual price with at least 10s profit after the cut
-	local deals = X.Deals()
-	local herb = find(deals, key("herb"))
-	T.ok("deal: the herb at 50s (usually about 1g)", herb ~= nil)
-	T.check("deal: bought at the cheapest", herb and herb.buy, 5000)
-	T.ok("deal: under 60%", herb and herb.pct <= 60, herb and herb.pct)
-	T.near("deal: profit = usual after the cut - price", herb and herb.profit, herb and (X.AfterCut(herb.usual) - 5000), 1)
-	T.check("not a deal: the hide (profit too small)", find(deals, key("hide")), nil)
-	T.check("not a deal: the flat one", find(deals, key("flat")), nil)
-	for i = 2, #deals do T.ok("most profit first", deals[i - 1].profit >= deals[i].profit) end
-	T.check("a stricter %: no herb", find(X.Deals({pct = 40}), key("herb")), nil)
-	T.ok("a smaller profit: the hide", find(X.Deals({pct = 60, minProfit = 100}), key("hide")) ~= nil)
-	-- never suggest: left out
-	X.SetIgnored(key("herb"), true)
-	T.check("ignored: no herb", find(X.Deals(), key("herb")), nil)
-	X.SetIgnored(key("herb"), false)
-	T.ok("allowed again", find(X.Deals(), key("herb")) ~= nil)
+	T.check("no deals list any more (the Opportunities view was taken out)", X.Deals, nil)
 	-- movers
 	local up, down = X.Movers("up"), X.Movers("down")
 	T.ok("rising: the silk", find(up, key("rise")) ~= nil)

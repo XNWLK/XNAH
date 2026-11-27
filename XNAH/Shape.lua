@@ -127,12 +127,17 @@ local function countSellers(rows)
 		unnamed = unnamed + math.max(0, total - named)
 	end
 	if units == 0 then return nil end
-	local n, top = 0, 0
-	for _, u in pairs(names) do n = n + 1 if u > top then top = u end end
+	local n, top, topName = 0, 0, nil
+	for name, u in pairs(names) do
+		n = n + 1
+		if u > top or (u == top and topName and name < topName) then top, topName = u, name end
+	end
 	-- unnamed sellers of different rows may be the same people: counted at most once per row, never fewer than named
-	return n + unnamed, top / units
+	return n + unnamed, top / units, topName
 end
-local function setSellers(key, sellers, top)
+X.CountSellers = countSellers -- for the tests
+-- keeps the sellers of the latest search (and a point a day in the seller history, Data.lua X.RecordSellers)
+local function setSellers(key, sellers, top, topName)
 	local sh = store()
 	local e = sh[key]
 	if not sellers then
@@ -145,6 +150,7 @@ local function setSellers(key, sellers, top)
 	e = e or {}
 	sh[key] = e
 	e.sellers, e.top, e.ts = sellers, math.floor(top * 1000 + 0.5) / 1000, X.Now()
+	X.RecordSellers(key, X.Now(), sellers, top, topName)
 	if not e.t then e.t = X.Now() end
 end
 
@@ -197,7 +203,7 @@ function X.Shape(key)
 	}
 end
 
--- [[ lists for the Deals and Trends tabs ]]
+-- [[ lists ]] (no view shows them since the Opportunities view was taken out; kept for later pages)
 -- reset chances: rows {key, units, cost, usual, profit, rate (sells per day or nil)}, best profit first
 function X.Resets()
 	local out = {}

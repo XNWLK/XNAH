@@ -2,18 +2,25 @@
 --
 -- XNAHDB = {
 --   v = 1, settings = {...},
---   realms = {["Realm-Faction"] = {items = {[key] = item}, scans = {{t, kind, items, auctions, secs}}, lastFull = t}},
+--   realms = {["Realm <id>"] = {items = {[key] = item}, scans = {scan, ...} (oldest first, the last X.MAX_SCANS),
+--     lastFull = t}},
+--     scan = {t, kind ("full" or what a search scan was for), items, auctions, secs (how long it took), skipped,
+--       full scans also: gold (copper: every buyout listed, price of one x count, added up), units (how many items were
+--       listed), sellers (different sellers, only when the game gives seller names in the full scan - on Forever it
+--       does not, so it stays empty)}
 --   vsell = {[itemID] = copper}      what a vendor pays for one (the game's sell price, cached for every item seen)
 --   vbuy  = {[itemID] = {p = copper per one, lim = true if limited stock, at = t, from = "NPC name"}}
 --   recipes = {[recipeID] = see Craft.lua}
 --   watch = {[key] = true}          the watch list (starred items)
---   cleanup = 2                     the saved data of the features taken out after v0.8.1 was deleted (X.CleanRemoved)
+--   cleanup = 3                     the saved data of features taken out was deleted (X.CleanRemoved)
 -- }
 -- An item key is the item ID as text ("2589"), or "id:suffix" for an item with a random bonus ("15210:-19", "of the
 -- Bear"): those sell for very different prices.
--- item = {id = 2589, n = "Linen Cloth", q = 1, cur = {t, min, mkt, qty, auc}, h = "scan points", d = "day points"}
+-- item = {id = 2589, n = "Linen Cloth", q = 1, cur = {t, min, mkt, qty, auc}, h = "scan points", d = "day points",
+--   sh = "seller points"}
 --   h: one point per scan, kept `keepScanDays` days:  "t,min,mkt,qty,auc;..."  (t in minutes, all numbers in base 36)
 --   d: one point per day, kept `keepDays` days:       "day,min,mkt,qty,n;..." (lowest min, average mkt and qty, n scans)
+--   sh: one point per day, kept `keepDays` days:      "day,sellers,top,undercuts,name;..." (X.SellerHistory, below)
 local ADDON, X = ...
 
 X.DEFAULTS = {
@@ -21,11 +28,9 @@ X.DEFAULTS = {
 	source = "mkt",     -- price used for costs and values: min, mkt, avg7, avg30
 	keepScanDays = 7,   -- every scan point is kept this long, then only the day's summary
 	keepDays = 365,     -- day summaries are kept this long (after 60 days one per week)
-	staleHours = 72,    -- a price older than this is shown dimmed and not used for deals
+	staleHours = 72,    -- a price older than this is shown dimmed and not used for flips
 	tooltip = true, tipVendor = true, tipCraft = true, tipHistory = true, tipStack = true,
-	dealPct = 60,       -- deals: listed at or under this % of the 30-day average
-	dealMinProfit = 1000, -- deals: at least this much profit (copper)
-	minSamples = 3,     -- deals and trends need this many days of history
+	minSamples = 3,     -- trends (rising, falling, short supply, flooded) need this many days of history
 	vendorBuyFirst = true, -- crafting: buy a reagent from a vendor when that is cheaper than the auction house
 	debug = false,
 	minimap = {angle = 200, hide = false},
@@ -69,9 +74,12 @@ end
 local REMOVED_DATA = {"shop", "queue", "onWay", "strategies", "postRules", "sellTick", "sellList", "mailLast", "guideSeen"}
 local REMOVED_SETTINGS = {"guideAtLogin", "homeFirst", "homeScanHours", "mailButton", "postFloor", "postCeiling",
 	"postUndercut", "postDuration", "routineCancel", "snipeWait", "snipeSound", "alertSound", "buyView", "shopList",
-	"dealSpeedHide", "dealSpeedMin", "craftView", "craftProf", "craftMine", "dealsHidden", "strategySel", "ahBar"}
-local REMOVED_PAGES = {home = true, buy = true, sell = true, craft = true, deals = true, strategies = true}
-local CLEANUP = 2 -- 1: v0.8.1 to the analysis addon; 2: the auction house bar (ahBar)
+	"dealSpeedHide", "dealSpeedMin", "craftView", "craftProf", "craftMine", "dealsHidden", "strategySel", "ahBar",
+	"dealPct", "dealMinProfit", "oppsFilter"}
+local REMOVED_PAGES = {home = true, buy = true, sell = true, craft = true, deals = true, strategies = true, opps = true}
+-- 1: v0.8.1 to the analysis addon; 2: the auction house bar (ahBar); 3: the Opportunities view (opps, its filters and
+-- the "far under usual" settings)
+local CLEANUP = 3
 function X.CleanRemoved(db)
 	if (db.cleanup or 0) >= CLEANUP then return end
 	for _, k in ipairs(REMOVED_DATA) do db[k] = nil end
@@ -145,7 +153,7 @@ local function joinRealm(to, r)
 	to.scans = to.scans or {}
 	for _, sc in ipairs(r.scans or {}) do to.scans[#to.scans + 1] = sc end
 	table.sort(to.scans, function(x, y) return (x.t or 0) < (y.t or 0) end)
-	while #to.scans > 200 do table.remove(to.scans, 1) end
+	while #to.scans > (X.MAX_SCANS or 500) do table.remove(to.scans, 1) end
 	if r.lastFull and (not to.lastFull or r.lastFull > to.lastFull) then to.lastFull = r.lastFull end
 	if r.ledger then
 		to.ledger = to.ledger or {}
@@ -417,6 +425,7 @@ function X.Record(key, t, min, mkt, qty, auc, name, quality)
 	if name and name ~= "" then it.n = name end
 	if quality then it.q = quality end
 	if it.cur and it.cur.t and it.cur.t > t then return it end -- an older observation never replaces a newer one
+	local prev = it.cur
 	it.cur = {t = t, min = min, mkt = mkt, qty = qty, auc = auc}
 	local S = X.S()
 	-- a crazy price (far off the middle of the last scans) stays out of the history - unless 3 scans in a row say so
@@ -444,6 +453,11 @@ function X.Record(key, t, min, mkt, qty, auc, name, quality)
 		end
 	end
 	it.ox = nil
+	-- undercut: the lowest price went down since the last scan or search while the item stayed listed (someone listed
+	-- cheaper); counted per day in the seller history
+	if prev and prev.min and min and min < prev.min and (prev.qty or 0) > 0 and (qty or 0) > 0 and t > (prev.t or 0) then
+		X.CountUndercut(it, t)
+	end
 	-- scan point
 	local point = packPoint(math.floor(t / 60), min, mkt, qty, auc)
 	local h = it.h
@@ -483,8 +497,10 @@ function X.Record(key, t, min, mkt, qty, auc, name, quality)
 end
 -- day points older than THIN_AFTER days become one point per week (keeps a year of history small)
 local THIN_AFTER = 60
+local thinSellers -- below (the seller history is thinned the same way)
 function X.Thin(it, today)
 	it.cd = today
+	if it.sh then thinSellers(it, today) end
 	local d = it.d
 	if not d or d == "" then return end
 	local first = firstStamp(d)
@@ -513,6 +529,132 @@ function X.Thin(it, today)
 	local parts = {}
 	for i, p in ipairs(out) do parts[i] = packPoint(p[1], p[2], p[3], p[4], p[5]) end
 	it.d = table.concat(parts, ";")
+end
+
+-- [[ seller history ]] it.sh = "day,sellers,top,undercuts,name;..." - one point per day, oldest first, the numbers in
+-- base 36: sellers = how many different sellers, top = the share of the units the biggest seller holds (0-100), name =
+-- that seller (empty: not known; "^": the same name as the point before, which keeps the text small), undercuts = how
+-- many times that day the lowest price went down from one scan or search to the next while the item stayed listed.
+-- Sellers come from searches of one item (the game gives seller names only there; the full scan on Forever has none),
+-- so items you never look at have only undercuts. Kept `keepDays` days; after 60 days one point per week (X.Thin:
+-- sellers, top and undercuts are the average of the days, the name the latest). Read it with X.SellerHistory(key).
+local SAME = "^"
+local function packSeller(p, name)
+	name = name or p[5] or ""
+	-- no name: the last comma is left out too ("fr0,,,2")
+	return b36(p[1]) .. "," .. b36(p[2]) .. "," .. b36(p[3]) .. "," .. b36(p[4]) .. (name ~= "" and ("," .. name) or "")
+end
+-- the points of the text; the "^" names are filled in from the point before (raw = true: left as they are)
+local function unpackSellers(s, raw)
+	local out = {}
+	if not s or s == "" then return out end
+	local prev
+	for part in s:gmatch("[^;]+") do
+		local a, b, c, d, e = part:match("^([^,]*),([^,]*),([^,]*),([^,]*),?(.*)$")
+		local day = n36(a)
+		if day then
+			local name = (e and e ~= "") and e or nil
+			if name == SAME and not raw then name = prev end
+			out[#out + 1] = {day, n36(b), n36(c), n36(d), name}
+			prev = name
+		end
+	end
+	return out
+end
+-- points back to text, a name the same as the point before written as "^"
+local function packSellers(points)
+	local parts, prev = {}, nil
+	for i, p in ipairs(points) do
+		local name = p[5]
+		parts[i] = packSeller(p, (name and name == prev) and SAME or (name or ""))
+		prev = name
+	end
+	return table.concat(parts, ";")
+end
+-- a seller's name as it can be kept in the text (no commas, semicolons or "^")
+local function cleanName(name)
+	if type(name) ~= "string" or name == "" then return nil end
+	name = name:gsub("[,;|%^]", "")
+	if name == "" then return nil end
+	return name
+end
+-- changes the point of `day` with fn(point) (made when there is none); an older day than the last one is left alone
+local function sellerDay(it, day, fn)
+	local s = it.sh or ""
+	-- the last point: after the last ";" (found from the end, so a long text costs little)
+	local cut = s:match(".*();")
+	local tail = cut and s:sub(cut + 1) or s
+	local last = tail ~= "" and unpackSellers(tail, true)[1]
+	if last and last[1] == day then
+		fn(last)
+		s = s:sub(1, #s - #tail) .. packSeller(last)
+	elseif last and last[1] > day then
+		return
+	else
+		local p = {day}
+		fn(p)
+		s = (s ~= "" and (s .. ";") or "") .. packSeller(p)
+	end
+	s = prune(s, day - X.S().keepDays)
+	it.sh = s ~= "" and s or nil
+end
+-- one more undercut today (X.Record counts them)
+function X.CountUndercut(it, t)
+	sellerDay(it, X.Day(t), function(p) p[4] = (p[4] or 0) + 1 end)
+end
+-- the sellers of an item seen at time t (a search of the item): how many, the biggest one's share of the units (0..1)
+-- and name. The last one of a day is kept.
+function X.RecordSellers(key, t, sellers, topShare, topName)
+	if type(sellers) ~= "number" or sellers <= 0 then return end
+	local it = X.Item(key, true)
+	sellerDay(it, X.Day(t), function(p)
+		p[2] = sellers
+		p[3] = type(topShare) == "number" and math.floor(math.max(0, math.min(1, topShare)) * 100 + 0.5) or nil
+		p[5] = cleanName(topName)
+	end)
+end
+-- X.SellerHistory(key) -> {{day, sellers, topShare (0-100), topName, undercuts}, ...} oldest first; day = X.Day (days
+-- since 1970); any field but day may be nil (not seen that day). Empty list when nothing is known.
+function X.SellerHistory(key)
+	local it = X.Items()[tostring(key)]
+	local out = {}
+	if not it then return out end
+	for _, p in ipairs(unpackSellers(it.sh)) do
+		out[#out + 1] = {day = p[1], sellers = p[2], topShare = p[3], topName = p[5], undercuts = p[4]}
+	end
+	return out
+end
+X.UnpackSellers = unpackSellers
+-- once a day (X.Thin): days older than THIN_AFTER become one point per week, and repeated names become "^"
+thinSellers = function(it, today)
+	local pts = unpackSellers(it.sh)
+	local out, week, n = {}, nil, {}
+	local function avg(a, b, k)
+		if a == nil then return b end
+		if b == nil then return a end
+		return (a * k + b) / (k + 1)
+	end
+	for _, p in ipairs(pts) do
+		if p[1] >= today - THIN_AFTER then
+			out[#out + 1] = p
+		else
+			local wk = math.floor(p[1] / 7)
+			local last = out[#out]
+			if week == wk and last then
+				local k = n[last] or 1
+				last[2], last[3], last[4] = avg(last[2], p[2], k), avg(last[3], p[3], k), avg(last[4], p[4], k)
+				last[5] = p[5] or last[5]
+				n[last] = k + 1
+			else
+				week = wk
+				-- the week's point in its middle, but never among the days kept one by one
+				out[#out + 1] = {math.min(wk * 7 + 3, today - THIN_AFTER - 1), p[2], p[3], p[4], p[5]}
+				n[out[#out]] = 1
+			end
+		end
+	end
+	local s = packSellers(out)
+	it.sh = s ~= "" and s or nil
 end
 -- two records of one item (two realm keys joined): the newer current price, every scan point (one per minute) and every
 -- day point of both (a day in both: the two put together, weighted by how many scans each had). Returns the record.
@@ -559,6 +701,25 @@ function X.MergeItem(a, b)
 	parts = {}
 	for i, d in ipairs(ds) do local p = byD[d] parts[i] = packPoint(p[1], p[2], p[3], p[4], p[5]) end
 	a.d = #parts > 0 and table.concat(parts, ";") or nil
+	-- seller points: every day of both (a day in both: the newer record's sellers, the most undercuts)
+	if b.sh then
+		local byS, ss = {}, {}
+		for _, p in ipairs(unpackSellers(a.sh)) do if not byS[p[1]] then ss[#ss + 1] = p[1] end byS[p[1]] = p end
+		for _, p in ipairs(unpackSellers(b.sh)) do
+			local q = byS[p[1]]
+			if not q then
+				ss[#ss + 1] = p[1]
+				byS[p[1]] = p
+			else
+				if (newer and p[2]) or not q[2] then q[2], q[3], q[5] = p[2], p[3], p[5] end
+				if (p[4] or 0) > (q[4] or 0) then q[4] = p[4] end
+			end
+		end
+		table.sort(ss)
+		local list = {}
+		for i, d in ipairs(ss) do list[i] = byS[d] end
+		a.sh = #list > 0 and packSellers(list) or nil
+	end
 	a.cd, a.ox = nil, nil
 	if X.statsCache then X.statsCache[a] = nil end
 	return a
@@ -790,8 +951,8 @@ function X.HistoryRaw(it, from)
 end
 
 -- [[ items never to suggest ]] XNAHDB.ignore[key] = true (right-click an item: Never suggest buying this). Xn: grey
--- junk gets listed at silly prices and then looks like a bargain. Deals (X.Deals) leave
--- these out, and grey items too (their only real value is what a vendor pays).
+-- junk gets listed at silly prices and then looks like a bargain. X.BuyIdea says no for these, and for grey items too
+-- (their only real value is what a vendor pays).
 function X.Ignored(key)
 	return X.db.ignore ~= nil and X.db.ignore[tostring(key)] == true
 end
@@ -860,8 +1021,43 @@ function X.DataSize()
 	for _, r in pairs(X.db.realms) do
 		for _, it in pairs(r.items) do
 			items = items + 1
-			bytes = bytes + #(it.h or "") + #(it.d or "") + 60
+			bytes = bytes + #(it.h or "") + #(it.d or "") + #(it.sh or "") + 60
 		end
 	end
 	return items, bytes
+end
+
+-- [[ item groups ]] X.ItemGroup(key) -> classID, subClassID, group name, subgroup name
+-- The game's item class of an item (C_Item.GetItemInfoInstant: known for every item at once, nothing to load) and a
+-- plain English name for it ("Trade Goods", "Armor" ...); the subgroup name is the game's own ("Cloth", "Herb" ...) or
+-- nil. Nothing is saved: worked out once per item per session. An item the game does not know: nil, nil, "Other".
+X.ITEM_GROUPS = {[0] = "Consumables", [1] = "Containers", [2] = "Weapons", [3] = "Gems", [4] = "Armor", [5] = "Reagents",
+	[6] = "Projectiles", [7] = "Trade Goods", [8] = "Item Enhancements", [9] = "Recipes", [10] = "Money", [11] = "Quivers",
+	[12] = "Quest Items", [13] = "Keys", [14] = "Permanent", [15] = "Miscellaneous", [16] = "Glyphs", [17] = "Battle Pets",
+	[18] = "Tokens", [19] = "Profession Tools"}
+local groupCache = {}
+function X.ItemGroup(key)
+	local id = X.KeyID(key)
+	if not id then return nil, nil, "Other" end
+	local g = groupCache[id]
+	if not g then
+		local _, itemType, itemSubType, _, _, classID, subClassID = X.Try(C_Item.GetItemInfoInstant, id)
+		if type(classID) ~= "number" then return nil, nil, "Other" end
+		local name = X.ITEM_GROUPS[classID]
+		if not name and type(itemType) == "string" and itemType ~= "" then name = itemType end
+		g = {classID, subClassID, name or "Other", (type(itemSubType) == "string" and itemSubType ~= "") and itemSubType or nil}
+		groupCache[id] = g
+	end
+	return g[1], g[2], g[3], g[4]
+end
+
+-- [[ the scans of this realm ]] X.Scans(kind) -> the scans saved (see the top of this file), oldest first; kind =
+-- "full" for full scans only, nil for all. The list itself (do not change it).
+X.MAX_SCANS = 500 -- this many scans are kept per realm (full scans and searches of tracked items together)
+function X.Scans(kind)
+	local all = X.Realm().scans or {}
+	if not kind then return all end
+	local out = {}
+	for _, sc in ipairs(all) do if sc.kind == kind then out[#out + 1] = sc end end
+	return out
 end

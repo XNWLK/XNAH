@@ -12,6 +12,21 @@
 -- graph with a small name on the left (the fair prices to buy and to sell), also listed in the mouse-over box.
 -- Everything is drawn with pooled lines and textures: a new SetSeries reuses what the last one made.
 --
+-- Several lines on one graph (the same call; each series is one line):
+--   g:SetSeries({
+--     {points = {{t, v}, ...}, label = "Linen Cloth"},             -- no color: the next colour of K.GRAPH_COLORS
+--     {points = {{t, v}, ...}, label = "Wool Cloth", color = {0.4, 0.8, 1}},
+--   }, {legend = true, labels = "money"})
+--   legend = true: a small legend (a colour square and the label of each line) in the top left corner inside the graph
+--     ("TOPRIGHT" puts it in the top right corner); lines without a label are left out of it.
+--   labels = "money" (the default), "number" (1,234 or 2.5) or "percent" (values ARE percents: 100 = "100%", e.g. an
+--     index around 100) - for the scale on the left, the mouse-over box and the flat lines. format = fn(value) still
+--     wins over labels. With "number" / "percent" the scale may use steps under 1 (e.g. 0.5 for values between 1 and 3).
+--   Example, an index around 100 with a flat line at 100:
+--     g:SetSeries({{points = idx, label = "All items"}, {points = cloth, label = "Cloth"}},
+--       {labels = "percent", legend = true, levels = {{v = 100, color = {0.6, 0.6, 0.6}, label = "start"}}})
+--   Old calls (no legend, no labels) draw exactly as before.
+--
 -- Also here: X.BestTimes(key) (price by weekday and by hour of the day) and K.TimeBars (its little bar charts).
 local ADDON, X = ...
 local K = X.K
@@ -58,19 +73,50 @@ local function thin(points, max)
 	return out
 end
 
--- a round step (1, 2, 2.5 or 5 times a power of ten) that puts about `want` labels between lo and hi
-local function niceStep(lo, hi, want)
+-- a round step (1, 2, 2.5 or 5 times a power of ten) that puts about `want` labels between lo and hi; never under
+-- minStep (1 for money: whole copper)
+local function niceStep(lo, hi, want, minStep)
+	minStep = minStep or 1
 	local raw = (hi - lo) / want
-	if raw <= 1 then return 1 end
+	if raw <= minStep then return minStep end
 	local mag = 10 ^ math.floor(math.log(raw) / math.log(10) + 1e-9)
 	local best, bestDiff
 	for _, m in ipairs({0.5, 1, 2, 2.5, 5, 10}) do
-		local step = math.max(1, m * mag)
+		local step = math.max(minStep, m * mag)
 		local n = math.floor(hi / step) - math.ceil(lo / step) + 1
 		local diff = math.abs(n - want)
 		if n >= 2 and (not bestDiff or diff < bestDiff) then best, bestDiff = step, diff end
 	end
-	return best or math.max(1, raw)
+	return best or math.max(minStep, raw)
+end
+
+-- the colours lines get when they have none of their own (several lines on one graph), in this order
+K.GRAPH_COLORS = {
+	{1, 0.82, 0}, {0.4, 0.75, 1}, {0.29, 0.87, 0.5}, {0.97, 0.44, 0.44}, {0.8, 0.55, 1},
+	{1, 0.6, 0.25}, {0.55, 0.95, 0.9}, {0.95, 0.6, 0.8}, {0.75, 0.75, 0.75}, {0.7, 0.9, 0.35},
+}
+
+-- a plain number for a scale: "1,234", "2.5", "0.25"
+local function numberText(v)
+	if v == nil then return "-" end
+	local a = math.abs(v)
+	if a >= 1000 or math.abs(v - X.Round(v)) < 0.005 then return X.Num(X.Round(v)) end
+	if a >= 10 then return string.format("%.1f", v) end
+	return (string.format("%.2f", v):gsub("0$", ""))
+end
+local function percentText(v)
+	if v == nil then return "-" end
+	if math.abs(v) >= 1000 or math.abs(v - X.Round(v)) < 0.05 then return X.Num(X.Round(v)) .. "%" end
+	return string.format("%.1f", v) .. "%"
+end
+K.GraphNumber, K.GraphPercent = numberText, percentText
+-- the label formatter of a SetSeries call and the smallest scale step it allows
+local function formatOf(opts)
+	local fine = opts.labels == "number" or opts.labels == "percent"
+	if opts.format then return opts.format, fine and 0.01 or 1 end
+	if opts.labels == "number" then return numberText, 0.01 end
+	if opts.labels == "percent" then return percentText, 0.01 end
+	return function(v) return X.Money(v, true) end, 1
 end
 
 local function dayText(t)
@@ -130,6 +176,11 @@ function K.Graph(parent, w, h)
 		xlab[i] = fs
 	end
 	local levlab = {} -- names of the flat lines (made when needed)
+	-- the legend (several lines): a dark box, a colour square and a name per line (made when needed)
+	local legend = {}
+	local legendBg = plot:CreateTexture(nil, "OVERLAY", nil, 5)
+	legendBg:SetColorTexture(0, 0, 0, 0.55)
+	legendBg:Hide()
 	g.empty = K.Label(plot, "", "GameFontDisableSmall", "CENTER")
 	g.empty:SetPoint("CENTER")
 	g.empty:SetWidth(pw - 20)
@@ -322,7 +373,7 @@ function K.Graph(parent, w, h)
 
 	-- the money labels of the left scale (with grid lines) or of the right one (inside the graph, in the line's colour)
 	local function scaleLabels(vlo, vhi, yOf, right, color)
-		local step = niceStep(vlo, vhi, 4)
+		local step = niceStep(vlo, vhi, 4, data.minStep)
 		local v = math.ceil(vlo / step) * step
 		local i = 0
 		while v <= vhi and i < GRIDS do
@@ -358,9 +409,12 @@ function K.Graph(parent, w, h)
 		for i = 1, GRIDS do grid[i]:Hide() ylab[i]:Hide() rlab[i]:Hide() end
 		for i = 1, 5 do xlab[i]:Hide() end
 		for _, fs in ipairs(levlab) do fs:Hide() end
+		for _, e in ipairs(legend) do e.sw:Hide() e.fs:Hide() end
+		legendBg:Hide()
 		nLines, nDots, nBars, nSpots = 0, 0, 0, 0
-		data = {series = {}, marks = {}, trades = {}, format = opts.format or function(v) return X.Money(v, true) end,
-			barsLabel = opts.barsLabel, span = 0}
+		local fmt, minStep = formatOf(opts)
+		data = {series = {}, marks = {}, trades = {}, format = fmt, minStep = minStep, labels = opts.labels or "money",
+			barsLabel = opts.barsLabel, span = 0, legend = {}}
 
 		-- thin out, find the time and value ranges (lo / hi: left scale, rlo / rhi: right scale)
 		local t0, t1, lo, hi, rlo, rhi
@@ -368,11 +422,12 @@ function K.Graph(parent, w, h)
 			if not t0 or t < t0 then t0 = t end
 			if not t1 or t > t1 then t1 = t end
 		end
-		for _, s in ipairs(series) do
+		for i, s in ipairs(series) do
 			local pts = thin(sorted(s.points or {}), MAXPTS)
 			if #pts > 0 then
 				local right = s.right and true or false
-				data.series[#data.series + 1] = {pts = pts, color = s.color or {1, 1, 1}, width = s.width or 2, label = s.label, right = right}
+				local color = s.color or K.GRAPH_COLORS[(i - 1) % #K.GRAPH_COLORS + 1]
+				data.series[#data.series + 1] = {pts = pts, color = color, width = s.width or 2, label = s.label, right = right}
 				for _, p in ipairs(pts) do
 					time(p[1])
 					local v = p[2]
@@ -534,6 +589,52 @@ function K.Graph(parent, w, h)
 			end
 		end
 		table.sort(data.marks, function(a, b) return a.t < b.t end)
+
+		-- the legend: a colour square and the name of each line, in rows from the top corner
+		if opts.legend then
+			local onRight = opts.legend == "TOPRIGHT"
+			local x, y, rowH, widest = 6, -4, 13, 0
+			local n = 0
+			for _, s in ipairs(data.series) do
+				if s.label and s.label ~= "" then
+					n = n + 1
+					local e = legend[n]
+					if not e then
+						e = {sw = plot:CreateTexture(nil, "OVERLAY", nil, 6), fs = K.Label(plot, "", "GameFontHighlightSmall")}
+						e.sw:SetSize(8, 8)
+						e.fs:SetWordWrap(false)
+						legend[n] = e
+					end
+					local c = s.color
+					e.sw:SetColorTexture(c[1], c[2], c[3], 1)
+					e.fs:SetText(s.label)
+					local tw = math.min(220, (e.fs:GetStringWidth() or 60) + 2)
+					e.fs:SetWidth(tw)
+					if x > 6 and x + 12 + tw > pw - 6 then x, y = 6, y - rowH end -- the next row
+					e.x, e.y, e.w = x, y, 12 + tw
+					x = x + 12 + tw + 10
+					if x > widest then widest = x end
+					data.legend[#data.legend + 1] = {label = s.label, color = c}
+				end
+			end
+			local boxW, boxH = widest - 4, -y + rowH - 2
+			for i = 1, n do
+				local e = legend[i]
+				local ex = onRight and (pw - boxW - 4 + e.x - 4) or e.x
+				e.sw:ClearAllPoints()
+				e.sw:SetPoint("TOPLEFT", plot, "TOPLEFT", ex, e.y - 2)
+				e.fs:ClearAllPoints()
+				e.fs:SetPoint("TOPLEFT", plot, "TOPLEFT", ex + 12, e.y)
+				e.sw:Show()
+				e.fs:Show()
+			end
+			if n > 0 then
+				legendBg:ClearAllPoints()
+				legendBg:SetPoint("TOPLEFT", plot, "TOPLEFT", onRight and (pw - boxW - 6) or 2, -2)
+				legendBg:SetSize(boxW, boxH)
+				legendBg:Show()
+			end
+		end
 	end
 
 	return g

@@ -1,5 +1,5 @@
--- XNAH test scenes, part 31: the three read-only views of the big window - Market overview (UIMarket.lua), Your gold
--- (UILedger.lua + UIWealth.lua) and Opportunities (UIOpps.lua). Each builds with an empty database and with data,
+-- XNAH test scenes, part 31: the read-only views of the big window - Market overview (UIMarket.lua), Your gold
+-- (UILedger.lua + UIWealth.lua) and Trends (UITrends.lua, its pages in other files). Each builds with an empty database and with data,
 -- filters and sorting work, clicking a row opens the item (UI.ShowItem), no button in them buys, posts or cancels, and
 -- a big data set is worked out a little per frame.
 
@@ -57,11 +57,12 @@ local function spyShow(X, fn)
 	return got
 end
 
-T.scene("views: market, your gold and opportunities with an empty database", function()
+T.scene("views: market, your gold and trends with an empty database", function()
 	local X = W.start()
 	T.check("market: view order", X.UI.tabs.market.n, 2)
 	T.check("your gold: view order and title", X.UI.tabs.gold.n .. " " .. X.UI.tabs.gold.title, "3 Your gold")
-	T.check("opportunities: view order and title", X.UI.tabs.opps.n .. " " .. X.UI.tabs.opps.title, "4 Opportunities")
+	T.check("trends: view order and title", X.UI.tabs.trends.n .. " " .. X.UI.tabs.trends.title, "4 Trends")
+	T.check("no opportunities view", X.UI.tabs.opps, nil)
 	local p = open(X, "market")
 	local text = W.screen(p)
 	T.ok("market: tiles", text:find("Items known", 1, true) ~= nil and text:find("Short supply", 1, true) ~= nil, text)
@@ -81,10 +82,8 @@ T.scene("views: market, your gold and opportunities with an empty database", fun
 		T.ok("gold: " .. part, W.screen(p) ~= "")
 	end
 	T.ok("gold: empty graph says why", W.screen(p):find("No sales or purchases", 1, true) ~= nil)
-	p = open(X, "opps")
-	text = W.screen(p)
-	T.ok("opportunities: explains what fills it", text:find("Do a full scan at the auction house", 1, true) ~= nil, text)
-	T.check("opportunities: no rows", #X.UI.OppsRows(), 0)
+	p = open(X, "trends")
+	T.ok("trends: shows something", W.screen(p) ~= "")
 end)
 
 local function marketPart(X)
@@ -167,99 +166,6 @@ local function marketPart(X)
 	X.K.CloseMenu()
 end
 
-local function oppsPart(X)
-	-- a reset chance and a few-sellers item (market shape data, as a full scan and a search leave them)
-	local some = tostring(W.market.byKind.stack[2])
-	X.Realm().shape = X.Realm().shape or {}
-	X.Realm().shape[some] = {t = X.Now(), reset = {u = 10, c = 1000, p = 5000}, sellers = 2, top = 0.7, ts = X.Now()}
-	local p = open(X, "opps")
-	local rows = X.UI.OppsRows()
-	T.ok("found some", #rows > 0, #rows)
-	sameSet("far under usual = X.Deals", keySet(rows, "deal"), keySet(X.Deals()))
-	sameSet("under vendor price = X.BelowVendor", keySet(rows, "below"), keySet(X.BelowVendor()))
-	sameSet("vendor flips = X.VendorFlips", keySet(rows, "vflip"), keySet(X.VendorFlips()))
-	sameSet("under disenchant = X.UnderDE", keySet(rows, "de"), keySet(X.UnderDE()))
-	sameSet("resets = X.Resets", keySet(rows, "reset"), keySet(X.Resets()))
-	T.ok("planted deals, vendor flips, under vendor", select(2, keySet(rows, "deal")) > 0 and select(2, keySet(rows, "vflip")) > 0 and
-		select(2, keySet(rows, "below")) > 0)
-	T.ok("reset row", keySet(rows, "reset")[some] == true)
-	T.ok("few sellers row", keySet(rows, "few")[some] == true)
-	local tbl = p.tbl
-	-- best first: the most profit of one
-	T.check("sorted by profit", tbl.sortCol, 5)
-	for i = 2, #tbl.items do T.ok("most profit first", (tbl.items[i - 1].profit or -1e12) >= (tbl.items[i].profit or -1e12)) end
-	local deal = keySet(rows, "deal")
-	for _, r in ipairs(rows) do
-		if r.kind == "deal" then
-			T.ok("deal: profit = sells for - buy at", math.abs(r.profit - (r.sell - r.buy)) < 1)
-			T.ok("deal: why", r.why:find("Far under usual", 1, true) ~= nil)
-			T.ok("deal: price age", r.t ~= nil)
-			break
-		end
-	end
-	-- a kind chip shows only that kind; again = all
-	W.click("Vendor flip", p)
-	W.advance(0.3)
-	local only = true
-	for _, r in ipairs(tbl.items) do if r.kind ~= "vflip" then only = false end end
-	T.ok("vendor flip chip: only vendor flips", only and #tbl.items > 0)
-	T.check("chip kept", X.S().oppsFilter.kind, "vflip")
-	W.click("Vendor flip", p)
-	W.advance(0.3)
-	T.check("again: all", #tbl.items, #rows)
-	-- hide slow sellers: nothing known under 1 a day stays
-	X.SaleRate = (function(old) return function(key) if deal[key] then return 0.2, 5 end return old(key) end end)(X.SaleRate)
-	X.Fire("XNAH_PRICES")
-	X.UI.Refresh(true)
-	W.advance(3)
-	X.UI.Refresh(true)
-	W.click("Hide slow sellers", p)
-	W.advance(0.3)
-	local slow = 0
-	for _, r in ipairs(tbl.items) do if r.rate and r.rate < 1 then slow = slow + 1 end end
-	T.check("hide slow sellers: none slow", slow, 0)
-	T.ok("hide slow sellers: fewer rows", #tbl.items < #X.UI.OppsRows())
-	W.click("Hide slow sellers", p)
-	W.advance(0.3)
-	-- profit filter (set as the menu does) and search
-	X.S().oppsFilter.minProfit = 10000
-	X.S().oppsFilter.kind = nil
-	X.UI.Select("market")
-	X.UI.Select("opps")
-	W.advance(0.3)
-	local under = 0
-	for _, r in ipairs(tbl.items) do if (r.profit or 0) < 10000 then under = under + 1 end end
-	T.ok("profit filter: all 1g or more", under == 0 and W.screen(p):find("Profit at least: 1g", 1, true) ~= nil)
-	X.S().oppsFilter.minProfit = nil
-	X.UI.Refresh(true)
-	W.type(p.search, "under vendor", false)
-	W.advance(0.6)
-	only = #tbl.items > 0
-	for _, r in ipairs(tbl.items) do if r.kind ~= "below" then only = false end end
-	T.ok("search: by the why text", only)
-	W.type(p.search, "", false)
-	W.advance(0.6)
-	-- click = the item
-	local got = spyShow(X, function() tbl.rows[1]:Click("LeftButton") end)
-	T.check("click: UI.ShowItem", got[1], tbl.items[1].key)
-	-- new prices while shown: worked out again (after a second)
-	local fresh = "70301"
-	for d = 5, 1, -1 do X.Record(fresh, X.Now() - d * 86400, 100000, 100000, 20, 5, "Shiny Test Gem", 2) end
-	X.Record(fresh, X.Now(), 20000, 100000, 20, 5, "Shiny Test Gem", 2)
-	X.Fire("XNAH_PRICES")
-	W.advance(0.5)
-	X.UI.Refresh(true)
-	W.advance(4)
-	T.ok("new prices: the new deal appears", keySet(X.UI.OppsRows(), "deal")[fresh] == true)
-	-- a changed setting: worked out again with it
-	X.S().dealPct = 10
-	X.UI.Refresh(true)
-	W.advance(4)
-	sameSet("stricter setting: the deals X.Deals finds now", keySet(X.UI.OppsRows(), "deal"), keySet(X.Deals()))
-	T.ok("stricter setting: fewer deals", select(2, keySet(X.UI.OppsRows(), "deal")) < select(2, keySet(rows, "deal")))
-	X.S().dealPct = 60
-end
-
 local H = 3600
 local function add(X, list, t, key, count, money, cut)
 	table.insert(X.Ledger()[list], {t = t, key = key, name = X.ItemName(key) or key, count = count, money = money, cut = cut, char = "Xn Ascalon"})
@@ -316,7 +222,7 @@ local function noActionPart(X)
 	local words = {}
 	local clicked = 0
 	spyShow(X, function()
-		for _, key in ipairs({"market", "gold", "opps"}) do
+		for _, key in ipairs({"market", "gold", "trends"}) do
 			local p = open(X, key)
 			local parts = key == "gold" and {"Overview", "Best sellers", "Recent", "Characters"} or {false}
 			for _, part in ipairs(parts) do
@@ -348,15 +254,14 @@ local function noActionPart(X)
 	T.check("no button named like an action", table.concat(words, ", "), "")
 end
 
-T.scene("views: market overview, opportunities and no action buttons with a 10-day market", function()
+T.scene("views: market overview and no action buttons with a 10-day market", function()
 	local X = W.start()
 	tenDays(X)
 	marketPart(X)
-	oppsPart(X)
 	noActionPart(X)
 end)
 
--- a big realm: the market rows and the opportunities are worked out a few hundred items per frame
+-- a big realm: the market rows are worked out a few hundred items per frame
 T.scene("views: a big data set is worked out in slices", function()
 	local X = W.start()
 	local now = X.Now()
@@ -379,13 +284,4 @@ T.scene("views: a big data set is worked out in slices", function()
 	T.ok("market: done", not X.JobRunning("market rows"))
 	T.check("market: every item", W.plain(X.UI.tabs.market.panel.tiles[1].value:GetText()), X.Num(N))
 	T.check("market: at most 2000 rows shown", #X.UI.tabs.market.panel.tbl.items, 2000)
-	X.UI.Open("opps")
-	T.ok("opportunities: still working after the first frame", X.JobRunning("opportunities"))
-	W.advance(W.FRAME * 3)
-	T.ok("opportunities: still working after 3 frames", X.JobRunning("opportunities"))
-	W.advance(10)
-	X.UI.Refresh(true)
-	T.ok("opportunities: done", not X.JobRunning("opportunities"))
-	T.check("opportunities: the 12 deals", select(2, keySet(X.UI.OppsRows(), "deal")), 12)
-	sameSet("opportunities: = X.Deals", keySet(X.UI.OppsRows(), "deal"), keySet(X.Deals()))
 end)

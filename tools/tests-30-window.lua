@@ -129,7 +129,7 @@ T.scene("window: views, the header, the scan line and buttons, Find", function()
 	X.UI.Open()
 	local f = X.UI.Frame()
 	T.check("starts on Items", X.UI.current, "items")
-	local views = {Items = "items", Market = "market", ["Your gold"] = "gold", Opportunities = "opps"}
+	local views = {Items = "items", Market = "market", ["Your gold"] = "gold", Trends = "trends"}
 	for title, key in pairs(views) do
 		W.click(title, f)
 		T.check("view button " .. title, X.UI.current, key)
@@ -140,7 +140,7 @@ T.scene("window: views, the header, the scan line and buttons, Find", function()
 	gear:Click()
 	T.check("gear: Settings", X.UI.current, "scan")
 	-- old names
-	for old, new in pairs({item = "items", trends = "market", ledger = "gold", wealth = "gold", settings = "scan"}) do
+	for old, new in pairs({item = "items", ledger = "gold", wealth = "gold", settings = "scan", opps = "items", deals = "items"}) do
 		X.UI.Open(old)
 		T.check("old name " .. old, X.UI.current, new)
 	end
@@ -469,29 +469,19 @@ T.scene("buy cheapest: nothing restricted outside a click, nothing errors with a
 	T.ok("still open", X.UI.Frame():IsShown())
 end)
 
-T.scene("window: Settings - the two new settings and the deal settings", function()
+T.scene("window: Settings - the two new settings, no deal settings", function()
 	local X = W.start()
 	X.UI.Open("scan")
 	local p = X.UI.tabs.scan.panel
 	local screen = W.screen(p)
-	for _, t in ipairs({"Open with the auction house", "Extra columns in the auction house lists", "Opportunities",
-		"Far under usual: at most", "Least profit after the cut"}) do
+	for _, t in ipairs({"Open with the auction house", "Extra columns in the auction house lists"}) do
 		T.ok("settings: " .. t, has(screen, t), screen)
+	end
+	for _, t in ipairs({"Opportunities", "Far under usual: at most", "Least profit after the cut"}) do
+		T.ok("settings: no " .. t, not has(screen, t), screen)
 	end
 	T.ok("no bar setting any more", not has(screen, "XNAH bar"))
 	W.click("Open with the auction house", p)
 	T.check("open with the auction house: off", X.S().openWithAH, false)
-	-- the deal settings: typed, kept on leaving the box
-	local boxes = {}
-	W.walk(p, function(f) if f.kind == "EditBox" and f:IsVisible() then boxes[#boxes + 1] = f end end)
-	local pctBox, moneyBox
-	for _, e in ipairs(boxes) do
-		if e.text == tostring(X.S().dealPct) then pctBox = e end
-		if e.text == X.MoneyPlain(X.S().dealMinProfit) then moneyBox = e end
-	end
-	T.ok("the boxes are there", pctBox ~= nil and moneyBox ~= nil)
-	if pctBox then W.type(pctBox, "45", false) W.step(pctBox.scripts.OnEditFocusLost, pctBox) end
-	if moneyBox then W.type(moneyBox, "25s", false) W.step(moneyBox.scripts.OnEditFocusLost, moneyBox) end
-	T.check("far under usual: 45%", X.S().dealPct, 45)
-	T.check("least profit: 25s", X.S().dealMinProfit, 2500)
+	T.check("no deal setting", X.S().dealPct, nil)
 end)

@@ -1,5 +1,5 @@
--- Looking for money: deals (listed far under their usual price), movers (prices and supply that changed), and the
--- numbers for one item that tell whether it is worth trading.
+-- Looking for money: the usual price, movers (prices and supply that changed), and the numbers for one item that tell
+-- whether it is worth trading.
 local ADDON, X = ...
 
 -- the usual price of an item, for comparing a listing against: 30-day average, else 7-day, else 3-day
@@ -8,32 +8,6 @@ function X.Usual(key)
 	if not it then return nil end
 	local st = X.Stats(it)
 	return st.avg30 or st.avg7 or st.avg3, st
-end
-
--- [[ deals ]] listed now at or under dealPct % of the usual price, with at least dealMinProfit profit when sold at the
--- usual price (after the cut). {key, buy, usual, sell, profit, pct (of usual), qty, days}
-function X.Deals(opts)
-	opts = opts or {}
-	local S = X.S()
-	local maxPct = opts.pct or S.dealPct
-	local out = {}
-	for key, it in pairs(X.Items()) do
-		local cur = it.cur
-		if cur and cur.min and (cur.qty or 0) > 0 and X.Fresh(it) and X.BuyIdea(key, it) then
-			local usual, st = X.Usual(key)
-			if usual and st.days >= S.minSamples then
-				local pct = cur.min / usual * 100
-				local sell = X.AfterCut(usual)
-				local profit = sell - cur.min
-				if pct <= maxPct and profit >= (opts.minProfit or S.dealMinProfit) then
-					out[#out + 1] = {key = key, buy = cur.min, usual = usual, sell = sell, profit = profit, pct = pct, qty = cur.qty,
-						days = st.days, vol = st.vol}
-				end
-			end
-		end
-	end
-	table.sort(out, function(a, b) return a.profit > b.profit end)
-	return out
 end
 
 -- [[ movers ]] kind = "up" (price rising), "down" (falling), "short" (supply far under its 7-day average while the

@@ -137,12 +137,10 @@ T.scene("dblclick: a changed game window never throws an error; hints; other lis
 		table.concat(lines, " / "))
 	W.unhover(row)
 	T.ok("Items view hint", has(panel.hint.text, "Double-click an item on the left"), panel.hint.text)
-	-- the Market and Opportunities lists: no double-click (a click there moves to the Items view)
+	-- the Market list: no double-click (a click there moves to the Items view)
 	X.UI.Open("market")
 	W.advance(0.3)
-	X.UI.Open("opps")
-	W.advance(0.3)
-	for _, view in ipairs({"market", "opps"}) do
+	for _, view in ipairs({"market"}) do
 		local tbl = X.UI.tabs[view].panel.tbl
 		local any = false
 		for _, r in ipairs(tbl and tbl.rows or {}) do if r.scripts.OnDoubleClick then any = true end end

@@ -1,7 +1,7 @@
--- The XNAH window: one big window with views (Items, Market, Your gold, Opportunities; Settings from the gear), chosen
+-- The XNAH window: one big window with views (Items, Market, Your gold, Trends; Settings from the gear), chosen
 -- with the buttons in its header. It docks beside the game's auction house window when that opens, and /xnah, the
 -- minimap button or the key binding open it anywhere. Also here: shared pieces for the views (a sortable table, item
--- cells, the right-click item menu, a yes / no question).
+-- cells, the right-click item menu, a yes / no question, pages inside a view picked with a row of small buttons).
 -- Each view lives in its own file and registers itself with UI.AddTab; this file is loaded before them.
 local ADDON, X = ...
 local K = X.K
@@ -30,7 +30,8 @@ function UI.AddTab(key, title, build, refresh, order, hidden)
 end
 
 -- views that were joined into others or renamed: old names still open the right one
-UI.ALIASES = {item = "items", trends = "market", ledger = "gold", wealth = "gold", settings = "scan", deals = "opps"}
+-- (the Opportunities view "opps" was taken out after v0.9.0: a saved "opps" opens the first view, Items)
+UI.ALIASES = {item = "items", ledger = "gold", wealth = "gold", settings = "scan"}
 -- and the part of the new view they open (a setting the view reads when it is shown)
 UI.ALIAS_VIEWS = {ledger = {"goldView", "items"}, wealth = {"goldView", "chars"}}
 
@@ -367,6 +368,85 @@ function UI.Open(tab)
 	selectTab(tab or UI.current or X.S().tab or "items")
 end
 X.Toggle = function() UI.Toggle() end
+
+-- [[ pages inside a view ]] Your gold, Items (the item on the right) and Trends show one of several pages, picked with
+-- a row of small buttons. Other files add pages to them at load time (UI.AddGoldPage, UI.AddItemPage, UI.AddTrendsPage
+-- call these):
+--   set = UI.PageSet()                                       an empty list of pages
+--   UI.AddPageTo(set, key, title, build, refresh, order, help) adds (or replaces) one; lowest order first, same order:
+--                                                            the one added first. help = a grey line about the page.
+--   bar = UI.PageBar(parent, set, opts)  the buttons and one frame per page, each page built at once (build(frame, w, h)).
+--     opts = {x, y = the top left of the buttons in parent, px, py, pw, ph = the page area (frames are pw x ph at
+--     px, py), name = the view's key, shared = {[pageKey] = true} pages whose tables keep the view's own numbering of
+--     remembered sorting ("gold:1", ...; other pages number theirs as "view/page:1"), pick = fn(key) when a button is
+--     clicked}. bar.buttons[key], bar.frames[key], bar.right = x just right of the last button.
+--   page = UI.ShowPage(bar, key)  shows that page (the first one when the key is unknown) and returns it
+--     ({key, title, build, refresh, n, help}); nil when there are none.
+function UI.PageSet() return {} end
+function UI.AddPageTo(set, key, title, build, refresh, order, help)
+	for i, pg in ipairs(set) do
+		if pg.key == key then table.remove(set, i) break end
+	end
+	set.seq = (set.seq or 0) + 1
+	set[#set + 1] = {key = key, title = title, build = build, refresh = refresh, n = order or (#set + 1), seq = set.seq, help = help}
+	table.sort(set, function(a, b)
+		if a.n ~= b.n then return a.n < b.n end
+		return a.seq < b.seq
+	end)
+end
+function UI.PageBar(parent, set, opts)
+	local bar = {set = set, buttons = {}, frames = {}, right = opts.x or 0}
+	local x = opts.x or 0
+	local building, count = UI.building, UI.tableCount
+	for _, pg in ipairs(set) do
+		local key = pg.key
+		local w = math.max(92, #(pg.title or "") * 7 + 16)
+		local b = K.Flat(parent, w, 20)
+		b:SetPoint("TOPLEFT", x, opts.y or 0)
+		b:SetLabel(pg.title)
+		b.label:SetJustifyH("CENTER")
+		b:SetScript("OnClick", function() if opts.pick then opts.pick(key) end end)
+		if pg.help then K.Tooltip(b, pg.title, pg.help) end
+		bar.buttons[key] = b
+		x = x + w + 4
+		local f = CreateFrame("Frame", nil, parent)
+		f:SetPoint("TOPLEFT", opts.px or 0, opts.py or 0)
+		f:SetSize(opts.pw, opts.ph)
+		f:Hide()
+		bar.frames[key] = f
+		-- the tables of the page remember their sorting under their own name (except the view's older pages)
+		if opts.name and not (opts.shared and opts.shared[key]) then
+			UI.building, UI.tableCount = opts.name .. "/" .. key, 0
+		end
+		if pg.build then
+			local ok, err = pcall(pg.build, f, opts.pw, opts.ph)
+			if not ok then X.OnError(err) end
+		end
+		if opts.name and not (opts.shared and opts.shared[key]) then
+			UI.building, UI.tableCount = building, count
+		else
+			count = UI.tableCount
+		end
+	end
+	bar.right = x
+	return bar
+end
+function UI.ShowPage(bar, key)
+	local set = bar.set
+	local page
+	for _, pg in ipairs(set) do if pg.key == key then page = pg end end
+	page = page or set[1]
+	for k, b in pairs(bar.buttons) do b:SetSelected(page ~= nil and k == page.key) end
+	for k, f in pairs(bar.frames) do f:SetShown(page ~= nil and k == page.key) end
+	return page
+end
+-- runs a page's refresh (errors are reported, never break the view); returns what it returned
+function UI.RefreshPage(bar, page, ...)
+	if not (page and page.refresh and bar.frames[page.key]) then return nil end
+	local ok, res = pcall(page.refresh, bar.frames[page.key], ...)
+	if not ok then X.OnError(res) return nil end
+	return res
+end
 
 -- [[ shared bits for the views ]]
 -- shows an item ("2589" or "15210:-19") on the Items view (also an item that is not tracked)

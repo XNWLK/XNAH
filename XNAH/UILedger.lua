@@ -1,13 +1,15 @@
 -- Your gold (a view of the XNAH window): read-only numbers about your own trading - from the auction house mails in
 -- your mailbox (the sales ledger, Ledger.lua) and what your characters own (Inventory.lua). No buttons that do things.
 -- On top, always: number tiles (gold today, gold this week, profit this week, profit of the last 4 weeks, gold per hour
--- at the auction house, net worth and its change this week). Under them small chips pick the part shown:
+-- at the auction house, net worth and its change this week). Under them small buttons pick the page shown (other files
+-- add pages with UI.AddGoldPage, below):
 --   Overview      income and spent per day (30 days, a graph), profit per week (12 weeks, bars), totals for 7 days /
 --                 30 days / all, and your flips (items you bought and later sold: best first, worst last)
 --   Best sellers  what you sold and bought of each item (sold, income, average price, sell-through)
 --   Recent        every auction house mail read, newest first (sales, purchases, expired, cancelled)
 --   Characters    gold and items of your characters, net worth over time, your bags (UIWealth.lua)
--- Layout (UI.W x UI.H, read when the view is built): tiles 46 high; chips at y -54; the part under them from y -TOP.
+-- Layout (UI.W x UI.H, read when the view is built): tiles 46 high; page buttons at y -54; the page under them from
+-- y -TOP (1080 x 520).
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -35,7 +37,6 @@ local VIEWS = {
 	{"overview", "Overview", "Profit = your sales after the auction house cut, minus your purchases."},
 	{"items", "Best sellers", "What you sold and bought of each item (from the auction house mails)."},
 	{"recent", "Recent", "Every auction house mail XNAH read, newest first."},
-	{"chars", "Characters", "Gold and items of your characters on this realm (both factions)."},
 }
 local TILES = {
 	{"Gold today", "How much the gold of all your characters here changed today (from the first time XNAH saw it " ..
@@ -240,7 +241,7 @@ local function weekBars(parent, w, h)
 end
 
 -- [[ the overview ]] graphs row (income and spent per day | profit per week), then totals (left) and flips (right)
-local function buildOverview(v, W, H)
+local function buildOverview(v, W, h)
 	local half = math.floor((W - 10) / 2)
 	local dt = K.Label(v, "Income and spent per day " .. GREY .. "(last " .. DAYS .. " days; " .. GREEN .. "income|r" .. GREY ..
 		" after the cut, " .. RED .. "spent|r" .. GREY .. ")|r", "GameFontNormalSmall")
@@ -291,7 +292,7 @@ local function buildOverview(v, W, H)
 	ft:SetWidth(fw)
 	ft:SetWordWrap(false)
 	local ty = y + 34
-	v.flips = K.Table(v, fw, math.max(60, H - TOP - ty), fit(FLIP_COLS, fw), onRow)
+	v.flips = K.Table(v, fw, math.max(60, h - ty), fit(FLIP_COLS, fw), onRow)
 	v.flips:SetPoint("TOPLEFT", fx, -ty)
 	v.flips:SortBy(5, true)
 end
@@ -344,78 +345,81 @@ local function refreshTiles(p)
 	UI.SetTile(t[6], n.worth and M(n.worth) or nil, change)
 end
 
+-- [[ the pages ]] UI.AddGoldPage(key, title, build(page, w, h), refresh(page) -> text, order, help)
+-- Adds a page to the Your gold view (call it when the file loads). The page is a frame of the area under the tiles and
+-- the page buttons: w x h = 1080 x 520 (UI.W x UI.H - 80). build(page, w, h) runs once when the view is first opened;
+-- refresh(page) runs whenever the view refreshes while the page is shown (picked, new mails, new prices ...) and may
+-- return a short text for the top right ("12 items"). help = the grey line shown next to the buttons. Pages here:
+-- overview 1, items 2 ("Best sellers"), recent 3, chars 4 ("Characters", UIWealth.lua); new ones from 5 on.
+local PAGES = UI.PageSet()
+function UI.AddGoldPage(key, title, build, refresh, order, help)
+	UI.AddPageTo(PAGES, key, title, build, refresh, order, help)
+end
+UI.GOLD_PAGES = PAGES
+-- the pages the view had before others could add theirs: their tables keep remembering their sorting as before
+local OLD_PAGES = {overview = true, items = true, recent = true, chars = true}
+
+local EMPTY = "Nothing yet. Open your mailbox: XNAH reads the auction house mails there (sold, bought, expired, cancelled)."
+UI.AddGoldPage("overview", VIEWS[1][2], function(f, w, h) buildOverview(f, w, h) end, function(f)
+	refreshOverview(f)
+end, 1, VIEWS[1][3])
+UI.AddGoldPage("items", VIEWS[2][2], function(f, w, h)
+	-- the lists: the headers sit just above them
+	f.tbl = K.Table(f, w, h - 20, fit(ITEM_COLS, w), onRow)
+	f.tbl:SetPoint("TOPLEFT", 0, -20)
+	f.tbl:SortBy(3, true) -- income, most first
+end, function(f)
+	local rows = X.LedgerByItem()
+	f.tbl:SetRows(rows, EMPTY)
+	return X.Num(#rows) .. (#rows == 1 and " item" or " items")
+end, 2, VIEWS[2][3])
+UI.AddGoldPage("recent", VIEWS[3][2], function(f, w, h)
+	f.tbl = K.Table(f, w, h - 20, fit(RECENT_COLS, w), onRow)
+	f.tbl:SetPoint("TOPLEFT", 0, -20)
+	f.tbl:SortBy(2, true) -- newest first
+end, function(f)
+	local rows = X.LedgerRecent(500)
+	f.tbl:SetRows(rows, EMPTY)
+	return X.Num(#rows) .. (#rows == 1 and " entry" or " entries") .. (#rows >= 500 and " (latest)" or "")
+end, 3, VIEWS[3][3])
+
 -- [[ the view ]]
-local function currentView()
+local function currentKey()
 	local S = X.S()
 	-- an older page asked for the list of recent mails (it set the old setting): open that once
 	if S.ledgerView == "recent" then S.goldView = "recent" end
 	S.ledgerView = nil
-	for _, view in ipairs(VIEWS) do if view[1] == S.goldView then return view end end
-	S.goldView = "overview"
-	return VIEWS[1]
+	for _, pg in ipairs(PAGES) do if pg.key == S.goldView then return pg.key end end
+	S.goldView = PAGES[1] and PAGES[1].key or "overview"
+	return S.goldView
 end
 
 local function refresh(p)
-	local view = currentView()
-	for key, b in pairs(p.viewButtons) do b:SetSelected(key == view[1]) end
-	for key, f in pairs(p.views) do f:SetShown(key == view[1]) end
-	p.help:SetText(GREY .. view[3] .. "|r")
+	local page = UI.ShowPage(p.bar, currentKey())
+	p.help:SetText(page and page.help and (GREY .. page.help .. "|r") or "")
 	p.count:SetText("")
 	refreshTiles(p)
-	local emptyText = "Nothing yet. Open your mailbox: XNAH reads the auction house mails there (sold, bought, expired, cancelled)."
-	if view[1] == "overview" then
-		refreshOverview(p.views.overview)
-	elseif view[1] == "items" then
-		local rows = X.LedgerByItem()
-		p.views.items.tbl:SetRows(rows, emptyText)
-		p.count:SetText(X.Num(#rows) .. (#rows == 1 and " item" or " items"))
-	elseif view[1] == "recent" then
-		local rows = X.LedgerRecent(500)
-		p.views.recent.tbl:SetRows(rows, emptyText)
-		p.count:SetText(X.Num(#rows) .. (#rows == 1 and " entry" or " entries") .. (#rows >= 500 and " (latest)" or ""))
-	elseif view[1] == "chars" and UI.GoldChars then
-		UI.GoldChars.refresh(p.views.chars)
-	end
+	local text = UI.RefreshPage(p.bar, page)
+	p.count:SetText(type(text) == "string" and text or "")
 end
 
 local function build(p)
 	local W, H = UI.W, UI.H
 	p.tiles = UI.NumberTiles(p, W, TILES, 0)
-	p.viewButtons, p.views = {}, {}
-	local x, cy = 0, -54
-	for _, view in ipairs(VIEWS) do
-		local key = view[1]
-		local b = K.Flat(p, 92, 20)
-		b:SetPoint("TOPLEFT", x, cy)
-		b:SetLabel(view[2])
-		b.label:SetJustifyH("CENTER")
-		b:SetScript("OnClick", function() X.S().goldView = key refresh(p) end)
-		p.viewButtons[key] = b
-		x = x + 96
-		local f = CreateFrame("Frame", nil, p)
-		f:SetPoint("TOPLEFT", 0, -TOP)
-		f:SetSize(W, H - TOP)
-		f:Hide()
-		p.views[key] = f
-	end
+	local cy = -54
+	p.bar = UI.PageBar(p, PAGES, {x = 0, y = cy, px = 0, py = -TOP, pw = W, ph = H - TOP, name = "gold", shared = OLD_PAGES,
+		pick = function(key) X.S().goldView = key refresh(p) end})
+	-- p.views[key] = the frame of each page, p.viewButtons[key] = its button
+	p.views, p.viewButtons = p.bar.frames, p.bar.buttons
+	local x = p.bar.right
 	p.help = K.Label(p, "", "GameFontDisableSmall")
 	p.help:SetPoint("TOPLEFT", x + 6, cy - 4)
-	p.help:SetWidth(W - x - 6 - 130)
+	p.help:SetWidth(math.max(40, W - x - 6 - 130))
 	p.help:SetWordWrap(false)
 	p.count = K.Label(p, "", "GameFontDisableSmall", "RIGHT")
 	p.count:SetPoint("TOPRIGHT", 0, cy - 4)
 	p.count:SetWidth(124)
 	p.count:SetWordWrap(false)
-
-	buildOverview(p.views.overview, W, H)
-	-- the lists: the headers sit just above them
-	p.views.items.tbl = K.Table(p.views.items, W, H - TOP - 20, fit(ITEM_COLS, W), onRow)
-	p.views.items.tbl:SetPoint("TOPLEFT", 0, -20)
-	p.views.items.tbl:SortBy(3, true) -- income, most first
-	p.views.recent.tbl = K.Table(p.views.recent, W, H - TOP - 20, fit(RECENT_COLS, W), onRow)
-	p.views.recent.tbl:SetPoint("TOPLEFT", 0, -20)
-	p.views.recent.tbl:SortBy(2, true) -- newest first
-	if UI.GoldChars then UI.GoldChars.build(p.views.chars, W, H - TOP) end
 end
 
 X.On("XNAH_LEDGER", function() UI.Refresh() end)

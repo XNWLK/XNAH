@@ -178,36 +178,6 @@ local function controls(s, binds)
 	return c
 end
 
--- [[ Opportunities ]] what counts as "far under usual" (the Opportunities view)
-local function buildDealSettings(p)
-	local box = K.Panel(p, LEFT_W, 88, {0, 0, 0, 0.25})
-	box:SetPoint("TOPLEFT", 0, -H + 150)
-	local c = controls(box, p.binds)
-	c.title("Opportunities", -8)
-	local function pct(y)
-		local l = K.Label(box, "Far under usual: at most")
-		l:SetPoint("TOPLEFT", 12, y - 4)
-		local e = K.Edit(box, 40)
-		e:SetPoint("LEFT", l, "RIGHT", 10, 0)
-		e:SetScript("OnEditFocusLost", function(self)
-			local v = tonumber((X.Trim(self:GetText()):gsub("%%", "")))
-			if v then
-				v = math.max(1, math.min(100, X.Round(v)))
-				if v ~= X.S().dealPct then
-					X.S().dealPct = v
-					X.Fire("XNAH_PRICES")
-				end
-			end
-			self:SetText(tostring(X.S().dealPct))
-		end)
-		local a = K.Label(box, "|cff999999% of the usual price|r")
-		a:SetPoint("LEFT", e, "RIGHT", 4, 0)
-		p.binds[#p.binds + 1] = function() if not e:HasFocus() then e:SetText(tostring(X.S().dealPct)) end end
-	end
-	pct(-32)
-	c.money(12, -58, "Least profit after the cut:", 90, "dealMinProfit", "(e.g. 10s or 1g 50s)")
-end
-
 -- prices and how long they are kept
 local function buildPriceSettings(s, binds, c)
 	c.title("Settings", -8)
@@ -231,8 +201,8 @@ local function buildPriceSettings(s, binds, c)
 		"Lowest price: the single cheapest listing.\nThe averages: steadier, but slow to follow a change.")
 	binds[#binds + 1] = function() source:SetText(X.SOURCE_NAMES[X.S().source] or tostring(X.S().source)) end
 	c.number(-60, "Auction house cut:", 40, "cut", 0, 50, "%  (what the auction house keeps of a sale)", true, false)
-	c.number(-86, "Prices count as old after", 45, "staleHours", 1, 720, "hours  (shown dimmed, not used for deals)", true, true)
-	c.number(-112, "Deals and trends need", 35, "minSamples", 1, 30, "days of price history per item", true, true)
+	c.number(-86, "Prices count as old after", 45, "staleHours", 1, 720, "hours  (shown dimmed, not used for flips)", true, true)
+	c.number(-112, "Rising, falling and supply need", 35, "minSamples", 1, 30, "days of price history per item", true, true)
 	c.number(-138, "Keep every scan for", 35, "keepScanDays", 1, 60, "days, then one price a day", false, true)
 	c.number(-164, "Keep the daily prices for", 45, "keepDays", 7, 3650, "days", false, true)
 end
@@ -366,7 +336,6 @@ local function build(p)
 	end)
 	del:SetPoint("TOPLEFT", LEFT_W - 160, -H + 40)
 	buildSettings(p)
-	buildDealSettings(p)
 end
 
 -- the Settings view has no view button: the gear in the window's header opens it

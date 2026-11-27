@@ -14,10 +14,9 @@ T.scene("outliers: one crazy scan does not change the usual price", function()
 	T.ok("the usual price stays about 1s 75c", st.avg30 and st.avg30 < 200 and st.avg30 > 150, st.avg30)
 	T.ok("the 30-day high is not 1g", st.high30 and st.high30 < 300, st.high30)
 	for _, p in ipairs(X.History(key, 0)) do T.ok("no 1g point on the graph", (p[3] or p[2]) < 1000, p[3]) end
-	-- no deal from it: 1s 74c is its normal price
-	local deal = false
-	for _, d in ipairs(X.Deals()) do if d.key == key then deal = true end end
-	T.ok("no false deal", not deal)
+	-- not cheap now: 1s 74c is its normal price
+	local usual = X.Usual(key)
+	T.ok("not far under its usual price", usual and X.Items()[key].cur.min / usual > 0.9, usual)
 
 	-- data saved before this fix: a day price already spoiled by the crazy scan
 	local it = X.Items()[key]
@@ -52,10 +51,8 @@ T.scene("never suggest: right-click, grey junk, rarity colours", function()
 	end
 	X.Record("2589", now, 10000, 38000, 50, 5, "Linen Cloth", 1)
 	X.Record("4865", now, 10000, 10000, 1, 1, "Ruined Pelt", 0)
-	local keys = {}
-	for _, d in ipairs(X.Deals()) do keys[d.key] = true end
-	T.ok("Linen Cloth is a deal", keys["2589"])
-	T.ok("the grey item is never a buy idea", not keys["4865"])
+	T.ok("Linen Cloth may be suggested", X.BuyIdea("2589"))
+	T.ok("the grey item is never a buy idea", not X.BuyIdea("4865"))
 	-- right-click: Never suggest buying this
 	X.UI.Open("market")
 	W.advance(0.5)
@@ -65,9 +62,7 @@ T.scene("never suggest: right-click, grey junk, rarity colours", function()
 	for _, m in ipairs(W.menu and W.menu() or {}) do if (m.text or ""):find("Never suggest", 1, true) then entry = m end end
 	if entry then entry.func() else X.SetIgnored("2589", true) end
 	T.ok("ignored", X.Ignored("2589"))
-	keys = {}
-	for _, d in ipairs(X.Deals()) do keys[d.key] = true end
-	T.ok("ignored: no longer a deal", not keys["2589"])
+	T.ok("ignored: no longer a buy idea", not X.BuyIdea("2589"))
 	T.check("listed as never suggested", X.IgnoredList()[1], "2589")
 	X.SetIgnored("2589", false)
 	T.ok("allowed again", not X.Ignored("2589"))

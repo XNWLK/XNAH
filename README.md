@@ -1,7 +1,7 @@
 # XNAH
 
 Auction house numbers for **WoW: Forever**: scan the auction house, keep the price history of every item, and see where
-the gold is - usual prices, trends, cheap listings, vendor flips, crafting costs, your own profit. Type `/xnah`.
+the gold is - usual prices, trends, crafting costs, your own profit. Type `/xnah`.
 
 **XNAH shows the numbers; you buy and sell in the game's own auction house.** One exception: the **Buy cheapest now**
 button on an item.
@@ -37,10 +37,7 @@ how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and th
 - **Your gold**: gold today and this week, profit, gold per hour at the auction house, net worth; income vs spent per
   day (a graph), profit per week, your flips (best and worst), your best sellers, every recent sale and purchase, and
   the gold and items of all your characters.
-- **Opportunities**: one list of chances, best first - **far under the usual price**, **vendor flips**, **under what
-  a vendor pays**, **under disenchant value**, **price resets** (what it costs to buy up everything cheap) and **few
-  sellers** - each with why, buy at, sells for, profit, how many sell a day and the risk. Read-only: you buy in the
-  game's auction house.
+- **Trends**: pages about the whole auction house over time (being built).
 
 Also:
 

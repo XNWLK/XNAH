@@ -163,6 +163,6 @@ local function build(p, W, H)
 	p.bags:SetPoint("TOPLEFT", BX, -top)
 end
 
--- the Your gold view (UILedger.lua) calls these for its Characters part (UI.lua refreshes the shown view on
--- XNAH_INVENTORY): build(frame, width, height), refresh(frame)
-UI.GoldChars = {build = build, refresh = refresh}
+-- the Characters page of the Your gold view (UILedger.lua; UI.lua refreshes the shown view on XNAH_INVENTORY):
+-- build(frame, width, height), refresh(frame)
+UI.AddGoldPage("chars", "Characters", build, refresh, 4, "Gold and items of your characters on this realm (both factions).")

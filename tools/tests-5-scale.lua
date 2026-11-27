@@ -42,12 +42,11 @@ T.scene("scale: 30,000-auction full scan and 20 days of history", function()
 	T.note(string.format("scale: after 20 days (1 full scan a day): %d items, DataSize %d bytes (%.0f a item), saved file %.2f MB",
 		n, bytes, bytes / n, file / 1048576))
 	T.ok("saved file under 10 MB", file < 10 * 1048576, file)
-	-- the statistics of every item (the Trends tab, deals) - and what that does to the saved file
+	-- the statistics of every item (the Market view) - and what that does to the saved file
 	local c2 = os.clock()
-	X.Deals()
 	X.Movers("up")
 	local file2 = W.savedSize()
-	T.note(string.format("scale: deals + movers over %d items: %.1f s here; saved file then %.2f MB (statistics cache saved too: +%.2f MB)",
+	T.note(string.format("scale: movers over %d items: %.1f s here; saved file then %.2f MB (statistics cache saved too: +%.2f MB)",
 		n, os.clock() - c2, file2 / 1048576, (file2 - file) / 1048576))
 	-- a reload with this much data
 	local c3 = os.clock()

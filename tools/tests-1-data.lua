@@ -158,7 +158,7 @@ T.scene("data: the statistics cache is not saved and does not go stale", functio
 	local X = W.start()
 	local now = X.Now()
 	for i = 0, 4 do X.Record("2589", now - (4 - i) * 86400, 100, 100, 10, 1) end
-	X.Deals() -- works out the statistics of every item (so does the Trends tab)
+	X.Movers("up") -- works out the statistics of every item (so does the Market view)
 	T.ok("saved file holds no statistics cache", not W.saveText(W.env.XNAHDB):find("avg3", 1, true))
 	T.ok("3-day average now", X.Stats("2589").avg3 ~= nil)
 	-- 10 days without a scan of it: nothing in the last 3 days any more

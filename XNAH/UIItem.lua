@@ -1,9 +1,11 @@
 -- Items view: your tracked items (left) and everything about one item (right). Read-only analysis plus one button:
 -- "Buy cheapest now" (works while the auction house is open). UI.ShowItem(key) shows an item here, tracked or not.
 -- Layout (1080 x 600): the tracked list 260 wide (an "Add an item" box, a line about the item shown, the list); the
--- analysis 810 wide: header 44 high (icon, name, track star, how many listed; Buy cheapest now on the right), 12 number
--- tiles (2 rows of 6), the price graph (range buttons, graph 182 high, names under it), then 3 boxes 238 high: the
--- auction house now (a price ladder), the best time to sell, crafting and your trades.
+-- analysis 810 wide: header 44 high (icon, name, track star, how many listed; Buy cheapest now on the right - shown on
+-- every page), a row of page buttons at y -46, then the page picked (810 x 532 from y -68).
+-- The pages: other files add theirs with UI.AddItemPage (below). The first, Overview: 12 number tiles (2 rows of 6),
+-- the price graph (range buttons, graph 160 high, names under it), then 3 boxes 240 high: the auction house now (a
+-- price ladder), the best time to sell, crafting and your trades.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -13,10 +15,14 @@ local DAY = 86400
 local LIST_W = 260                -- the tracked list
 local AX = LIST_W + 10            -- where the analysis starts
 local AW = UI.W - AX              -- its width (810)
-local TILE_Y, TILE_H, TILE_GAP = -48, 38, 4
-local RANGE_Y, GRAPH_Y, GRAPH_H, LEGEND_Y = -136, -156, 182, -342
-local BOX_Y = -362
-local BOX_H = UI.H + BOX_Y        -- 238
+local PAGE_BUTTONS_Y = -46        -- the row of page buttons
+local PAGE_Y = -68                -- the pages start here
+local PAGE_H = UI.H + PAGE_Y      -- their height (532)
+-- the Overview page (y inside the page)
+local TILE_Y, TILE_H, TILE_GAP = 0, 38, 4
+local RANGE_Y, GRAPH_Y, GRAPH_H, LEGEND_Y = -88, -108, 160, -272
+local BOX_Y = -292
+local BOX_H = PAGE_H + BOX_Y      -- 240
 local B1, B2 = 252, 290           -- widths of the ladder box and the best-time box (the third gets the rest)
 local B3 = AW - B1 - B2 - 16
 local LADDER = 12                 -- price steps shown
@@ -27,7 +33,23 @@ local HOW = {vendor = "vendor", ah = "auction", craft = "crafted"}
 X.Default("itemRange", 2)  -- the graph's range (an index of RANGES)
 X.Default("graphHide", {}) -- names under the graph clicked off: {mkt, low, bars, fair, sales, buys = true}
 
+X.Default("itemPage", "overview") -- the page shown on the right (its key)
+
 local qtyByKey = {} -- "Buy cheapest now": how many of a commodity per purchase, per item (this session)
+
+-- [[ the pages ]] UI.AddItemPage(key, title, build(page, w, h), refresh(page, itemKey), order, help)
+-- Adds a page to the right side of the Items view (call it when the file loads). page = a frame under the item's header
+-- and the page buttons: w x h = 810 x 532. build(page, w, h) runs once when the view is first opened; refresh(page,
+-- itemKey) runs when the picked item changes, when the page is shown and whenever the view refreshes (new prices, a
+-- scan ...), only while the page is shown and an item is picked. The header (icon, name, track star, how many listed,
+-- Buy cheapest now) stays above every page. Lowest order first; Overview is 1. help = the tooltip of the page's button.
+local PAGES = UI.PageSet()
+function UI.AddItemPage(key, title, build, refresh, order, help)
+	UI.AddPageTo(PAGES, key, title, build, refresh, order, help)
+end
+UI.ITEM_PAGES = PAGES
+local itemPanel   -- the Items view's panel (while it is built and after)
+local lastSummary -- the numbers of the item, worked out once per refresh (the header and Overview both use them)
 
 local function M(v) return X.Money(v, true) end
 local function signed(v)
@@ -890,8 +912,35 @@ function UI.RecipeTooltip(owner, rid, mark)
 	GameTooltip:Show()
 end
 
+-- [[ the Overview page ]] everything about the item on one page (the tiles, the graph and the three boxes)
+local function summaryOf(key)
+	if lastSummary and lastSummary.key == key then return lastSummary end
+	local s = X.Summary(key)
+	if X.SaleRate then s.rate = X.SaleRate(key) end
+	s.fairBuy, s.fairSell = X.FairPrices(key)
+	return s
+end
+UI.AddItemPage("overview", "Overview", function(f)
+	local panel = itemPanel
+	buildTiles(panel, f)
+	buildGraph(panel, f)
+	buildLadder(panel, f)
+	buildBest(panel, f)
+	buildCraft(panel, f)
+end, function(f, key)
+	local panel = itemPanel
+	local s = summaryOf(key)
+	fillTiles(panel, s)
+	fillGraph(panel, key, s.fairBuy, s.fairSell)
+	fillBest(panel, key)
+	fillCraft(panel, key, s)
+	fillLadder(panel, key, s)
+end, 1, "Everything about the item: the numbers, the price graph, the auction house now, the best time to sell, " ..
+	"crafting and your trades.")
+
 -- [[ building and filling the view ]]
 local function build(panel)
+	itemPanel = panel
 	buildList(panel)
 	local a = CreateFrame("Frame", nil, panel)
 	a:SetPoint("TOPLEFT", AX, 0)
@@ -900,11 +949,8 @@ local function build(panel)
 	panel.body = a
 	buildHeader(panel, a)
 	buildBuy(panel, a)
-	buildTiles(panel, a)
-	buildGraph(panel, a)
-	buildLadder(panel, a)
-	buildBest(panel, a)
-	buildCraft(panel, a)
+	panel.pages = UI.PageBar(a, PAGES, {x = 0, y = PAGE_BUTTONS_Y, px = 0, py = PAGE_Y, pw = AW, ph = PAGE_H, name = "items",
+		pick = function(key) X.S().itemPage = key refresh(panel) end})
 	panel.hint = K.Label(panel, "Pick an item on the left, type a name in Add an item, or use Find at the top: everything " ..
 		"about it shows here. Double-click an item on the left: show it in the auction house too.", "GameFontDisable", "CENTER")
 	panel.hint:SetPoint("CENTER", panel, "TOPLEFT", AX + AW / 2, -UI.H / 2)
@@ -927,10 +973,10 @@ local function subText(s)
 	return GREY .. text .. "|r" .. when
 end
 
--- the parts that follow searches and purchases (also on their own, without the rest)
-local function fillLive(panel, key, s)
-	s = s or X.Summary(key)
-	fillLadder(panel, key, s)
+-- the parts that follow searches and purchases (also on their own, without the rest): the button, and the ladder
+-- while the Overview page is shown
+local function fillLive(panel, key)
+	if panel.ladder and panel.ladder:IsVisible() then fillLadder(panel, key, X.Summary(key)) end
 	updateBuy(panel)
 end
 
@@ -942,9 +988,9 @@ refresh = function(panel)
 	panel.hint:SetShown(not has)
 	if not has then return end
 
-	local s = X.Summary(key)
-	if X.SaleRate then s.rate = X.SaleRate(key) end
-	s.fairBuy, s.fairSell = X.FairPrices(key)
+	lastSummary = nil
+	local s = summaryOf(key)
+	lastSummary = s
 	local tex = s.id and X.Try(C_Item.GetItemIconByID, s.id)
 	panel.icon.tex:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
 	panel.name:SetText(X.ItemText(key))
@@ -952,12 +998,12 @@ refresh = function(panel)
 	panel.star:SetLabel(tracked and (GOLD .. "*|r Tracked") or (GREY .. "*|r Track"))
 	panel.star:SetSelected(tracked and true or false)
 	panel.sub:SetText(subText(s))
-	fillTiles(panel, s)
-	fillGraph(panel, key, s.fairBuy, s.fairSell)
-	fillBest(panel, key)
-	fillCraft(panel, key, s)
 	syncBuy(key)
-	fillLive(panel, key, s)
+	updateBuy(panel)
+	-- the page picked (Overview at first)
+	local page = UI.ShowPage(panel.pages, X.S().itemPage)
+	UI.RefreshPage(panel.pages, page, key)
+	lastSummary = nil
 end
 
 UI.AddTab("items", "Items", build, refresh, 1)

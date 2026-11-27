@@ -676,7 +676,11 @@ local function ser(v, indent, out, path)
 	if t == "string" then out[#out + 1] = string.format("%q", v)
 	elseif t == "number" then
 		if v ~= v or v == math.huge or v == -math.huge then error("saved data: bad number at " .. path) end
-		if math.type and math.type(v) == "integer" or v == math.floor(v) and math.abs(v) < 2^53 then out[#out + 1] = string.format("%d", v)
+		if math.type and math.type(v) == "integer" or v == math.floor(v) and math.abs(v) < 2^53 then
+			-- (fengari has 32-bit integers: a whole number over 2^31, like the copper listed at a full scan, is written as
+			-- the game writes it)
+			local ok, txt = pcall(string.format, "%d", v)
+			out[#out + 1] = ok and txt or string.format("%.0f", v)
 		else out[#out + 1] = string.format("%.17g", v) end
 	elseif t == "boolean" then out[#out + 1] = tostring(v)
 	elseif t == "table" then
@@ -847,7 +851,10 @@ local function makeEnv()
 			local id = type(x) == "number" and x or tonumber(tostring(x):match("item:(%d+)") or x)
 			local it = id and W.items[id]
 			if not it then return nil end
-			return id, "Trade Goods", "", "", W.icon(id), 7, 0
+			-- the item class: its own (it.class, it.subClass, it.subType) or stackables = Trade Goods (7), the rest Armor (4)
+			local class = it.class or ((it.stack or 1) > 1 and 7 or 4)
+			return id, class == 7 and "Trade Goods" or (class == 4 and "Armor" or "Other"), it.subType or "", "", W.icon(id), class,
+				it.subClass or 0
 		end,
 		GetItemIconByID = function(id) return W.icon(id) end,
 		GetItemNameByID = function(id) local it = W.items[id] return it and not it.uncached and it.name or nil end,

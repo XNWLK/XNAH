@@ -157,7 +157,8 @@ local function readRow(i, rows, seen, force)
 		r.bidOnly = r.bidOnly + (count or 1)
 	end
 	local who = ownerFull or owner
-	if who and who ~= "" then r.owners[who] = (r.owners[who] or 0) + 1 end
+	-- units per seller (the game gives no names in the full scan on Forever; kept in case it ever does)
+	if who and who ~= "" then r.owners[who] = (r.owners[who] or 0) + (count or 1) end
 	return true
 end
 
@@ -240,6 +241,8 @@ function X.ScanSave(token)
 	setState("saving", "Saving prices of " .. X.Num(#s.seen) .. " items ...")
 	local k, seenSet = 0, {}
 	local gone, g = nil, 0
+	-- the whole auction house: copper of every buyout listed, items listed, different sellers (names, when given)
+	local gold, units, everyone, nSellers = 0, 0, {}, 0
 	X.Job("save", function()
 		if X.scan.token ~= token then return true end
 		if not gone then
@@ -251,9 +254,18 @@ function X.ScanSave(token)
 				seenSet[key] = true
 				local min, mkt, qty, auc = X.MarketValue(r.list)
 				local it = X.Record(key, t, min, mkt, (qty or 0) + r.bidOnly, auc or 0, r.name, r.q)
-				local sellers = 0
-				for _ in pairs(r.owners) do sellers = sellers + 1 end
+				for _, l in ipairs(r.list) do gold = gold + l[1] * (l[2] or 1) end
+				units = units + (qty or 0) + r.bidOnly
+				-- sellers (r.owners = units per seller name; on Forever the full scan gives no names, so this stays empty)
+				local sellers, top, topName = 0, 0, nil
+				for who, u in pairs(r.owners) do
+					sellers = sellers + 1
+					if u > top then top, topName = u, who end
+					if not everyone[who] then everyone[who] = true nSellers = nSellers + 1 end
+				end
 				it.cur.sellers = sellers > 0 and sellers or nil
+				local all = (qty or 0) + r.bidOnly
+				if sellers > 0 and all > 0 then X.RecordSellers(key, t, sellers, top / all, topName) end
 			end
 			if k >= #s.seen then
 				gone = {}
@@ -282,8 +294,8 @@ function X.ScanSave(token)
 		X.FillNames()
 		local r = X.Realm()
 		table.insert(r.scans, {t = t, kind = "full", items = #s.seen, auctions = s.total, secs = X.Round(GetTime() - (s.startedAt or GetTime())),
-			skipped = s.skipped})
-		while #r.scans > 200 do table.remove(r.scans, 1) end
+			skipped = s.skipped, gold = X.Round(gold), units = units, sellers = nSellers > 0 and nSellers or nil})
+		while #r.scans > X.MAX_SCANS do table.remove(r.scans, 1) end
 		local msg = "full scan done: " .. X.Num(s.total) .. " auctions, " .. X.Num(#s.seen) .. " items"
 		X.scan = {state = "idle", text = "Last full scan: " .. X.Num(s.total) .. " auctions, " .. X.Num(#s.seen) .. " items"}
 		X.Print(msg)
@@ -404,7 +416,7 @@ function X.ScanItemsNext()
 	if not key then
 		local r = X.Realm()
 		table.insert(r.scans, {t = s.started, kind = s.kind, items = s.total, secs = X.Round(GetTime() - s.startedAt)})
-		while #r.scans > 200 do table.remove(r.scans, 1) end
+		while #r.scans > X.MAX_SCANS do table.remove(r.scans, 1) end
 		X.scan = {state = "idle", text = "Scanned " .. s.total .. " items (" .. s.kind .. ")"}
 		X.Print("scan done: " .. s.total .. " items (" .. s.kind .. ")")
 		X.Fire("XNAH_SCAN")
