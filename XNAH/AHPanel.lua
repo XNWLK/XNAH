@@ -3,10 +3,16 @@
 --     Items view; XNAH's window docks beside the game's window (UI.lua);
 --   * two extra columns in the game's lists (setting "Extra columns in the auction house lists"): "% of usual price"
 --     (green = cheaper than usual, red = dearer) and "sells a day".
--- How it stays out of the game's way: the game's functions are never replaced and never called to change anything.
--- XNAH only listens AFTER the game's own functions have run (hooksecurefunc, the game's sanctioned way to follow them)
--- and reads what they were given. The column text sits in XNAH's own small frames laid on top of the game's rows;
--- nothing is written into the game's tables.
+-- How it stays out of the game's way (anything XNAH does inside the game's own window code can make the game refuse
+-- its protected actions later - in v0.9.0 the bank opened empty after a visit to the auction house):
+--   * the game's functions are never replaced and never called, not even the ones that only read something: XNAH
+--     reads the game's fields directly and uses only the plain frame functions (shown?, where?, how wide?);
+--   * XNAH only listens AFTER the game's own functions have run (hooksecurefunc, the game's sanctioned way to follow
+--     them) and reads what they were given;
+--   * no scripts are added to the game's window (no OnShow / OnHide): whether it is open is read by XNAH's own small
+--     timer, and the auction house opening / closing reaches XNAH one frame late (Init.lua), after the game is done;
+--   * the column text sits in XNAH's own small frames laid on top of the game's rows; XNAH keeps its own list of which
+--     row has which frame, so nothing is written into the game's tables or frames.
 local ADDON, X = ...
 local K, UI = X.K, X.UI
 
@@ -34,14 +40,18 @@ local function window()
 end
 local function isTable(v) return type(v) == "table" end
 
+local commodityID -- the item of the game's listings page of stackable goods, as last given to it (hook below)
+
 -- the item the game's window shows right now (its listings page), read from the game's frames; nil on the list
 function A.WindowKey()
 	local f = window()
 	if not f then return nil end
 	local ib, cb = f.ItemBuyFrame, f.CommoditiesBuyFrame
-	if isTable(ib) and ib.IsShown and ib:IsShown() then return keyOf(ib.itemKey) end
-	if isTable(cb) and cb.IsShown and cb:IsShown() and type(cb.GetItemID) == "function" then
-		local id = X.Plain(X.Try(cb.GetItemID, cb))
+	if isTable(ib) and ib.IsShown and X.Try(ib.IsShown, ib) then return keyOf(ib.itemKey) end
+	if isTable(cb) and cb.IsShown and X.Try(cb.IsShown, cb) then
+		-- the game keeps it in its list of those listings (a plain field, read only)
+		local id = isTable(cb.ItemList) and X.Plain(cb.ItemList.itemID) or nil
+		if type(id) ~= "number" then id = commodityID end
 		if type(id) == "number" and id > 0 then return tostring(id) end
 	end
 	return nil
@@ -144,13 +154,24 @@ end
 -- where the columns go: the right end of the list's wide (fill) column, as an offset from the row's left edge
 local function fillColumn(spec)
 	local tb = spec.list.tableBuilder
-	local columns = isTable(tb) and type(tb.GetColumns) == "function" and X.Try(tb.GetColumns, tb)
+	local columns = isTable(tb) and tb.columns
 	if not isTable(columns) then return nil end
 	for i, c in ipairs(columns) do
-		local fc = isTable(c) and type(c.GetFillCoefficient) == "function" and X.Try(c.GetFillCoefficient, c)
+		local fc = isTable(c) and c.fillCoefficient
 		if type(fc) == "number" and fc > 0 then return i, c end
 	end
 	return nil
+end
+-- the rows the game's scroll box shows: its own list of them (a plain field, read only), else the frames inside it
+local function rowsOf(sb)
+	local view = sb.view
+	if isTable(view) and isTable(view.frames) then return view.frames end
+	local target = sb.ScrollTarget
+	if isTable(target) and target.GetChildren then
+		local out = {X.Try(target.GetChildren, target)}
+		return out
+	end
+	return {}
 end
 local function measure(spec, row, index)
 	local cell = index and isTable(row.cells) and row.cells[index]
@@ -197,8 +218,7 @@ end
 local function fillList(spec)
 	if not X.db then return end
 	local on = X.S().ahColumns and window() and true or false
-	local frames = type(spec.sb.GetFrames) == "function" and X.Try(spec.sb.GetFrames, spec.sb)
-	if not isTable(frames) then frames = {} end
+	local frames = rowsOf(spec.sb)
 	local index = on and (spec.kind == "commodity" and 1 or fillColumn(spec))
 	for _, row in ipairs(frames) do
 		local o = overlays[row]
@@ -265,18 +285,17 @@ function A.Hook()
 	local f = AuctionHouseFrame
 	if hooked or not isTable(f) or not hooksecurefunc then return hooked end
 	hooked = true
-	-- XNAH's window docks and undocks with the game's window (the game may show it before or after XNAH hears the auction
-	-- house opened)
-	if f.HookScript then
-		f:HookScript("OnShow", function() X.Try(A.Update) end)
-		f:HookScript("OnHide", function() X.Try(A.Update) X.Try(A.FillLists) end)
-	end
-	-- an item picked in the list (also XNAH's own "show on the auction house")
+	-- (XNAH's window docks and undocks with the game's window: the auction house messages and XNAH's own timer below
+	-- see to that - no scripts are added to the game's window)
+	-- an item picked in the game's list
 	hook(f, "SelectBrowseResult", function(_, result) if isTable(result) then setKey(keyOf(result.itemKey), true) end end)
 	-- the listings pages of gear and of stackable goods
 	hook(f.ItemBuyFrame, "SetItemKey", function(_, itemKey) setKey(keyOf(itemKey)) end)
 	hook(f.CommoditiesBuyFrame, "SetItemIDAndPrice", function(_, itemID)
-		if type(X.Plain(itemID)) == "number" then setKey(tostring(itemID)) end
+		if type(X.Plain(itemID)) == "number" then
+			commodityID = itemID
+			setKey(tostring(itemID))
+		end
 	end)
 	-- an item from the bags put up for sale
 	hook(f, "SetPostItem", function(_, loc)
@@ -305,8 +324,38 @@ X.On("ITEM_SEARCH_RESULTS_UPDATED", fromWindow)
 X.On("COMMODITY_SEARCH_RESULTS_UPDATED", fromWindow)
 
 X.On("ADDON_LOADED", function(name)
-	if name == "Blizzard_AuctionHouseUI" then A.Hook() end
+	-- a frame later: the game may still be busy setting up its window
+	if name == "Blizzard_AuctionHouseUI" then X.After(0, A.Hook) end
 end)
+
+-- [[ is the game's window shown? ]] XNAH's own small timer looks 5 times a second for a few seconds after the auction
+-- house opens or closes (the game's window can show a moment after the message on the first visit, while the game
+-- loads it): when it shows or hides, XNAH's window docks or closes and the columns follow. This replaces scripts on the
+-- game's window, which would run XNAH inside the game's own opening and closing. After that the opening and closing
+-- messages are enough (the game sends them whenever its window opens or closes), so the timer stops.
+local WATCH_SECS = 5
+local watcher = CreateFrame("Frame")
+watcher:Hide()
+local seen, waited, left = false, 0, 0
+watcher:SetScript("OnUpdate", function(self, elapsed)
+	waited = waited + (elapsed or 0)
+	left = left - (elapsed or 0)
+	if waited < 0.2 then return end
+	waited = 0
+	local now = window() ~= nil
+	if now ~= seen then
+		seen = now
+		X.Try(A.Update)
+		if not now then X.Try(A.FillLists) end
+	end
+	if left <= 0 or (not now and not X.ahOpen) then self:Hide() end
+end)
+local function watch()
+	seen = window() ~= nil
+	waited, left = 0, WATCH_SECS
+	watcher:Show()
+end
+A.Watcher = watcher
 local function opened(try)
 	if not X.ahOpen then return end
 	if not A.Hook() then
@@ -320,11 +369,14 @@ end
 X.On("XNAH_AH", function(open)
 	if open == true then
 		A.key = nil
+		commodityID = nil
 		cache = {}
 		opened()
+		watch()
 	else
 		A.Update()
 		A.FillLists() -- hides the column text
+		watch() -- (until the game's window is gone)
 	end
 end)
 

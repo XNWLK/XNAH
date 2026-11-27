@@ -8,6 +8,8 @@
 --   Best sellers  what you sold and bought of each item (sold, income, average price, sell-through)
 --   Recent        every auction house mail read, newest first (sales, purchases, expired, cancelled)
 --   Characters    gold and items of your characters, net worth over time, your bags (UIWealth.lua)
+--   Gold over time  gold per character and in all, net worth, profit per week and its trend (UIGoldHistory.lua)
+--   Your items    your results per item: profit, time to sell, sell-through (UIGoldItems.lua)
 -- Layout (UI.W x UI.H, read when the view is built): tiles 46 high; page buttons at y -54; the page under them from
 -- y -TOP (1080 x 520).
 local ADDON, X = ...
@@ -350,7 +352,8 @@ end
 -- the page buttons: w x h = 1080 x 520 (UI.W x UI.H - 80). build(page, w, h) runs once when the view is first opened;
 -- refresh(page) runs whenever the view refreshes while the page is shown (picked, new mails, new prices ...) and may
 -- return a short text for the top right ("12 items"). help = the grey line shown next to the buttons. Pages here:
--- overview 1, items 2 ("Best sellers"), recent 3, chars 4 ("Characters", UIWealth.lua); new ones from 5 on.
+-- overview 1, items 2 ("Best sellers"), recent 3, chars 4 ("Characters", UIWealth.lua), history 5 ("Gold over time",
+-- UIGoldHistory.lua), results 6 ("Your items", UIGoldItems.lua); new ones from 7 on.
 local PAGES = UI.PageSet()
 function UI.AddGoldPage(key, title, build, refresh, order, help)
 	UI.AddPageTo(PAGES, key, title, build, refresh, order, help)

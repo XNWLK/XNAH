@@ -61,10 +61,17 @@ local function runTimersUntil(stop)
 	return ran
 end
 
--- frames with an OnUpdate script that are visible right now
+-- frames with an OnUpdate script that are visible right now, in the order they were made. Only the frames that were
+-- ever given an OnUpdate script are looked at (W.updFrames, kept by SetScript / HookScript): going through every frame,
+-- text and texture 20 times a game second made long waits slow once the window had all its pages (1,500+ frames).
 local function updaters()
 	local out = {}
-	for _, f in ipairs(W.frames) do
+	local list = W.updFrames
+	if W.updDirty then
+		table.sort(list, function(a, b) return a.id < b.id end)
+		W.updDirty = false
+	end
+	for _, f in ipairs(list) do
 		if f.scripts.OnUpdate and f:IsVisible() then out[#out + 1] = f end
 	end
 	return out
@@ -189,7 +196,7 @@ W.onReset, W.onEnv = W.onReset or {}, W.onEnv or {}
 function W.reset()
 	W.NOW = 1000           -- GetTime()
 	W.timers, W.seq, W.gen = {}, 0, (W.gen or 0) + 1
-	W.frames, W.events, W.frameId = {}, {}, 0
+	W.frames, W.events, W.frameId, W.updFrames = {}, {}, 0, {}
 	W.errors, W.chat = {}, {}
 	W.stepRows, W.maxStepRows, W.maxStepTime, W.ticks = 0, 0, 0, 0
 	W.items = W.defaultItems()
@@ -256,9 +263,20 @@ function W.newFrame(kind, name, parent, template)
 	return f
 end
 
-function Frame:SetScript(k, f) self.scripts[k] = f end
+-- (a frame given an OnUpdate script goes on W.updFrames once: the frames W.advance runs every frame)
+local function noteUpdater(self, k, f)
+	if k == "OnUpdate" and f and not self.onUpdList then
+		self.onUpdList = true
+		W.updFrames[#W.updFrames + 1] = self
+		W.updDirty = true
+	end
+end
+function Frame:SetScript(k, f) noteUpdater(self, k, f) self.scripts[k] = f end
 function Frame:GetScript(k) return self.scripts[k] end
-function Frame:HookScript(k, f) local old = self.scripts[k] self.scripts[k] = function(...) if old then old(...) end return f(...) end end
+function Frame:HookScript(k, f)
+	noteUpdater(self, k, f)
+	local old = self.scripts[k] self.scripts[k] = function(...) if old then old(...) end return f(...) end
+end
 function Frame:HasScript() return true end
 function Frame:RegisterEvent(e)
 	if type(e) ~= "string" or not e:match("^[A-Z_]+$") then error("RegisterEvent: bad event " .. tostring(e)) end
@@ -502,11 +520,13 @@ function W.openAH()
 	W.ahFrame = W.env.AuctionHouseFrame
 	W.ahFrame:Show()
 	W.fire("AUCTION_HOUSE_SHOW")
+	runTimersUntil(W.NOW) -- the addon hears it one frame later (C_Timer.After(0)): that frame, at once
 end
 function W.closeAH()
 	W.ahOpen = false
 	if W.ahFrame then W.ahFrame:Hide() end
 	W.fire("AUCTION_HOUSE_CLOSED")
+	runTimersUntil(W.NOW) -- (as above)
 end
 
 -- the full scan: the server copies the auction house ~2 s after the call (refused, without a word, within 15 minutes of
@@ -956,7 +976,7 @@ end
 
 -- loads the addon (as the game does on login): the files in .toc order, then ADDON_LOADED, PLAYER_LOGIN
 function W.login(saved)
-	W.frames, W.events, W.timers, W.tooltipHooks = {}, {}, {}, {}
+	W.frames, W.events, W.timers, W.tooltipHooks, W.updFrames = {}, {}, {}, {}, {}
 	W.gen = (W.gen or 0) + 1
 	W.focus, W.mouseFocus = nil, nil
 	local env = makeEnv()

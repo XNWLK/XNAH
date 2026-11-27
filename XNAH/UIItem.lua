@@ -168,12 +168,12 @@ local function buildList(panel)
 	panel.showing:SetPoint("TOPLEFT", 0, -30)
 	panel.showing:SetWidth(LIST_W)
 	panel.showing:SetWordWrap(false)
-	-- click: shown on the right; double-click: also in the game's own auction house window (to buy or sell it there)
+	-- click: shown on the right; double-click: its name goes into the game's own auction house search box
 	local tbl = K.Table(panel, LIST_W, UI.H - 62, LIST_COLUMNS, function(row, button, rowFrame)
 		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
 	end, function(row)
 		UI.ShowInAuctionHouse(row.key) -- (the first press of the double-click already showed it on the right)
-	end, "Double-click: show it in the auction house")
+	end, "Double-click: put its name in the auction house search box")
 	tbl:SetPoint("TOPLEFT", 0, -62)
 	tbl:SortBy(1, false)
 	-- after each redraw (sorting, scrolling): the 7-day lines, and the item shown marked
@@ -709,7 +709,13 @@ local function fillLadder(panel, key, s)
 	end
 end
 
--- [[ box 2: the best time to sell ]] price by weekday and by hour (K.TimeBars), the best day and hour in short
+-- [[ box 2: the best time to sell ]] a small weekday x time-of-day grid of the price (K.Heatmap, numbers from
+-- Patterns.lua; the whole grid with supply too is on the Patterns page), the cheapest and dearest time, the best day
+-- and hour in short. Clicking the grid or "Patterns" opens the Patterns page.
+local function openPatterns(panel)
+	X.S().itemPage = "patterns"
+	refresh(panel)
+end
 local function buildBest(panel, a)
 	local box = K.Panel(a, B2, BOX_H, {0, 0, 0, 0.25})
 	box:SetPoint("TOPLEFT", B1 + 8, BOX_Y)
@@ -717,7 +723,7 @@ local function buildBest(panel, a)
 	-- hovering the title: the whole story in sentences
 	local hot = CreateFrame("Frame", nil, box)
 	hot:SetPoint("TOPLEFT", 4, -2)
-	hot:SetSize(B2 - 8, 16)
+	hot:SetSize(B2 - 96, 16)
 	hot:EnableMouse(true)
 	hot:SetScript("OnEnter", function(self)
 		local key = UI.itemKey
@@ -729,26 +735,59 @@ local function buildBest(panel, a)
 	end)
 	hot:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	box.title, box.hot = title, hot
-	box.bars = K.TimeBars(box, B2 - 8, 172)
-	box.bars:SetPoint("TOPLEFT", 4, -20)
-	box.bars.text:Hide() -- the short lines below instead (the whole text: hover the title)
+	-- "Patterns": the whole grid (price and supply), how jumpy, market size
+	local more = K.Flat(box, 80, 16)
+	more:SetPoint("TOPRIGHT", -6, -4)
+	more:SetLabel("Patterns >")
+	more.label:SetJustifyH("CENTER")
+	more:SetScript("OnClick", function() openPatterns(panel) end)
+	K.Tooltip(more, "Patterns", "Opens the Patterns page: the big grid (price and how many are listed at each time), how " ..
+		"jumpy the price is, and about how much sells a day.")
+	box.more = more
+	box.gridTitle = K.Label(box, "", "GameFontDisableSmall")
+	box.gridTitle:SetPoint("TOPLEFT", 8, -22)
+	box.gridTitle:SetWidth(B2 - 16)
+	box.gridTitle:SetWordWrap(false)
+	local rows = UI.PATTERN_ROWS or {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+	local cols = UI.PATTERN_COLS or {"0-4", "4-8", "8-12", "12-16", "16-20", "20-24"}
+	box.grid = K.Heatmap(box, B2 - 14, 144, {rows = rows, cols = cols, labelW = 28, headH = 12, small = true,
+		onClick = function() openPatterns(panel) end})
+	box.grid:SetPoint("TOPLEFT", 6, -36)
+	box.sum = K.Label(box, "", "GameFontHighlightSmall")
+	box.sum:SetPoint("TOPLEFT", 8, -186)
+	box.sum:SetWidth(B2 - 16)
+	box.sum:SetWordWrap(false)
+	local sumHot = CreateFrame("Frame", nil, box)
+	sumHot:SetPoint("TOPLEFT", 4, -184)
+	sumHot:SetSize(B2 - 8, 14)
+	sumHot:EnableMouse(true)
+	K.Tooltip(sumHot, "Cheapest and dearest time", "The weekday and time of day (4 hours, server time) when its market " ..
+		"value was lowest and highest against its usual price, from the grid above. Buy at the cheap time, sell at the dear one.")
 	box.day = K.Label(box, "", "GameFontHighlightSmall")
-	box.day:SetPoint("TOPLEFT", 8, -198)
+	box.day:SetPoint("TOPLEFT", 8, -202)
 	box.day:SetWidth(B2 - 16)
 	box.day:SetWordWrap(false)
 	box.hour = K.Label(box, "", "GameFontHighlightSmall")
-	box.hour:SetPoint("TOPLEFT", 8, -214)
+	box.hour:SetPoint("TOPLEFT", 8, -218)
 	box.hour:SetWidth(B2 - 16)
 	box.hour:SetWordWrap(false)
 	panel.bestBox = box
-	panel.best = box.bars
+	panel.best = box.grid
 end
 
 local function fillBest(panel, key)
 	local box = panel.bestBox
 	local bt = X.BestTimes(key)
-	box.bars:SetData(bt)
-	box.bars.text:Hide()
+	local _, known = X.ServerShift()
+	box.gridTitle:SetText("Price by weekday and time of day " .. (known and "(server time)" or "(your clock)") ..
+		" - click for more")
+	local grid
+	if UI.PatternGridData then
+		local data
+		data, grid = UI.PatternGridData(key, "price", true)
+		box.grid:SetData(data)
+	end
+	box.sum:SetText(UI.PatternSummary and UI.PatternSummary(grid, "price") or "")
 	local bd = X.BestDay and X.BestDay(key)
 	if type(bd) == "table" then
 		box.day:SetText("Best day to sell: " .. GOLD .. bd.name .. "|r (" .. X.BestPctText(bd.pct) .. " over the other days)")
@@ -952,7 +991,7 @@ local function build(panel)
 	panel.pages = UI.PageBar(a, PAGES, {x = 0, y = PAGE_BUTTONS_Y, px = 0, py = PAGE_Y, pw = AW, ph = PAGE_H, name = "items",
 		pick = function(key) X.S().itemPage = key refresh(panel) end})
 	panel.hint = K.Label(panel, "Pick an item on the left, type a name in Add an item, or use Find at the top: everything " ..
-		"about it shows here. Double-click an item on the left: show it in the auction house too.", "GameFontDisable", "CENTER")
+		"about it shows here. Double-click an item on the left: its name goes into the auction house search box.", "GameFontDisable", "CENTER")
 	panel.hint:SetPoint("CENTER", panel, "TOPLEFT", AX + AW / 2, -UI.H / 2)
 	panel.hint:SetWidth(AW - 100)
 end

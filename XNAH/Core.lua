@@ -38,6 +38,22 @@ X.On("PLAYER_LOGIN", function()
 end)
 X.On("PLAYER_ENTERING_WORLD", function() if X.db then X.CheckRealm() end end)
 
+-- [[ blocked by the game ]] when the game says "XNAH has been blocked from an action only available to the Blizzard
+-- UI", a red line in chat says which action it was, so Xn can send it in (once per action per session; the game's own
+-- message does not say which). XNAH never does protected actions itself, so this means some XNAH code ran inside the
+-- game's own code and the game then refused its own action (in v0.9.0: the bank opened empty after the auction house).
+local blockedSeen = {}
+local function blocked(kind, addon, what)
+	if addon ~= ADDON then return end
+	what = tostring(X.Plain(what) or "an unknown action")
+	if blockedSeen[what] then return end
+	blockedSeen[what] = true
+	X.Print("|cffff4040the game " .. kind .. " this action and blamed XNAH: " .. what .. " (XNAH " .. tostring(X.VERSION) ..
+		"). Please send a screenshot to Xn's helper.|r")
+end
+X.On("ADDON_ACTION_FORBIDDEN", function(addon, what) blocked("refused", addon, what) end)
+X.On("ADDON_ACTION_BLOCKED", function(addon, what) blocked("blocked", addon, what) end)
+
 local HELP = {
 	"/xnah - open or close the window (it also opens by itself beside the auction house)",
 	"/xnah scan - full scan (auction house open; about every 15 minutes)",

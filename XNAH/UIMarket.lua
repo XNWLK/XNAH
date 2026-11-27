@@ -185,7 +185,7 @@ local function startRows()
 	local c = {known = 0, listed = 0, up = 0, down = 0, short = 0, flood = 0}
 	progress = "Reading prices: 0 / " .. X.Num(#keys)
 	X.Job("market rows", function()
-		local stop = math.min(#keys, i + 300)
+		local stop = math.min(#keys, i + 150) -- (300 a frame took too long on a real auction house of 8,000+ items)
 		while i < stop do
 			i = i + 1
 			local it = items[keys[i]]

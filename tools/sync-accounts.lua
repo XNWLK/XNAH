@@ -2,9 +2,10 @@
 -- addon). Each account keeps its own characters, mailbox ledger and settings; it gets a copy of:
 --   - the characters of the other accounts (XNAHDB.chars[name] with acct = that account's label) and their net worth
 --     history, so the Wealth page shows every character;
---   - the ledger entries (sales, purchases, expired, cancelled) of those characters;
---   - prices: per item the newest observation of any account (a scan on one account helps all), vendor prices,
---     recipes and which characters know them.
+--   - the ledger entries (sales, purchases, expired, cancelled) of those characters, and their gold history
+--     (realm goldHist; your own postings, ledger.posts, stay with each account: only its own mails are matched with them);
+--   - prices: per item the newest observation of any account (a scan on one account helps all; the item's Patterns
+--     grid, item.pw, is the newest one of any account), vendor prices, recipes and which characters know them.
 -- In:  ACCTS = {{label = "wow1", db = XNAHDB table or nil}, ...}, NOW = seconds
 -- Out: SYNC.out[i] = text of the new XNAH.lua of ACCTS[i]; SYNC.report = lines
 SYNC = {out = {}, report = {}}
@@ -37,15 +38,24 @@ end
 local realms = {} -- [rk] = {items = {[key] = item}, lastFull}
 local vsell, vbuy, recipes, known = {}, {}, {}, {}
 local function curT(it) return it and it.cur and it.cur.t or 0 end
+-- when an item's Patterns grid (item.pw) last counted an observation: its second number (base 36 minutes)
+local function pwT(it)
+	local t = it and type(it.pw) == "string" and it.pw:match("^[^,;]*,([^,;]*),")
+	return t and t ~= "" and tonumber(t, 36) or 0
+end
+local grids = {} -- [rk] = {[key] = pw}: the newest grid of each item, of any account
 for _, a in ipairs(ACCTS) do
 	local db = a.db
 	if db then
 		for rk, r in pairs(db.realms or {}) do
 			local m = realms[rk] or {items = {}}
 			realms[rk] = m
+			grids[rk] = grids[rk] or {}
 			for key, it in pairs(r.items or {}) do
 				local have = m.items[key]
 				if not have or curT(it) > curT(have) then m.items[key] = it end
+				local g = grids[rk][key]
+				if it.pw and (not g or pwT(it) > pwT({pw = g})) then grids[rk][key] = it.pw end
 			end
 			if r.lastFull and (not m.lastFull or r.lastFull > m.lastFull) then m.lastFull = r.lastFull end
 		end
@@ -101,6 +111,10 @@ for i, a in ipairs(ACCTS) do
 		for key, it in pairs(m.items) do
 			if curT(it) > curT(r.items[key]) then r.items[key] = copy(it) prices = prices + 1 end
 		end
+		for key, g in pairs(grids[rk] or {}) do
+			local it = r.items[key]
+			if it and pwT({pw = g}) > pwT(it) then it.pw = g end
+		end
 		if m.lastFull and (not r.lastFull or m.lastFull > r.lastFull) then r.lastFull = m.lastFull end
 	end
 	db.vsell, db.vbuy, db.recipes, db.known = copy(vsell), copy(vbuy), copy(recipes), copy(known)
@@ -122,6 +136,20 @@ for i, a in ipairs(ACCTS) do
 			end
 			table.sort(list, function(x, y) return (x.t or 0) < (y.t or 0) end)
 			r.ledger[kind] = list
+		end
+	end
+	-- gold history of the other accounts' characters: theirs (this account only saw their gold at each sync)
+	for rk, r in pairs(db.realms) do
+		for name, o in pairs(owner) do
+			if o.label ~= a.label then
+				for _, b in ipairs(ACCTS) do
+					local br = b.label == o.label and b.db and b.db.realms and b.db.realms[rk]
+					if br and type(br.goldHist) == "table" and br.goldHist[name] then
+						r.goldHist = r.goldHist or {}
+						r.goldHist[name] = br.goldHist[name]
+					end
+				end
+			end
 		end
 	end
 	db.sync = {at = NOW, label = a.label, accounts = labels}

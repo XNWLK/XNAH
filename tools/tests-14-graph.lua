@@ -178,7 +178,7 @@ T.scene("graph: best day and hour to sell", function()
 	X.UI.ShowItem("2589")
 	W.advance(0.5)
 	local panel = itemPanel(X)
-	T.ok("charts and graph both shown", panel.best:IsShown() and panel.graph:IsShown())
+	T.ok("grid and graph both shown", panel.best:IsShown() and panel.graph:IsShown())
 	T.ok("range buttons shown too", W.findButton("30 days", panel) ~= nil)
 	local screen = W.screen(panel)
 	T.ok("box: its title", screen:find("Best time to sell", 1, true) ~= nil, screen)
@@ -192,15 +192,21 @@ T.scene("graph: best day and hour to sell", function()
 	W.unhover(panel.bestBox.hot)
 	T.ok("title hover: the sentences", story:find("Best day to sell: Tuesday (+", 1, true) ~= nil and
 		story:find("Server time", 1, true) ~= nil, story)
-	-- hovering the bars tells their numbers
-	for _, c in ipairs(panel.best.charts) do
-		for _, slot in ipairs(c.slots) do W.hover(slot) W.unhover(slot) end
+	-- the small weekday x time-of-day grid (rows Monday first, 6 times of the day): every square can be hovered
+	for _, row in ipairs(panel.best.cells) do
+		for _, sq in ipairs(row) do W.hover(sq) W.unhover(sq) end
 	end
-	local tue = panel.best.charts[1].slots[2]
-	W.hover(tue)
-	local tip = W.plain(W.tipText(W.env.GameTooltip.lines))
-	W.unhover(tue)
-	T.ok("hover: Tuesday", tip:find("Tuesday", 1, true) ~= nil and tip:find("over the week's average", 1, true) ~= nil, tip)
+	T.check("no errors from hovering the squares", #W.errors, 0)
+	-- the Tuesday square with a price (one scan a day, always at the same time of day): its weekday and its price then
+	local tip
+	for _, sq in ipairs(panel.best.cells[2]) do
+		W.hover(sq)
+		local text = W.plain(W.tipText(W.env.GameTooltip.lines))
+		W.unhover(sq)
+		if text:find("Price then", 1, true) then tip = text end
+	end
+	T.ok("hover: Tuesday and its price then", tip and tip:find("Tuesday", 1, true) ~= nil, tip)
+	T.ok("hover: Tuesday is dearer", tip and tip:find("dearer than usual", 1, true) ~= nil, tip)
 	-- Wool: the best hour in the box
 	X.UI.ShowItem("2592")
 	W.advance(0.2)

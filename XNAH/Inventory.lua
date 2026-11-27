@@ -8,6 +8,8 @@
 --   XNAHDB.warbank = {items = {[item key] = count}, bound = {...}, at}  the account bank (shared by all characters)
 --   XNAHDB.worth[character] = "day,copper;..."  net worth once a day (base 36, a year kept)
 --   XNAHDB.worthTotal["Realm-Faction"] = "day,copper;..."  all characters of the realm and the account bank together
+--   X.Realm().goldHist[character] = "day,copper;..."  each character's gold (base 36), a point only on a day it changed
+--     (the gold stays the same until the next point); after 90 days one point a week, a year kept (X.GoldHistory)
 -- Worth = gold + items at their auction house price after the cut (soulbound items: what a vendor pays; no price: the
 -- vendor price; neither: nothing).
 local ADDON, X = ...
@@ -165,12 +167,14 @@ local function scanAuctions()
 	local list = X.Try(C_AuctionHouse.GetOwnedAuctions)
 	if type(list) ~= "table" then return end
 	local items, ends = {}, {}
+	local seen = {} -- for the ledger's postings (time to sell): {id, key, qty, secs (nil when the game gives none), price, active}
 	local now = X.Now()
 	for _, a in ipairs(list) do
 		local status = X.Plain(a.status)
 		if status == nil or status == 0 then
 			-- when it runs out (for the line at login): the seconds left, else the longest its time band can mean
-			local secs = X.Plain(a.timeLeftSeconds)
+			local exact = X.Plain(a.timeLeftSeconds)
+			local secs = exact
 			if type(secs) ~= "number" then secs = BAND_SECS[X.Plain(a.timeLeft) or -1] end
 			if secs then ends[#ends + 1] = now + math.floor(secs) end
 			local key = X.KeyFromLink(X.Plain(a.itemLink))
@@ -178,9 +182,13 @@ local function scanAuctions()
 			if not key and ik and ik.itemID then
 				key = (ik.itemSuffix and ik.itemSuffix ~= 0) and (ik.itemID .. ":" .. ik.itemSuffix) or tostring(ik.itemID)
 			end
-			if key then items[key] = (items[key] or 0) + (X.Plain(a.quantity) or 1) end
+			local qty = X.Plain(a.quantity) or 1
+			if key then items[key] = (items[key] or 0) + qty end
+			seen[#seen + 1] = {id = X.Plain(a.auctionID), key = key, qty = qty, secs = type(exact) == "number" and exact or nil,
+				price = X.Plain(a.buyoutAmount), active = true}
 		end
 	end
+	if X.LedgerSawAuctions then X.LedgerSawAuctions(seen, now) end
 	local c = me()
 	c.auctions = items
 	table.sort(ends)
@@ -362,6 +370,8 @@ function X.DeleteChar(k)
 	local d = db()
 	d.chars[k] = nil
 	d.worth[k] = nil
+	local gh = X.Realm().goldHist
+	if gh then gh[k] = nil end
 	changed()
 end
 
@@ -395,6 +405,7 @@ function X.RecordWorth()
 	for _, row in ipairs(X.Chars()) do total = total + row.worth end
 	local rk = realmKey()
 	d.worthTotal[rk] = setPoint(d.worthTotal[rk], today, total)
+	X.RecordGoldHistory()
 end
 -- points {{t, copper}, ...} for a graph, oldest first; charKey nil = all characters together
 function X.WorthHistory(charKey, from)
@@ -408,6 +419,164 @@ function X.WorthHistory(charKey, from)
 			local t = day * 86400 + 43200
 			if t >= (from or 0) then out[#out + 1] = {t, v} end
 		end
+	end
+	return out
+end
+
+-- [[ gold history ]] X.Realm().goldHist[character] = "day,copper;..." (see the top of this file). Written by
+-- X.RecordGoldHistory (with the net worth, after the gold of a character changed) for every character of this realm
+-- whose gold XNAH knows (your other accounts' characters too, with the gold of their last sync). A new character's
+-- history starts with the gold of the day notes (X.Realm().homeGold, up to 15 days back).
+local GOLD_DAILY = 90 -- days with every change kept; older ones keep one point a week
+local function parsePoints(s)
+	local out = {}
+	for p in (s or ""):gmatch("[^;]+") do
+		local day, v = p:match("^([^,]*),(.*)$")
+		day, v = X.n36(day), X.n36(v)
+		if day and v then out[#out + 1] = {day, v} end
+	end
+	return out
+end
+local function joinPoints(list)
+	local parts = {}
+	for i, p in ipairs(list) do parts[i] = X.b36(p[1]) .. "," .. X.b36(p[2]) end
+	return table.concat(parts, ";")
+end
+-- the list thinned: points older than 90 days one a week (the last of each week), older than a year dropped except the
+-- newest of those (moved to a year ago: it still tells the gold from then on)
+local function thinPoints(list, today)
+	local out, old = {}, nil
+	local yearAgo, daily = today - KEEP_DAYS, today - GOLD_DAILY
+	for i, p in ipairs(list) do
+		if p[1] <= yearAgo then
+			old = {yearAgo, p[2]}
+		elseif p[1] < daily then
+			local nx = list[i + 1]
+			-- keep the last point of its week (weeks of 7 days counted from day 0)
+			if not nx or math.floor(nx[1] / 7) ~= math.floor(p[1] / 7) or nx[1] >= daily then out[#out + 1] = p end
+		else
+			out[#out + 1] = p
+		end
+	end
+	if old and (not out[1] or out[1][1] > yearAgo) then table.insert(out, 1, old) end
+	return out
+end
+local lastGold = {} -- [character] = "day:copper" written last (this session): nothing to do while it stays the same
+local function goldHist()
+	local r = X.Realm()
+	r.goldHist = r.goldHist or {}
+	return r.goldHist
+end
+-- a character's gold `value` on `day`: today's point is replaced, a point equal to the one before is not added
+local function addGold(s, day, value, today)
+	local list = parsePoints(s)
+	local last = list[#list]
+	if last and last[1] == day then
+		last[2] = value
+		local before = list[#list - 1]
+		if before and before[2] == value then list[#list] = nil end
+	elseif last and last[1] > day then
+		return s -- an older reading than what is kept: nothing
+	elseif last and last[2] == value then
+		return s
+	else
+		list[#list + 1] = {day, value}
+	end
+	return joinPoints(thinPoints(list, today))
+end
+X.GoldHistAdd = addGold
+function X.RecordGoldHistory()
+	if not X.db then return end
+	local d = db()
+	local rk = realmKey()
+	local book = goldHist()
+	local today = X.Day()
+	for k, c in pairs(d.chars) do
+		if c.realm == rk and type(c.money) == "number" then
+			local day = math.min(today, X.Day(c.at or X.Now()))
+			if k == X.CharKey() then day = today end
+			local sig = day .. ":" .. c.money
+			if lastGold[k] ~= sig then
+				lastGold[k] = sig
+				local s = book[k]
+				if s == nil then
+					-- a new history: the gold of the day notes first (local day numbers, close enough to the server's)
+					s = ""
+					local notes = X.Realm().homeGold or {}
+					local days = {}
+					for nd, chars in pairs(notes) do if type(chars) == "table" and chars[k] then days[#days + 1] = nd end end
+					table.sort(days)
+					for _, nd in ipairs(days) do
+						if nd < day then s = addGold(s, nd, notes[nd][k], today) end
+					end
+				end
+				book[k] = addGold(s, day, c.money, today)
+			end
+		end
+	end
+end
+-- forget what was written this session (the tests, after a reload of the saved data)
+function X.GoldHistForget() lastGold = {} end
+
+-- the characters of this realm with a gold history or known gold: {{key, name, gold}, ...} richest first
+function X.GoldChars()
+	local d = db()
+	local rk = realmKey()
+	local out = {}
+	for k, c in pairs(d.chars) do
+		if c.realm == rk and (type(c.money) == "number" or goldHist()[k]) then
+			out[#out + 1] = {key = k, name = k, gold = c.money or 0, me = k == X.CharKey()}
+		end
+	end
+	table.sort(out, function(a, b)
+		if a.gold ~= b.gold then return a.gold > b.gold end
+		return a.key < b.key
+	end)
+	return out
+end
+
+-- X.GoldHistory(keys, fromDay) -> points {{t, copper}, ...}, one per day from fromDay (or the first day known) to
+-- today, oldest first. keys = one character's key, a list of keys (added up), or nil = every character of this realm.
+-- Between points the gold stays the same; today is the gold now. Before a character's first point its first known
+-- gold counts (so a character XNAH learns about later does not make the total jump). Empty when nothing is known.
+function X.GoldHistory(keys, fromDay)
+	local d = db()
+	local rk = realmKey()
+	local book = goldHist()
+	local today = X.Day()
+	local list = {}
+	if type(keys) == "string" then
+		list[1] = keys
+	elseif type(keys) == "table" then
+		list = keys
+	else
+		for k, c in pairs(d.chars) do if c.realm == rk then list[#list + 1] = k end end
+	end
+	local series, first = {}, nil
+	for _, k in ipairs(list) do
+		local pts = parsePoints(book[k])
+		local c = d.chars[k]
+		if c and type(c.money) == "number" then
+			local last = pts[#pts]
+			if last and last[1] == today then last[2] = c.money
+			elseif not last or last[2] ~= c.money then pts[#pts + 1] = {today, c.money} end
+		end
+		if #pts > 0 then
+			series[#series + 1] = {pts = pts, i = 1}
+			if not first or pts[1][1] < first then first = pts[1][1] end
+		end
+	end
+	local out = {}
+	if not first then return out end
+	local start = math.max(first, fromDay or first)
+	for day = start, today do
+		local sum = 0
+		for _, s in ipairs(series) do
+			local pts = s.pts
+			while pts[s.i + 1] and pts[s.i + 1][1] <= day do s.i = s.i + 1 end
+			sum = sum + pts[s.i][2]
+		end
+		out[#out + 1] = {day * 86400 + 43200, sum}
 	end
 	return out
 end

@@ -1,5 +1,6 @@
--- XNAH test scenes, part 33: the ground for the new pages - the page registration of the Trends view, the Items view
--- (the item on the right) and Your gold (UI.AddTrendsPage, UI.AddItemPage, UI.AddGoldPage), the Trends view with no
+-- XNAH test scenes, part 33: the ground for the pages - the page registration of the Trends view, the Items view
+-- (the item on the right) and Your gold (UI.AddTrendsPage, UI.AddItemPage, UI.AddGoldPage; a test page added next to
+-- the real ones, gone again after a reload), every real page of the three views opening, the Trends view with no
 -- pages, the Opportunities view taken out (and its saved settings cleaned up), several lines on one graph with a
 -- legend and number / percent labels, the seller history (X.SellerHistory), item groups (X.ItemGroup) and the gold
 -- listed at each full scan.
@@ -23,6 +24,23 @@ local function probe()
 	return pr
 end
 
+-- the real pages of each view, in order
+local TRENDS = {{"index", "Market index"}, {"groups", "Item groups"}, {"size", "Auction house size"}, {"changes", "What changed"}}
+local ITEMS = {{"overview", "Overview"}, {"patterns", "Patterns"}, {"compare", "Compare"}, {"sellers", "Sellers"}, {"craft", "Crafting"}}
+local GOLD = {{"overview", "Overview"}, {"items", "Best sellers"}, {"recent", "Recent"}, {"chars", "Characters"},
+	{"history", "Gold over time"}, {"results", "Your items"}}
+local function keysOf(list, extra)
+	local out = {}
+	for _, pg in ipairs(list) do out[#out + 1] = pg[1] end
+	if extra then out[#out + 1] = extra end
+	return table.concat(out, ",")
+end
+local function keysOfSet(set)
+	local out = {}
+	for _, pg in ipairs(set) do out[#out + 1] = pg.key end
+	return table.concat(out, ",")
+end
+
 local function history(X, key, price, days, name)
 	for d = days, 1, -1 do X.Record(key, X.Now() - d * DAY, price, price, 20, 4, name, 1) end
 end
@@ -34,19 +52,17 @@ T.scene("pages: the three page functions (Trends, Items, Your gold)", function()
 		type(UI.AddGoldPage) == "function")
 	-- added before the window is first opened (as files do when they load)
 	local tp, tp0, ip, gp = probe(), probe(), probe(), probe()
+	T.check("trends: the real pages, in order", keysOfSet(UI.TRENDS_PAGES), keysOf(TRENDS))
+	T.check("items: the real pages, in order", keysOfSet(UI.ITEM_PAGES), keysOf(ITEMS))
+	T.check("gold: the real pages, in order", keysOfSet(UI.GOLD_PAGES), keysOf(GOLD))
 	UI.AddTrendsPage("test", "Test Trend", tp.build, tp.refresh, 5, "A page of the tests.")
-	UI.AddTrendsPage("first", "First Trend", tp0.build, tp0.refresh, 1)
+	UI.AddTrendsPage("first", "First Trend", tp0.build, tp0.refresh, 0)
 	UI.AddTrendsPage("test", "Test Trend", tp.build, tp.refresh, 5, "A page of the tests.") -- again: replaced, not twice
 	UI.AddItemPage("test", "Test Item", ip.build, ip.refresh, 9)
 	UI.AddGoldPage("test", "Test Gold", gp.build, gp.refresh, 9, "Gold of the tests.")
-	T.check("trends: two pages, lowest order first", UI.TRENDS_PAGES[1].key .. "," .. UI.TRENDS_PAGES[2].key .. "," .. #UI.TRENDS_PAGES,
-		"first,test,2")
-	local keys = {}
-	for _, pg in ipairs(UI.GOLD_PAGES) do keys[#keys + 1] = pg.key end
-	T.check("gold: the old pages keep their order, the new one after", table.concat(keys, ","), "overview,items,recent,chars,test")
-	keys = {}
-	for _, pg in ipairs(UI.ITEM_PAGES) do keys[#keys + 1] = pg.key end
-	T.check("items: Overview first", table.concat(keys, ","), "overview,test")
+	T.check("trends: lowest order first, the test page once", keysOfSet(UI.TRENDS_PAGES), "first," .. keysOf(TRENDS, "test"))
+	T.check("gold: the pages keep their order, the new one after", keysOfSet(UI.GOLD_PAGES), keysOf(GOLD, "test"))
+	T.check("items: Overview first, the new one after", keysOfSet(UI.ITEM_PAGES), keysOf(ITEMS, "test"))
 	T.check("nothing built before the window opens", tp.builds + ip.builds + gp.builds, 0)
 
 	-- Trends
@@ -96,9 +112,8 @@ T.scene("pages: the three page functions (Trends, Items, Your gold)", function()
 	W.advance(0.3)
 	local g = X.UI.tabs.gold.panel
 	T.check("gold: page size", gp.w .. " x " .. gp.h, "1080 x 520")
-	for _, title in ipairs({"Overview", "Best sellers", "Recent", "Characters", "Test Gold"}) do
-		T.ok("gold: button " .. title, W.findButton(title, g) ~= nil)
-	end
+	for _, pg in ipairs(GOLD) do T.ok("gold: button " .. pg[2], W.findButton(pg[2], g) ~= nil) end
+	T.ok("gold: button Test Gold", W.findButton("Test Gold", g) ~= nil)
 	W.click("Test Gold", g)
 	W.advance(0.3)
 	T.ok("gold: picked page refreshed", gp.refreshes > 0 and gp.page:IsVisible())
@@ -123,15 +138,60 @@ T.scene("pages: the three page functions (Trends, Items, Your gold)", function()
 	T.ok("after a reload: Best sellers shown", X.UI.tabs.gold.panel.views.items:IsVisible())
 	X.UI.Open("trends")
 	W.advance(0.3)
-	T.ok("after a reload: the test trend page is gone, Nothing here yet", has(W.screen(X.UI.tabs.trends.panel), "Nothing here yet"))
+	T.check("after a reload: the test trend page is gone", keysOfSet(X.UI.TRENDS_PAGES), keysOf(TRENDS))
+	T.check("after a reload: the trends page that is gone falls back to the first", X.S().trendsPage, "index")
+	T.ok("after a reload: the first page shown", X.UI.tabs.trends.panel.pages.index:IsVisible())
+	T.ok("after a reload: no test page button", W.findButton("Test Trend", X.UI.tabs.trends.panel) == nil)
 	X.UI.ShowItem("2589")
 	W.advance(0.3)
 	T.ok("after a reload: the item page that is gone falls back to Overview", X.UI.tabs.items.panel.tiles[1]:IsVisible())
 end)
 
+-- every real page: its button, its page shown alone, filled without errors (a little market and a tracked item)
+T.scene("pages: every page of Trends, Items and Your gold opens", function()
+	local X = W.start()
+	history(X, "2589", 120, 12, "Linen Cloth")
+	history(X, "2592", 300, 12, "Wool Cloth")
+	X.SetWatched("2589", true)
+	local function each(view, list, panel, frames, open)
+		for _, pg in ipairs(list) do
+			local b = W.findButton(pg[2], panel)
+			T.ok(view .. " " .. pg[1] .. ": button", b ~= nil)
+			if b then
+				W.click(pg[2], panel)
+				open()
+				W.advance(3) -- (the Trends pages work a little per frame)
+				local f = frames[pg[1]]
+				T.ok(view .. " " .. pg[1] .. ": shown", f and f:IsVisible())
+				local others = 0
+				for _, o in ipairs(list) do if o[1] ~= pg[1] and frames[o[1]] and frames[o[1]]:IsVisible() then others = others + 1 end end
+				T.check(view .. " " .. pg[1] .. ": the only page shown", others, 0)
+				T.ok(view .. " " .. pg[1] .. ": something on it", f and #W.screen(f) > 20, f and W.screen(f))
+			end
+		end
+	end
+	X.UI.Open("trends")
+	W.advance(0.5)
+	local p = X.UI.tabs.trends.panel
+	each("trends", TRENDS, p, p.pages, function() end)
+	X.UI.ShowItem("2589")
+	W.advance(0.5)
+	local panel = X.UI.tabs.items.panel
+	each("items", ITEMS, panel, panel.pages.frames, function() end)
+	X.UI.Open("gold")
+	W.advance(0.5)
+	local g = X.UI.tabs.gold.panel
+	each("gold", GOLD, g, g.views, function() end)
+	T.check("no errors", #W.errors, 0)
+end)
+
 T.scene("pages: the Trends view with no pages", function()
 	local X = W.start()
 	T.check("view order and title", X.UI.tabs.trends.n .. " " .. X.UI.tabs.trends.title, "4 Trends")
+	-- every page taken off (as before the pages were made)
+	local saved = {}
+	for i, pg in ipairs(X.UI.TRENDS_PAGES) do saved[i] = pg end
+	for i = #X.UI.TRENDS_PAGES, 1, -1 do X.UI.TRENDS_PAGES[i] = nil end
 	X.UI.Open()
 	local f = X.UI.Frame()
 	W.click("Trends", f)
@@ -143,6 +203,7 @@ T.scene("pages: the Trends view with no pages", function()
 	X.UI.Refresh(true)
 	W.advance(0.3)
 	T.ok("still fine after a refresh", has(W.screen(p), "Nothing here yet"))
+	for i, pg in ipairs(saved) do X.UI.TRENDS_PAGES[i] = pg end
 	-- the views in the header, in order
 	local keys = {}
 	for _, k in ipairs(X.UI.order) do keys[#keys + 1] = k end

@@ -448,35 +448,34 @@ function X.ScanItemsNext()
 	send()
 end
 
--- [[ the game's own auction house window ]] "Search on the auction house" also shows the item there: its listings
--- page when the game knows the item (else after a moment, else a search by its name). Only while that window is open.
+-- [[ the game's own auction house window ]] "Search on the auction house" and the double-click on an item: puts the
+-- item's name into the game's search box, and you press Enter to search. Only while that window is open.
+-- Why only that: everything XNAH does inside the game's auction house window can make the game refuse its own
+-- protected actions later (in v0.9.0 the bank opened empty after a visit to the auction house). So XNAH never calls
+-- the game's window functions (no changing its tab, no opening an item, no starting its search) and never presses its
+-- buttons. Writing text into the search box is a plain text box action: the game only redraws the box (its magnifying
+-- glass, its clear button, its grey "Search" hint) and stores nothing. Pressing Enter is your own key press, so the
+-- search the game starts then is entirely its own.
 function X.ShowOnAuctionHouse(key)
 	local f = AuctionHouseFrame
-	if not (X.ahOpen and f and f.IsShown and f:IsShown() and key) then return false end
-	local id = X.KeyID(key)
-	if not id then return false end
-	local suffix = tonumber((tostring(key):match(":(%-?%d+)$")))
-	local itemKey = X.Try(C_AuctionHouse.MakeItemKey, id, 0, suffix or 0)
+	if not (X.ahOpen and type(f) == "table" and f.IsShown and X.Try(f.IsShown, f) and key) then return false end
+	if not X.KeyID(key) then return false end
 	local name = X.ItemName(key)
 	if name and name:find("^item %-?%d+$") then name = nil end -- not known yet (X.ItemName's stand-in)
-	-- the Buy tab first (the posting and "your auctions" tabs take no search)
-	local modes = AuctionHouseFrameDisplayMode
-	if modes and modes.Buy and f.SetDisplayMode then X.Try(f.SetDisplayMode, f, modes.Buy) end
-	if name and name ~= "" and f.SetSearchText then X.Try(f.SetSearchText, f, name) end
-	local tries = 0
-	local function open()
-		if not (X.ahOpen and f:IsShown()) then return end
-		local info = itemKey and X.Try(C_AuctionHouse.GetItemKeyInfo, itemKey)
-		if info and f.SelectBrowseResult then
-			local it = X.Item(key)
-			X.Try(f.SelectBrowseResult, f, {itemKey = itemKey, minPrice = it and it.cur and it.cur.min or 0})
-			return
-		end
-		tries = tries + 1
-		if tries < 4 then X.After(0.3, open) return end -- the game is still loading the item
-		if name and name ~= "" and type(f.SearchBar) == "table" and f.SearchBar.StartSearch then X.Try(f.SearchBar.StartSearch, f.SearchBar) end
+	if not name or name == "" then
+		X.Print("the game has not loaded this item's name yet - try again in a moment.")
+		return false
 	end
-	open()
+	-- the search box sits on the window's Buy pages only (the game empties it each time it shows it again)
+	local bar = f.SearchBar
+	local box = type(bar) == "table" and bar.SearchBox or nil
+	local shown = type(box) == "table" and box.SetText and box.IsVisible and X.Try(box.IsVisible, box)
+	if shown and pcall(box.SetText, box, name) then
+		if box.SetFocus then X.Try(box.SetFocus, box) end
+		X.Print(X.ItemText(key) .. " is in the auction house search box - press Enter to search.")
+	else
+		X.Print("type " .. name .. " into the auction house search box (on its Buy tab) and press Enter.")
+	end
 	return true
 end
 
@@ -505,7 +504,7 @@ local function nameStep()
 	end
 	if #nameQueue > 0 then X.After(1, nameStep) else
 		nameBusy = false
-		X.Debounce("names", 1, function() X.Fire("XNAH_PRICES") end)
+		X.Debounce("names", 1, function() X.Fire("XNAH_PRICES", "names") end)
 	end
 end
 function X.FillNames()
@@ -541,8 +540,15 @@ function X.NameLoaded(id, quiet)
 			if it then it.qk = 1 end
 		end
 	end
-	-- while the background look-up runs, the window refreshes once at its end (not every 2 seconds)
-	if (changed or not quiet) and not nameBusy then X.Debounce("names", 2, function() X.Fire("XNAH_PRICES") end) end
+	-- the window refreshes when a name or quality was filled in, or when XNAH itself waited for this item (a list showed
+	-- "item 1234"). The game also sends this for every item anything else loads (its own auction house list, tooltips,
+	-- bags): those change nothing here, and refreshing for each of them would keep restarting the slow work of the
+	-- Trends pages. While the background look-up runs, the window refreshes once at its end (not every 2 seconds).
+	local wanted = X.nameWanted[id]
+	X.nameWanted[id] = nil
+	if (changed or (wanted and not quiet)) and not nameBusy then
+		X.Debounce("names", 2, function() X.Fire("XNAH_PRICES", "names") end)
+	end
 end
 X.On("ITEM_DATA_LOAD_RESULT", function(id, ok) if ok and id then X.NameLoaded(id) end end)
 X.On("GET_ITEM_INFO_RECEIVED", function(id, ok) if ok and id then X.NameLoaded(id) end end)

@@ -17,10 +17,12 @@
 -- An item key is the item ID as text ("2589"), or "id:suffix" for an item with a random bonus ("15210:-19", "of the
 -- Bear"): those sell for very different prices.
 -- item = {id = 2589, n = "Linen Cloth", q = 1, cur = {t, min, mkt, qty, auc}, h = "scan points", d = "day points",
---   sh = "seller points"}
+--   sh = "seller points", pw = "weekday x time-of-day grid"}
 --   h: one point per scan, kept `keepScanDays` days:  "t,min,mkt,qty,auc;..."  (t in minutes, all numbers in base 36)
 --   d: one point per day, kept `keepDays` days:       "day,min,mkt,qty,n;..." (lowest min, average mkt and qty, n scans)
 --   sh: one point per day, kept `keepDays` days:      "day,sellers,top,undercuts,name;..." (X.SellerHistory, below)
+--   pw: the Patterns grid (Patterns.lua): "e,t,b,v;cell;..." (42 cells: 7 weekdays x 6 times of the day), kept only for
+--       items you track or looked at in the last 60 days
 local ADDON, X = ...
 
 X.DEFAULTS = {
@@ -301,6 +303,8 @@ function X.QualityFromLink(link)
 	return nil
 end
 -- the item's name and quality, from the record or the game
+-- items whose name XNAH showed as "item 1234" and is waiting for (X.NameLoaded refreshes the window for those)
+X.nameWanted = {}
 function X.ItemName(key)
 	local it = X.Items()[key]
 	if it and it.n and it.n ~= "" then
@@ -313,6 +317,7 @@ function X.ItemName(key)
 		if it then it.n, it.q = name, q end
 		return name, q
 	end
+	if id then X.nameWanted[id] = true end -- the game loads it now: the window refreshes when it has it (Scan.lua)
 	local known = X.RECIPE_ITEMS and id and X.RECIPE_ITEMS[id]
 	if known then
 		local lq, lname = known:match("^(%d+);(.+)$")
@@ -656,6 +661,11 @@ thinSellers = function(it, today)
 	local s = packSellers(out)
 	it.sh = s ~= "" and s or nil
 end
+-- when the Patterns grid text (item.pw) last counted an observation (minutes; 0 = none): its second number
+function X.PatternGridTime(pw)
+	local t = type(pw) == "string" and pw:match("^[^,;]*,([^,;]*),")
+	return t and X.n36(t) or 0
+end
 -- two records of one item (two realm keys joined): the newer current price, every scan point (one per minute) and every
 -- day point of both (a day in both: the two put together, weighted by how many scans each had). Returns the record.
 function X.MergeItem(a, b)
@@ -720,6 +730,9 @@ function X.MergeItem(a, b)
 		for i, d in ipairs(ss) do list[i] = byS[d] end
 		a.sh = #list > 0 and packSellers(list) or nil
 	end
+	-- the Patterns grid: the one with the newest observation counted (two grids cannot be added up cell by cell - their
+	-- weights start on different days; the newer one follows the market best)
+	if b.pw and (not a.pw or X.PatternGridTime(b.pw) > X.PatternGridTime(a.pw)) then a.pw = b.pw end
 	a.cd, a.ox = nil, nil
 	if X.statsCache then X.statsCache[a] = nil end
 	return a
@@ -1021,7 +1034,7 @@ function X.DataSize()
 	for _, r in pairs(X.db.realms) do
 		for _, it in pairs(r.items) do
 			items = items + 1
-			bytes = bytes + #(it.h or "") + #(it.d or "") + #(it.sh or "") + 60
+			bytes = bytes + #(it.h or "") + #(it.d or "") + #(it.sh or "") + #(it.pw or "") + 60
 		end
 	end
 	return items, bytes

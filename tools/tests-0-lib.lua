@@ -42,6 +42,7 @@ function T.scene(title, fn)
 	local started = os.clock()
 	local ok, e = xpcall(fn, function(m) return debug.traceback(m, 2) end)
 	T.times[#T.times + 1] = string.format("%6.1fs  %s", os.clock() - started, title)
+	if SHOW_TIMES == "live" then print(T.times[#T.times]) end
 	if not ok then T.fail = T.fail + 1 T.results[#T.results + 1] = "FAIL " .. title .. ": " .. tostring(e) end
 	if HOSTUP then HOSTUP.walk() end
 	if W.errors and #W.errors > 0 then

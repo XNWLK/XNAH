@@ -2,9 +2,11 @@
 -- or lays its columns over, shaped like Blizzard_AuctionHouseUI on Forever:
 --   AuctionHouseFrame:SelectBrowseResult / SetDisplayMode / SetPostItem, .ItemBuyFrame:SetItemKey,
 --   .CommoditiesBuyFrame:SetItemIDAndPrice / GetItemID, and three lists (.BrowseResultsFrame.ItemList,
---   .ItemBuyFrame.ItemList, .CommoditiesBuyFrame.ItemList), each with a ScrollBox (Update, GetFrames), a tableBuilder
---   (GetColumns, columns with GetFillCoefficient), a HeaderContainer, and rows with rowData + cells (like the game's
---   table builder; rows are re-used for other items).
+--   .ItemBuyFrame.ItemList, .CommoditiesBuyFrame.ItemList), each with a ScrollBox (Update, GetFrames, view.frames), a
+--   tableBuilder (GetColumns, .columns with .fillCoefficient), a HeaderContainer, and rows with rowData + cells (like the
+--   game's table builder; rows are re-used for other items); .SearchBar.SearchBox (a text box, shown on the Buy pages).
+--   XNAH reads the plain fields only (calling the game's functions from an addon can make the game refuse its own
+--   protected actions later); tools/tests-38-taint.lua makes those functions fail to prove it.
 -- hooksecurefunc(table, "Method", fn) works here too: fn runs after the original, with the same arguments.
 --   W.ahWindow()                 builds the window (call after W.start(), before W.openAH())
 --   W.ahRows(listName, results)  shows rows in a list ("browse", "item", "commodity") and lets the scroll box update
@@ -61,6 +63,7 @@ local function newList(parent, kind)
 	local sb = W.newFrame("Frame", nil, list)
 	list.ScrollBox = sb
 	sb.pool, sb.frames, sb.updates = {}, {}, 0
+	sb.view = {frames = sb.frames} -- as the game: the scroll box's view keeps the shown rows
 	sb.GetFrames = function(self) return self.frames end
 	sb.Update = function(self) self.updates = self.updates + 1 end
 	local columns = {}
@@ -73,6 +76,7 @@ local function newList(parent, kind)
 	function list.ShowRows(self, results)
 		for _, row in ipairs(sb.frames) do row:Hide() end
 		sb.frames = {}
+		sb.view.frames = sb.frames
 		for i, d in ipairs(results) do
 			local row = sb.pool[i]
 			if not row then
@@ -108,7 +112,8 @@ end
 function W.ahWindow()
 	local env = W.env
 	local modes = {
-		Buy = {"BrowseResultsFrame"}, ItemBuy = {"ItemBuyFrame"}, CommoditiesBuy = {"CommoditiesBuyFrame"},
+		Buy = {"BrowseResultsFrame", "SearchBar"}, ItemBuy = {"ItemBuyFrame", "SearchBar"},
+		CommoditiesBuy = {"CommoditiesBuyFrame", "SearchBar"},
 		ItemSell = {"ItemSellFrame"}, CommoditiesSell = {"CommoditiesSellFrame"},
 	}
 	for name, m in pairs(modes) do m.name = name end
@@ -130,10 +135,15 @@ function W.ahWindow()
 	local function called(text) f.calls[#f.calls + 1] = text end
 	f.SearchBar = W.newFrame("Frame", nil, f)
 	f.SearchBar.StartSearch = function() f.searched = true called("search") end
+	-- the game's search box (a plain text box; the game empties it each time the search bar shows again)
+	f.SearchBar.SearchBox = W.newFrame("EditBox", nil, f.SearchBar)
+	f.SearchBar:SetScript("OnShow", function(self) self.SearchBox:SetText("") end)
 	W.ahLists = {browse = f.BrowseResultsFrame.ItemList, item = f.ItemBuyFrame.ItemList, commodity = f.CommoditiesBuyFrame.ItemList}
 
 	f.SetDisplayMode = function(self, mode)
-		for _, m in pairs(modes) do for _, sub in ipairs(m) do self[sub]:Hide() end end
+		local keep = {}
+		for _, sub in ipairs(mode) do keep[sub] = true end
+		for _, m in pairs(modes) do for _, sub in ipairs(m) do if not keep[sub] then self[sub]:Hide() end end end
 		for _, sub in ipairs(mode) do self[sub]:Show() end
 		self.displayMode = mode
 		called("mode " .. tostring(mode.name))
@@ -141,7 +151,10 @@ function W.ahWindow()
 	f.GetDisplayMode = function(self) return self.displayMode end
 	f.SetSearchText = function(self, text) self.searchText = text called("text " .. tostring(text)) end
 	f.ItemBuyFrame.SetItemKey = function(self, itemKey) self.itemKey = itemKey end
-	f.CommoditiesBuyFrame.SetItemIDAndPrice = function(self, itemID, price) self.itemID, self.price = itemID, price end
+	f.CommoditiesBuyFrame.SetItemIDAndPrice = function(self, itemID, price)
+		self.itemID, self.price = itemID, price
+		self.ItemList.itemID = itemID -- as the game: its list of the listings keeps the item
+	end
 	f.CommoditiesBuyFrame.GetItemID = function(self) return self.itemID end
 	-- as Blizzard_AuctionHouseFrame.lua: a commodity opens its listings page, anything else the gear listings
 	f.SelectBrowseResult = function(self, result)

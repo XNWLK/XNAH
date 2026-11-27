@@ -1,52 +1,53 @@
--- XNAH test scenes, part 2f: "Search on the auction house now" (the right-click menu of an item) also shows the item in
--- the game's own auction house window (its listings page; a search by name while the game is still loading the item).
+-- XNAH test scenes, part 2f: "Search on the auction house now" (the right-click menu of an item) and the double-click
+-- put the item's name into the game's own auction house search box, and say "press Enter to search". XNAH calls none
+-- of the game's window functions (that can make the game refuse its own protected actions later: the empty bank of
+-- v0.9.0); tools/tests-38-taint.lua checks that with failing stand-ins. The window is the detailed stand-in of
+-- tools/world-ahpanel.lua.
 
-local function stubWindow(f)
-	local calls = {}
-	f.SetDisplayMode = function(self, mode) calls[#calls + 1] = "mode " .. tostring(mode and mode.name) end
-	f.SetSearchText = function(self, text) calls[#calls + 1] = "text " .. text end
-	f.SelectBrowseResult = function(self, r) calls[#calls + 1] = "open " .. r.itemKey.itemID .. ":" .. r.itemKey.itemSuffix end
-	f.SearchBar = {StartSearch = function() calls[#calls + 1] = "search" end}
-	return calls
-end
-
-T.scene("search: the game's auction house window shows the item too", function()
+T.scene("search: the item's name goes into the game's search box", function()
 	local X = W.start()
-	W.env.AuctionHouseFrameDisplayMode = {Buy = {name = "Buy"}}
 	W.list(2589, 50, 20, 3)
+	W.ahWindow()
 	W.openAH()
-	local calls = stubWindow(W.ahFrame)
-	T.check("shown", X.ShowOnAuctionHouse("2589"), true)
-	T.check("Buy tab, the name, then its listings", table.concat(calls, " | "), "mode Buy | text Linen Cloth | open 2589:0")
+	W.advance(0.3)
+	local f = W.ahFrame
+	local box = f.SearchBar.SearchBox
+	for i = #f.calls, 1, -1 do f.calls[i] = nil end
 	X.Record("2589", X.Now(), 50, 50, 60, 3, "Linen Cloth", 1) -- the name XNAH knows
-	-- an item the game is still loading: tries again, then searches by name
-	W.items[2589].uncached = true
-	for i = #calls, 1, -1 do calls[i] = nil end
-	X.ShowOnAuctionHouse("2589")
-	W.advance(0.5)
-	T.check("not yet given up", calls[#calls], "text Linen Cloth")
-	W.items[2589].uncached = nil
-	W.advance(0.4)
-	T.check("listings once the game knows it", calls[#calls], "open 2589:0")
-	W.items[2589].uncached, W.items[2589].never = true, true
-	for i = #calls, 1, -1 do calls[i] = nil end
-	X.ShowOnAuctionHouse("2589")
-	W.advance(2)
-	T.check("never known: a search by name", calls[#calls], "search")
-	W.items[2589].uncached, W.items[2589].never = nil, nil
-	-- the right-click menu of an item: the window and XNAH's own search
-	for i = #calls, 1, -1 do calls[i] = nil end
+	T.check("shown", X.ShowOnAuctionHouse("2589"), true)
+	T.check("its name in the search box", box.text, "Linen Cloth")
+	T.ok("the search box has the keyboard (Enter searches)", W.focus == box)
+	T.check("nothing asked of the game's window", table.concat(f.calls, " | "), "")
+	T.check("no search started by XNAH", f.searched, nil)
+	T.check("one chat line: press Enter", #W.said("is in the auction house search box - press Enter to search."), 1)
+	-- an item the game has not loaded (no name anywhere): a chat line, nothing typed
+	box:SetText("")
+	T.check("no name yet: not shown", X.ShowOnAuctionHouse("424242"), false)
+	T.check("no name yet: the box stays empty", box.text, "")
+	T.check("no name yet: a chat line", #W.said("has not loaded this item's name yet"), 1)
+	-- the game's window on its Sell tab: no search box there - the name in chat to type in
+	f:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.ItemSell)
+	for i = #f.calls, 1, -1 do f.calls[i] = nil end
+	T.check("Sell tab: still true", X.ShowOnAuctionHouse("2589"), true)
+	T.check("Sell tab: the tab stays", f.displayMode.name, "ItemSell")
+	T.check("Sell tab: the name in chat", #W.said("type Linen Cloth into the auction house search box (on its Buy tab) and press Enter."), 1)
+	T.check("Sell tab: nothing asked of the game's window", #f.calls, 0)
+	-- the right-click menu of an item: the name in the box and XNAH's own search
+	f:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
+	for i = #f.calls, 1, -1 do f.calls[i] = nil end
 	X.UI.ShowItem("2589")
 	X.UI.ItemMenu(X.UI.Frame(), "2589")
 	local menu
-	for _, f in ipairs(W.frames) do if f.strata == "FULLSCREEN_DIALOG" and f:IsVisible() then menu = f end end
+	for _, m in ipairs(W.frames) do if m.strata == "FULLSCREEN_DIALOG" and m:IsVisible() then menu = m end end
 	T.ok("a menu", menu ~= nil)
 	if menu then W.click("Search on the auction house now", menu) end
-	T.check("menu entry opens the listings", calls[#calls], "open 2589:0")
+	T.check("menu entry: the name in the box", box.text, "Linen Cloth")
 	T.ok("and XNAH searches it", X.scan.state == "items" or #W.said("scan done") > 0, X.scan.state)
+	T.check("menu entry: nothing asked of the game's window", table.concat(f.calls, " | "), "")
 	-- auction house closed: nothing
 	W.closeAH()
-	for i = #calls, 1, -1 do calls[i] = nil end
+	box:SetText("")
 	T.check("closed: nothing", X.ShowOnAuctionHouse("2589"), false)
-	T.check("no calls", #calls, 0)
+	T.check("closed: the box stays empty", box.text, "")
+	T.check("no errors", #W.errors, 0)
 end)

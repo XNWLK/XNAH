@@ -80,7 +80,20 @@ function X.Fire(event, ...)
 	end
 	spent(clock() - t0)
 end
-eventFrame:SetScript("OnEvent", function(_, event, ...) X.Fire(event, ...) end)
+-- The auction house opening and closing reach XNAH one frame later. The game sends these two while its own code is
+-- still busy opening or closing its window (closing it also tidies up the game's window manager, which the bank and
+-- other windows use next). Running XNAH's handlers in the middle of that marks the game's code as "touched by an
+-- addon", and then the game refuses its own protected actions later (the bank opened empty, v0.9.0). One frame later
+-- the game has finished, so nothing of XNAH runs inside the game's own work.
+X.LATER = {AUCTION_HOUSE_SHOW = true, AUCTION_HOUSE_CLOSED = true}
+eventFrame:SetScript("OnEvent", function(_, event, ...)
+	if X.LATER[event] then
+		local n, args = select("#", ...), {...}
+		C_Timer.After(0, function() X.Fire(event, unpack(args, 1, n)) end)
+		return
+	end
+	X.Fire(event, ...)
+end)
 
 -- [[ timers ]]
 function X.After(seconds, fn)

@@ -67,18 +67,20 @@ T.scene("ah panel: an item picked in the game's auction house window shows in XN
 	-- another view in XNAH: picking an item in the game's window brings the Items view back
 	X.UI.Select("market")
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
-	X.ShowOnAuctionHouse("4306")
+	W.ahRows("browse", {W.ahBrowseResult(4306, 900, 20)})
+	W.ahClickRow(1)
 	W.advance(0.5)
-	T.check("XNAH's own show-on-the-auction-house", X.AHPanel.key, "4306")
+	T.check("picked in the game's list", X.AHPanel.key, "4306")
 	T.check("Items view again", X.UI.current, "items")
 	T.check("showing it", X.UI.itemKey, "4306")
 
 	-- an item looked at in XNAH, then the same item as before picked again in the game: shown again
 	X.UI.ShowItem("2589")
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
-	X.ShowOnAuctionHouse("4306")
+	W.ahClickRow(1)
 	W.advance(0.5)
 	T.check("picked again: shown again", X.UI.itemKey, "4306")
+	W.ahRows("browse", {W.ahBrowseResult(2589, 40, 300), W.ahBrowseResult(15210, 60000, 1, -19)})
 
 	-- an item from the bags picked for posting
 	W.ahFrame:SetPostItem({link = W.link(2589), id = 2589})
@@ -87,7 +89,7 @@ T.scene("ah panel: an item picked in the game's auction house window shows in XN
 
 	-- fallback: the game's search answer for the window's own item (as if a hook had missed it) ...
 	W.ahFrame:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.CommoditiesBuy)
-	W.ahFrame.CommoditiesBuyFrame.itemID = 2592
+	W.ahFrame.CommoditiesBuyFrame.ItemList.itemID = 2592 -- (the game keeps it there)
 	W.fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2592)
 	T.check("fallback: the window's item", X.AHPanel.key, "2592")
 	-- ... but XNAH's own searches for other items do not move it

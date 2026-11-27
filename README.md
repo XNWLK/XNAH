@@ -15,20 +15,31 @@ itself smaller to fit there; `/xnah`, the minimap button or a key binding open i
 how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and the Settings gear.
 
 - **Items**: your tracked items on the left (add any item, its price, % of its usual price, trend and a 7-day line;
-  double-click one to show it in the game's auction house),
-  and everything about the item you pick on the right:
-  - 12 numbers, each explained in plain words when you point at it: cheapest now, market value, usual price, now vs
-    usual, trend, ups and downs, sells a day, listed vs normal, **fair price to buy**, **fair price to sell**, vendor
-    price, crafting cost.
-  - a big price graph (7 days, 30 days, 90 days, a year) with your own sales and buys as dots.
-  - what is listed right now, as a price ladder (every price and how many are there).
-  - the best day and hour to sell.
-  - its crafting cost and recipes, your own trades, how many sellers, price walls, what it costs to buy up everything
-    cheap, its disenchant value.
-  - **Buy cheapest now**: one press buys one of the cheapest that is not yours, with no "are you sure" box - the
-    button shows the exact price, so check it before you press. Stackable goods (ore, cloth ...) take two presses: the
-    first asks the server for the exact price, the second buys; a "How many" box sets how many. After each buy it
-    searches again, so you can keep pressing.
+  double-click one to put its name in the game's auction house search box - then press Enter there to search),
+  and everything about the item you pick on the right, on five pages:
+  - **Overview**:
+    - 12 numbers, each explained in plain words when you point at it: cheapest now, market value, usual price, now vs
+      usual, trend, ups and downs, sells a day, listed vs normal, **fair price to buy**, **fair price to sell**, vendor
+      price, crafting cost.
+    - a big price graph (7 days, 30 days, 90 days, a year) with your own sales and buys as dots.
+    - what is listed right now, as a price ladder (every price and how many are there).
+    - the best time to sell: a small weekday x time-of-day grid (green = cheaper, red = dearer), the best day and hour.
+    - its crafting cost and recipes, your own trades, how many sellers, price walls, what it costs to buy up everything
+      cheap, its disenchant value.
+  - **Patterns**: when it is cheap or dear, scarce or plentiful - a big grid of the 7 weekdays x 6 times of the day
+    (server time), learned from every scan and search and remembered for weeks (recent weeks count most); how jumpy
+    its price is (the month's low and high, where today sits); about how many sell a day and how much gold that is.
+  - **Compare**: the item and up to 4 more on one graph (ore against bars, a herb against its potion), as prices or as
+    % change from the start, with each one's price now and its change over 7 and 30 days.
+  - **Sellers**: how many sellers it has over time, how much of it the biggest seller has, how often the price gets
+    cut, and who sells it right now. Seller numbers need searches of that one item (**Scan tracked**, or picking the
+    item in the game's auction house): the full scan of the whole auction house gives no seller names.
+  - **Crafting**: what crafting it cost on each day against what it sold for after the auction house cut, the margin
+    over time, and the recipes that use it, each with its margin now.
+  - **Buy cheapest now** (above every page): one press buys one of the cheapest that is not yours, with no "are you
+    sure" box - the button shows the exact price, so check it before you press. Stackable goods (ore, cloth ...) take
+    two presses: the first asks the server for the exact price, the second buys; a "How many" box sets how many. After
+    each buy it searches again, so you can keep pressing.
 
   Picking an item in the game's auction house shows it here.
 - **Market**: every item ever seen on your auction house in one sortable list - lowest price, market value, trend,
@@ -36,8 +47,21 @@ how old the last scan is, **Full scan**, **Scan tracked**, a **Find** box and th
   **Short supply**, **Flooded**, Tracked, Listed now, Can be crafted, quality, and a search box.
 - **Your gold**: gold today and this week, profit, gold per hour at the auction house, net worth; income vs spent per
   day (a graph), profit per week, your flips (best and worst), your best sellers, every recent sale and purchase, and
-  the gold and items of all your characters.
-- **Trends**: pages about the whole auction house over time (being built).
+  the gold and items of all your characters. Two more pages:
+  - **Gold over time**: the gold of each character and of all of them together, your net worth, and profit per week.
+  - **Your items**: per item what you sold and bought, average prices, total profit and profit of one, **time to sell**
+    (from putting an auction up to its sale) and **sell-through** (how much of what you put up sold). These two fill in
+    from this version on: XNAH learns when you put an auction up from your auctions list, so open the auction house's
+    Auctions tab now and then.
+- **Trends**: the whole auction house over time, on four pages:
+  - **Market index**: one line that shows whether prices on the whole auction house go up or down, like a stock index
+    (100 = prices at the start of the period), with extra lines for item groups (cloth, herbs, armor ...).
+  - **Item groups**: every group of items - how much is listed, how its prices and supply moved; click a group for its
+    line and the items of it that rose and fell the most.
+  - **Auction house size**: how much gold, how many auctions, items and units are listed over time, and on which
+    weekdays and hours the auction house is fullest.
+  - **What changed**: since your last visit, the last day or the last 7 days - biggest risers and fallers, sold out,
+    flooded, new and back on the market.
 
 Also:
 
@@ -46,6 +70,7 @@ Also:
 - **Price history** for every item: every scan for 7 days, a summary per day for 60 days, then one per week for a year.
   **Silly prices are left out** (a price far off the item's typical price never makes a normal price look like a
   bargain). Right-click any item to track it, search it on the auction house, or never have it suggested again.
+  Many lists explain a column when you point at its title.
 - **In the game's auction house window**: extra columns (% of the usual price, sells a day) in its lists.
 - **Your sales** are read from the auction house mails when you open your mailbox.
 - **Welcome back**: at login, how many of your auctions ran out and how much gold waits in your mailboxes; at the

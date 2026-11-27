@@ -491,8 +491,8 @@ function UI.ItemTooltip(owner, key)
 	end
 	GameTooltip:Show()
 end
--- double-click on an item in a list: the game's own auction house window shows it too (its listings page, with its name
--- in the game's search box), so you can buy or sell it there with the game's own buttons. Only while that window is open.
+-- double-click on an item in a list: its name goes into the game's own auction house search box (press Enter there to
+-- search; X.ShowOnAuctionHouse in Scan.lua says why XNAH does no more than that). Only while that window is open.
 function UI.ShowInAuctionHouse(key)
 	if not key then return false end
 	local f = AuctionHouseFrame
@@ -531,7 +531,9 @@ function UI.ItemMenu(anchor, key)
 end
 
 -- [[ sortable table ]] K.Table(parent, w, h, columns, onClick, onDoubleClick, doubleClickTip)
--- columns = {{title, width, justify, text = function(row) -> string, sort = function(row) -> number or string}, ...}
+-- columns = {{title, width, justify, text = function(row) -> string, sort = function(row) -> number or string,
+-- tip = "what this column means" (or a function giving that text): shown when the mouse is on the column title}, ...}
+-- (tbl.headerButtons[i] = the button over the title of column i)
 -- tbl:SetRows(rows, emptyText); clicking a header sorts by it (again: the other way); clicking a row: onClick(row, button,
 -- rowFrame). Rows with row.key get the item tooltip on hover. Optional: a left double-click on a row runs
 -- onDoubleClick(row, rowFrame) (the game runs the row's click for the first press, the double-click for the second),
@@ -590,12 +592,29 @@ function K.Table(parent, w, h, columns, onClick, onDoubleClick, doubleClickTip)
 			tbl.sortCol, tbl.sortDesc, tbl.savedSort = saved[1], saved[2] and true or false, true
 		end
 	end
-	-- headers become buttons: click = sort, right-click = copy this list
+	-- headers become buttons: click = sort, right-click = copy this list; a column with a tip shows it on hover
+	tbl.headerButtons = {}
 	for i, hdr in ipairs(list.headers or {}) do
 		local c = columns[i]
 		local b = CreateFrame("Button", nil, list)
 		b:SetAllPoints(hdr)
 		b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		tbl.headerButtons[i] = b
+		if c.tip then
+			b:SetScript("OnEnter", function(self)
+				local tip = c.tip
+				if type(tip) == "function" then
+					local ok, t = pcall(tip)
+					tip = ok and t or nil
+				end
+				GameTooltip:SetOwner(self, "ANCHOR_TOP")
+				GameTooltip:AddLine(c[1] or "")
+				if tip and tip ~= "" then GameTooltip:AddLine(tip, 1, 1, 1, true) end
+				if c.sort then GameTooltip:AddLine("Click to sort by it (again: the other way).", 0.6, 0.6, 0.6, true) end
+				GameTooltip:Show()
+			end)
+			b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		end
 		b:SetScript("OnClick", function(self, button)
 			if button == "RightButton" then
 				K.Menu(self, {{text = "This list", isTitle = true}, {text = "Copy this list as text", func = function() tbl:ShowAsText() end}})

@@ -4,7 +4,7 @@
 // the Warlock Sim addon's tools folder next to this project.
 //   node tools/test.js            all scenes
 //   node tools/test.js scan       only scenes whose title contains "scan"
-//   XNAH_TIMES=1 node tools/test.js   also how long each scene took
+//   XNAH_TIMES=1 node tools/test.js   also how long each scene took (XNAH_TIMES=live: each scene printed as it ends)
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const FENGARI = path.join(ROOT, '..', 'warlock-sim-addon', 'tools', 'node_modules', 'fengari');
@@ -58,7 +58,7 @@ for (const f of files) {
 }
 run(`W.addonFiles({${files.map(f => JSON.stringify(f)).join(',')}})`, '=files');
 setString('FILTER', process.argv[2] || '');
-setString('SHOW_TIMES', process.env.XNAH_TIMES ? '1' : '');
+setString('SHOW_TIMES', process.env.XNAH_TIMES ? (process.env.XNAH_TIMES === 'live' ? 'live' : '1') : '');
 let crashed = null;
 for (const f of fs.readdirSync(__dirname).filter(f => /^tests.*\.lua$/.test(f)).sort()) {
   try { run(fs.readFileSync(path.join(__dirname, f), 'utf8'), '@' + f); }

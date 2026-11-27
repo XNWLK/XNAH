@@ -8,6 +8,20 @@
 -- "buyer" invoice. Expired and cancelled auctions bring no invoice: their subject tells.
 -- A mail is never counted twice: each one gets a fingerprint (kind, item, player, money, count, arrival time to 10
 -- minutes; the arrival is worked out from the days the mail has left, 30 for auction mails) kept 35 days.
+-- Only the headers and invoices are read (and the name / link / count of the first item of an expired or cancelled
+-- mail, which does not open it): XNAH never takes, returns, deletes or opens a mail.
+--
+-- Your postings (for "time to sell"): every auction of yours XNAH sees in your auctions list (Inventory.lua reads it
+-- when the game sends it) is noted once, by its auction ID:
+--   ledger.posts = {{t (when it was put up, best guess), k (item key), q (how many), n (how many are not yet matched
+--     with a sale / expired / cancelled mail), c (character), id (auction ID), p (its buyout as the game gives it),
+--     late = true (XNAH saw it only later: t is the LATEST it can have been put up)}}
+--   ledger.created = {[auction ID] = t} auctions the game told were just put up (kept 2 days)
+--   ledger.postsSince = when XNAH first noted a posting (time to sell counts from then)
+-- A sale, expired or cancelled mail takes its units from the postings of the same character and item, oldest first
+-- (for a sale: those with the same price first). A sale then keeps tts (seconds from posting to the sale, on average
+-- over its units), ttsN (units matched) and ttsLate = true when a posting time was only a "latest" guess. Postings fully
+-- matched go after 2 days, the rest after 35 days (at most 1500 kept).
 local ADDON, X = ...
 
 local DAY = 86400
@@ -16,6 +30,11 @@ local SEEN_DAYS = 35       -- fingerprints are kept this long (auction mails las
 local MAIL_DAYS = 30       -- an auction house mail has this many days left when it arrives
 local BUCKET = 600         -- arrival times are rounded to 10 minutes
 local LISTS = {"sales", "buys", "expired", "cancelled"}
+local POST_KEEP = 35 * DAY      -- postings not matched with a mail are kept this long
+local POST_DONE_KEEP = 2 * DAY  -- postings fully matched are kept this long (to know their auction IDs)
+local POSTS_MAX = 1500
+local DURATIONS = {7200, 28800, 86400} -- the auction lengths the game offers (2, 8 and 24 hours)
+local SLACK = 600               -- a mail may look up to 10 minutes older than its posting (arrival times are guesses)
 
 local function ledger()
 	local r = X.Realm()
@@ -91,6 +110,7 @@ X.LedgerKeyFor = function(link, name) byName = nil local k = keyFor(link, name) 
 local index, indexDay, covered
 local SPEED_DAYS = 30 -- soldPerDay looks at this many days
 local function invalidate() index = nil end
+X.LedgerForget = invalidate -- work the per-item numbers out again on the next call (after entries were added by hand)
 local function buildIndex()
 	index = {}
 	local L = ledger()
@@ -108,7 +128,7 @@ local function buildIndex()
 		local s = index[id]
 		if not s then
 			s = {key = e.key, name = e.name, sold = 0, soldValue = 0, bought = 0, boughtValue = 0, expired = 0, cancelled = 0,
-				nSold = 0, nBought = 0, last = 0, sold30 = 0}
+				nSold = 0, nBought = 0, last = 0, sold30 = 0, ttsSum = 0, ttsN = 0, lateSum = 0, lateN = 0}
 			index[id] = s
 		end
 		if e.t and e.t > s.last then s.last = e.t end
@@ -120,6 +140,14 @@ local function buildIndex()
 		s.soldValue = s.soldValue + (e.money or 0) - (e.cut or 0)
 		s.nSold = s.nSold + 1
 		if (e.t or 0) >= since then s.sold30 = s.sold30 + (e.count or 1) end
+		-- time to sell: exact posting times and "at least" ones (posting seen only later) are kept apart
+		if e.tts and (e.ttsN or 0) > 0 then
+			if e.ttsLate then
+				s.lateSum, s.lateN = s.lateSum + e.tts * e.ttsN, s.lateN + e.ttsN
+			else
+				s.ttsSum, s.ttsN = s.ttsSum + e.tts * e.ttsN, s.ttsN + e.ttsN
+			end
+		end
 	end
 	for _, e in ipairs(L.buys) do
 		local s = slot(e)
@@ -145,12 +173,25 @@ local function finish(s)
 	out.profit = s.soldValue - (out.avgBuy or 0) * math.min(s.sold, s.bought)
 	-- units you sold a day over the last 30 days (or over the days since the ledger's first entry, when fewer)
 	out.soldPerDay = (s.sold30 or 0) / (covered or SPEED_DAYS)
+	out.posted = posted
+	out.profitEach = s.sold > 0 and out.profit / s.sold or nil
+	-- average time to sell: from exact posting times when there are any, else from the "at least" ones
+	local tN, lN = s.ttsN or 0, s.lateN or 0
+	if tN > 0 then
+		out.timeToSell, out.ttsUnits = s.ttsSum / tN, tN
+	elseif lN > 0 then
+		out.timeToSell, out.ttsUnits, out.ttsAtLeast = s.lateSum / lN, lN, true
+	end
 	return out
 end
+local SUMS = {"sold", "soldValue", "bought", "boughtValue", "expired", "cancelled", "sold30", "ttsSum", "ttsN", "lateSum", "lateN"}
 
 -- X.LedgerItem(key) -> {sold (units), soldValue (copper after the cut), bought, boughtValue, expired, cancelled,
 -- sellThrough (0..1 or nil), avgSell, avgBuy, profit, soldPerDay (units you sold a day over the last 30 days, or over
--- the days since the ledger's first entry when it is younger; 0 when none sold lately)} or nil when never traded
+-- the days since the ledger's first entry when it is younger; 0 when none sold lately), posted (sold + expired +
+-- cancelled units), profitEach (profit / units sold), timeToSell (seconds from putting it up to the sale, average over
+-- the units matched with a posting XNAH saw; nil when none), ttsUnits (those units), ttsAtLeast = true (every posting
+-- was seen only later: the real time was at least this)} or nil when never traded
 function X.LedgerItem(key)
 	if not key then return nil end
 	key = tostring(key)
@@ -160,10 +201,11 @@ function X.LedgerItem(key)
 	local name = X.ItemName(key)
 	local b = name and idx["n:" .. name:lower()]
 	if not a and not b then return nil end
-	local s = {key = key, name = name, sold = 0, soldValue = 0, bought = 0, boughtValue = 0, expired = 0, cancelled = 0, last = 0, sold30 = 0}
+	local s = {key = key, name = name, sold = 0, soldValue = 0, bought = 0, boughtValue = 0, expired = 0, cancelled = 0, last = 0, sold30 = 0,
+		ttsSum = 0, ttsN = 0, lateSum = 0, lateN = 0}
 	for _, part in ipairs({a or false, b or false}) do
 		if part then
-			for _, f in ipairs({"sold", "soldValue", "bought", "boughtValue", "expired", "cancelled", "sold30"}) do s[f] = s[f] + part[f] end
+			for _, f in ipairs(SUMS) do s[f] = s[f] + part[f] end
 			if part.last > s.last then s.last = part.last end
 		end
 	end
@@ -171,7 +213,7 @@ function X.LedgerItem(key)
 end
 
 -- every item traded: rows {key or nil, name, sold, soldValue, bought, boughtValue, expired, cancelled, sellThrough,
--- avgSell, avgBuy, profit, soldPerDay, last}
+-- avgSell, avgBuy, profit, soldPerDay, last, posted, profitEach, timeToSell, ttsUnits, ttsAtLeast} (see X.LedgerItem)
 function X.LedgerByItem()
 	local idx = (index and indexDay == X.Day()) and index or buildIndex()
 	local out = {}
@@ -435,6 +477,19 @@ local function prune(now)
 	end
 	local seenLimit = now - SEEN_DAYS * DAY
 	for fp, t in pairs(L.seen) do if t < seenLimit then L.seen[fp] = nil end end
+	-- postings: matched ones after 2 days (they can no longer be listed), the rest after 35 days, at most POSTS_MAX
+	if L.posts then
+		local keep = {}
+		for _, p in ipairs(L.posts) do
+			local t = p.t or 0
+			if t >= now - POST_KEEP and ((p.n or 0) > 0 or t >= now - POST_DONE_KEEP) then keep[#keep + 1] = p end
+		end
+		while #keep > POSTS_MAX do table.remove(keep, 1) end
+		if #keep ~= #L.posts then L.posts = keep end
+	end
+	if L.created then
+		for id, t in pairs(L.created) do if t < now - POST_DONE_KEEP then L.created[id] = nil end end
+	end
 	-- auction house time: a year
 	local r = X.Realm()
 	if r.ahTime then
@@ -457,6 +512,105 @@ local function resolveNames()
 		end
 	end
 end
+
+-- [[ your postings ]] (see the top of this file)
+-- when an auction of `secs` seconds left was put up, seen now: t, late. Only a 24 hour auction can have more than 8
+-- hours left, so that one is exact; with less left the shortest length that fits gives the LATEST time it can have been
+-- put up (late = true). No seconds at all: now (late).
+local function postTime(now, secs)
+	if type(secs) ~= "number" then return now, true end
+	if secs > DURATIONS[2] and secs <= DURATIONS[3] then return now - (DURATIONS[3] - secs), nil end
+	for _, d in ipairs(DURATIONS) do
+		if secs <= d then return now - (d - secs), true end
+	end
+	return now, true
+end
+X.LedgerPostTime = postTime
+
+-- your auctions as the game lists them (Inventory.lua): {{id, key, qty, secs, price, active}, ...}. Each auction ID
+-- is noted once (sold ones are left out: their sale mail is on the way already and they may be older than XNAH).
+function X.LedgerSawAuctions(list, now)
+	if type(list) ~= "table" then return 0 end
+	local L = ledger()
+	now = now or X.Now()
+	L.posts = L.posts or {}
+	L.created = L.created or {}
+	local have = {}
+	for _, p in ipairs(L.posts) do if p.id then have[p.id] = true end end
+	local char = X.CharKey and X.CharKey() or "?"
+	local added = 0
+	for _, a in ipairs(list) do
+		if a.id and a.key and a.active and not have[a.id] then
+			have[a.id] = true
+			local t, late = postTime(now, a.secs)
+			local made = L.created[a.id]
+			if made and made <= now then t, late = made, nil end
+			local q = (a.qty and a.qty > 0) and a.qty or 1
+			L.posts[#L.posts + 1] = {t = t, k = a.key, q = q, n = q, c = char, id = a.id, p = a.price, late = late}
+			added = added + 1
+		end
+	end
+	if added > 0 and not L.postsSince then L.postsSince = now end
+	return added
+end
+
+-- the game says an auction was just put up: note when, and ask for your auctions a moment later (only while the
+-- auction house is open and nothing else is being asked), so its posting time is exact
+X.On("AUCTION_HOUSE_AUCTION_CREATED", function(id)
+	id = X.Plain(id)
+	if type(id) ~= "number" or not X.db then return end
+	local L = ledger()
+	L.created = L.created or {}
+	if not L.created[id] then L.created[id] = X.Now() end
+	X.Debounce("xnah-ledger-owned", 2, function()
+		if not (X.ahOpen and C_AuctionHouse and C_AuctionHouse.QueryOwnedAuctions) then return end
+		if X.scan and X.scan.state ~= "idle" then return end
+		if C_AuctionHouse.IsThrottledMessageSystemReady and not X.Try(C_AuctionHouse.IsThrottledMessageSystemReady) then return end
+		X.Try(C_AuctionHouse.QueryOwnedAuctions, {})
+	end)
+end)
+
+-- is `unit` (copper for one) the price of posting p? (the game's buyout may be for one or for the whole auction)
+local function samePrice(p, unit)
+	if not (unit and p.p and p.p > 0) then return false end
+	local one, all = p.p, p.p / math.max(1, p.q or 1)
+	return math.abs(unit - one) <= one * 0.01 + 1 or math.abs(unit - all) <= all * 0.01 + 1
+end
+-- a mail's units taken from the postings: same character and item, put up before the mail came; for a sale, postings of
+-- the same price first; then the oldest first. A sale gets tts / ttsN / ttsLate.
+local function matchPosts(L, kind, e)
+	if not (L.posts and e.key) then return end
+	local want = e.count or 1
+	local unit = (kind == "sale" and e.money and want > 0) and e.money / want or nil
+	local cands = {}
+	local id = X.KeyID(e.key)
+	for _, p in ipairs(L.posts) do
+		if (p.n or 0) > 0 and p.c == e.char and (p.t or 0) <= (e.t or 0) + SLACK and (p.k == e.key or X.KeyID(p.k) == id) then
+			cands[#cands + 1] = {p = p, exact = p.k == e.key, price = samePrice(p, unit)}
+		end
+	end
+	if #cands == 0 then return end
+	table.sort(cands, function(a, b)
+		if a.exact ~= b.exact then return a.exact end
+		if a.price ~= b.price then return a.price end
+		return (a.p.t or 0) < (b.p.t or 0)
+	end)
+	local units, secs, late = 0, 0, false
+	for _, c in ipairs(cands) do
+		if want <= 0 then break end
+		local p = c.p
+		local take = math.min(want, p.n)
+		p.n = p.n - take
+		want = want - take
+		units = units + take
+		secs = secs + take * math.max(0, (e.t or 0) - (p.t or 0))
+		if p.late then late = true end
+	end
+	if kind == "sale" and units > 0 then
+		e.tts, e.ttsN, e.ttsLate = X.Round(secs / units), units, late or nil
+	end
+end
+X.LedgerMatchPosts = function(kind, e) matchPosts(ledger(), kind, e) end
 
 -- [[ reading the mailbox ]]
 -- a pending sale that this real invoice finishes: same item, count, price and buyer, from up to 3 hours before
@@ -514,7 +668,7 @@ local function readMail()
 	local L = ledger()
 	local now = X.Now()
 	local char = X.CharKey and X.CharKey() or "?"
-	local occurrences, added = {}, 0
+	local occurrences, added, fresh = {}, 0, {}
 	byName = nil
 	for i = 1, n do
 		local _, _, _, subject, _, _, daysLeft = X.Try(GetInboxHeaderInfo, i)
@@ -567,6 +721,7 @@ local function readMail()
 					else
 						e.cut, e.deposit = cut, deposit
 						table.insert(L.sales, e)
+						fresh[#fresh + 1] = {"sale", e}
 						addNews("sale", e)
 					end
 					added = added + 1
@@ -575,6 +730,7 @@ local function readMail()
 					if not findSale(L, name, count, money, who, arrival - BUCKET * 2, arrival + 3 * 3600, false) then
 						e.cut, e.deposit, e.pending = cut, deposit, true
 						table.insert(L.sales, e)
+						fresh[#fresh + 1] = {"sale", e}
 						addNews("sale", e)
 						added = added + 1
 					end
@@ -585,11 +741,17 @@ local function readMail()
 				elseif kind == "expired" or kind == "cancelled" then
 					e.money = nil
 					table.insert(L[kind], e)
+					fresh[#fresh + 1] = {kind, e}
 					addNews(kind, e)
 					added = added + 1
 				end
 			end
 		end
+	end
+	-- the new sales, expired and cancelled mails take their units from your postings, in the order they happened
+	if #fresh > 0 and L.posts and #L.posts > 0 then
+		table.sort(fresh, function(a, b) return (a[2].t or 0) < (b[2].t or 0) end)
+		for _, f in ipairs(fresh) do matchPosts(L, f[1], f[2]) end
 	end
 	prune(now)
 	resolveNames()
