@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.12.0
+
+Double-click a tracked item to search it in the game's auction house again, and drag your tracked items into your own order.
+
+- Items, tracked list: double-clicking an item (or "Search on the auction house now" in its right-click menu) searches
+  it in the game's auction house again, when the auction house shows its list of items. XNAH asks the server itself,
+  with your filters and level range, over every category, and the game's own list fills in.
+- On an item's page in the auction house, the name goes into the search box and you press Enter.
+- The bank stays safe: XNAH still presses none of the game's buttons and changes nothing in its window. If the server
+  is busy, XNAH waits up to 3 seconds, then asks you to press Enter.
+- Items: drag your tracked items up or down to put them in your own order. It is kept after /reload and on every
+  character of the account. A line shows where an item will land, and the list scrolls when you drag near its top or
+  bottom. New items go at the end.
+- The new "Your order" button above the list goes back to your order after sorting by a column. Dragging while the
+  list is sorted keeps the order you see and continues from there.
+
 ## v0.11.0
 
 Your own notes on the graphs, a usual price range, a page of items that move together, a window for your data, and a much faster Market view.
