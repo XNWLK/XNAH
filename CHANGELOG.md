@@ -2,8 +2,7 @@
 
 ## v0.11.0
 
-Your own notes on the graphs, a usual price range, a page of items that move together, a window for your data, and a
-much faster Market view.
+Your own notes on the graphs, a usual price range, a page of items that move together, a window for your data, and a much faster Market view.
 
 - Items, tracked list: each row has a small line of the price over the last 7 days - green when the price went up,
   red when it went down, grey when it stayed about the same. Click the "7 days" title to sort by the biggest rise.
