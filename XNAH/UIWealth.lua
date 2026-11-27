@@ -33,6 +33,18 @@ local CHAR_COLS = {
 	{"Total", 125, "RIGHT", text = function(r) return M(r.worth) end, sort = function(r) return r.worth end},
 	{"Updated", 100, "RIGHT", text = function(r) return GREY .. X.Ago(r.at) .. "|r" end, sort = function(r) return r.at end},
 }
+local CHAR_TIPS = {
+	"Your characters on this realm (both factions), and the account bank. Right-click one to forget it.",
+	"The gold the character has.",
+	"What the items in the bags are worth (auction house price after the cut; soulbound items: what a vendor pays).",
+	"The same for the bank. Open the bank once on that character to count it.",
+	"The same for the items in the mailbox, plus the gold waiting there. Open the mailbox once to count it.",
+	"What the character's auctions on the auction house now are worth (at XNAH's price after the cut, not the price " ..
+		"you asked).",
+	"Everything together: gold, bags, bank, mail and auctions.",
+	"When XNAH last read this character's gold and items (each time you play it).",
+}
+for i, c in ipairs(CHAR_COLS) do c.tip = CHAR_TIPS[i] end -- the hover line of each column title
 local BEST = {["Auction house"] = "|cff4ade80Auction house|r", Vendor = "|cffffd100Vendor|r", ["Keep (bound)"] = GREY .. "Keep (bound)|r"}
 local BAG_COLS = {
 	{"Item", 165, "LEFT", text = function(r) return UI.ItemCell(r.key) end, sort = function(r) return (X.ItemName(r.key)) end, desc = false},
@@ -45,6 +57,16 @@ local BAG_COLS = {
 		return r.rate >= 10 and X.Num(r.rate) or string.format("%.1f", r.rate)
 	end, sort = function(r) return r.rate end},
 }
+local BAG_TIPS = {
+	"An item in this character's bags.",
+	"How many you have.",
+	"What all of them bring on the auction house, after the cut.",
+	"What a vendor pays for all of them.",
+	"Where it brings more: Auction house or Vendor. Slow sellers (under 0.2 a day) go to a vendor unless the auction " ..
+		"house pays 3 times as much. Keep (bound): it cannot be sold on the auction house.",
+	"About how many of it sell a day on the auction house (from scans one after another and your own sales).",
+}
+for i, c in ipairs(BAG_COLS) do c.tip = BAG_TIPS[i] end
 -- the first column takes the room the others leave
 local function fit(columns, w)
 	local fixed = 0
@@ -52,7 +74,8 @@ local function fit(columns, w)
 	local out = {}
 	for i, c in ipairs(columns) do out[i] = c end
 	local first = columns[1]
-	out[1] = {first[1], math.max(120, w - 20 - fixed), first[3], text = first.text, sort = first.sort, desc = first.desc}
+	out[1] = {first[1], math.max(120, w - 20 - fixed), first[3], text = first.text, sort = first.sort, desc = first.desc,
+		tip = first.tip}
 	return out
 end
 

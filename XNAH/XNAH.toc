@@ -25,6 +25,7 @@ UIKit.lua
 UI.lua
 Graph.lua
 GraphNotes.lua
+Sparkline.lua
 UIMarket.lua
 UIItem.lua
 Patterns.lua

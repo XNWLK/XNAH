@@ -106,11 +106,17 @@ end
 
 -- [[ the last scans ]]
 local SCAN_COLUMNS = {
-	{"When", 140, "LEFT", text = function(r) return X.Date(r.t, "%b %d  %H:%M") end},
-	{"Kind", 130, "LEFT", text = function(r) return tostring(r.kind or "-") end},
-	{"Items", 70, "RIGHT", text = function(r) return r.items and X.Num(r.items) or "-" end},
-	{"Auctions", 80, "RIGHT", text = function(r) return r.auctions and X.Num(r.auctions) or "-" end},
-	{"Took", 60, "RIGHT", text = function(r) return r.secs and X.Clock(r.secs) or "-" end},
+	{"When", 140, "LEFT", text = function(r) return X.Date(r.t, "%b %d  %H:%M") end,
+		tip = "When the scan started (your computer's clock)."},
+	{"Kind", 130, "LEFT", text = function(r) return tostring(r.kind or "-") end,
+		tip = "full: every auction at once. tracked items: each item on your tracked list searched one by one. one " ..
+			"item: a single item searched (right-click an item: Search on the auction house now)."},
+	{"Items", 70, "RIGHT", text = function(r) return r.items and X.Num(r.items) or "-" end,
+		tip = "How many different items the scan saw (the other kinds: how many items were searched)."},
+	{"Auctions", 80, "RIGHT", text = function(r) return r.auctions and X.Num(r.auctions) or "-" end,
+		tip = "How many auctions a full scan read (- for the other kinds)."},
+	{"Took", 60, "RIGHT", text = function(r) return r.secs and X.Clock(r.secs) or "-" end,
+		tip = "How long the scan took, minutes:seconds."},
 }
 
 -- [[ settings ]] each control is filled from X.S() on refresh (binds)
@@ -228,6 +234,10 @@ local function buildWindowSettings(s, c)
 		X.S().minimap.hide = not on
 		UI.UpdateMinimap()
 	end)
+	get, set = boolSetting("listSpark")
+	c.check(290, -290, "7-day price lines in the tracked list", get, set,
+		"A small line in each row of your tracked list (Items) showing the price of the last 7 days: green = it went up, " ..
+		"red = it went down, grey = about the same.")
 	c.check(10, -314, "All my characters are on one realm", function() return X.S().oneRealm end, function(on)
 		X.S().oneRealm = on
 		if on and X.CheckRealm then X.CheckRealm() end
