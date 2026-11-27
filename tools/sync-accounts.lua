@@ -1,5 +1,6 @@
 -- Merges the XNAH saved data of several WoW accounts (run by tools/sync-accounts.js through fengari; never part of the
--- addon). Each account keeps its own characters, mailbox ledger and settings; it gets a copy of:
+-- addon). Each account keeps its own characters, mailbox ledger, settings and tracked list (XNAHDB.watch and the order
+-- you dragged it into, watchOrder - left as they are); it gets a copy of:
 --   - the characters of the other accounts (XNAHDB.chars[name] with acct = that account's label) and their net worth
 --     history, so the Wealth page shows every character;
 --   - the ledger entries (sales, purchases, expired, cancelled) of those characters, and their gold history

@@ -491,8 +491,8 @@ function UI.ItemTooltip(owner, key)
 	end
 	GameTooltip:Show()
 end
--- double-click on an item in a list: its name goes into the game's own auction house search box (press Enter there to
--- search; X.ShowOnAuctionHouse in Scan.lua says why XNAH does no more than that). Only while that window is open.
+-- double-click on an item in a list: searches it in the game's auction house (on its list of items; on an item page the name goes
+-- into its search box for Enter; X.ShowOnAuctionHouse in Scan.lua says why). Only while that window is open.
 function UI.ShowInAuctionHouse(key)
 	if not key then return false end
 	local f = AuctionHouseFrame

@@ -88,7 +88,8 @@ local LIST_COLUMNS = {
 	{"Item", 96, "LEFT", text = function(r) return X.ItemIcon(X.KeyID(r.key), 12) .. " " .. X.ItemText(r.key) end,
 		sort = function(r) return (X.ItemName(r.key) or r.key):lower() end, desc = false,
 		tip = "The items you track. Click one to see everything about it on the right, right-click it for more (like Stop tracking), " ..
-			"double-click it to put its name in the auction house search box."},
+			"double-click it to put its name in the auction house search box. " ..
+			"Press on a row and drag it up or down to move it: the list keeps your own order (the Your order button above it)."},
 	{"Cheapest", 62, "RIGHT", text = function(r)
 		local it = X.Items()[r.key]
 		local cur = it and it.cur
@@ -132,6 +133,18 @@ local function drawSpark(rowFrame, key)
 	s:SetShown(c and true or false)
 end
 
+-- [[ your order and dragging ]] (the dragging itself: buildDrag, below the list)
+local drag        -- while the left button is held on a row: {key, x, y (where it was pressed), on (moving), acc}
+local justDragged -- the click that ends a drag is not a click (cleared by the next press)
+-- the "Your order" button: lit while the list is in your own order (no column sort)
+local function orderButton(panel)
+	local b = panel.order
+	if not (b and panel.tbl) then return end
+	local own = panel.tbl.sortCol == nil
+	b:SetLabel(own and (GOLD .. "Your order|r") or (GREY .. "Your order|r"))
+	b:SetSelected(own)
+end
+
 -- an item picked in the "Add an item" box: on the tracked list, and shown
 local function addItem(panel, key)
 	if not key then return end
@@ -169,16 +182,17 @@ local function buildList(panel)
 	-- "Showing: <item>" when the item shown is not tracked, else how many are tracked
 	panel.showing = K.Label(panel, "", "GameFontHighlightSmall")
 	panel.showing:SetPoint("TOPLEFT", 0, -30)
-	panel.showing:SetWidth(LIST_W)
+	panel.showing:SetWidth(LIST_W - 82)
 	panel.showing:SetWordWrap(false)
 	-- click: shown on the right; double-click: its name goes into the game's own auction house search box
 	local tbl = K.Table(panel, LIST_W, UI.H - 62, LIST_COLUMNS, function(row, button, rowFrame)
+		if justDragged or (drag and drag.on) then justDragged = false return end -- (a row was dragged, not clicked)
 		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
 	end, function(row)
 		UI.ShowInAuctionHouse(row.key) -- (the first press of the double-click already showed it on the right)
-	end, "Double-click: put its name in the auction house search box")
+	end, "Double-click: search it in the auction house")
 	tbl:SetPoint("TOPLEFT", 0, -62)
-	tbl:SortBy(1, false)
+	-- no column sort at first: your own order (a column you clicked last time is remembered by the table)
 	-- after each redraw (sorting, scrolling): the 7-day lines, and the item shown marked; lines that had to wait for the
 	-- next frame: sorted and drawn again then
 	local base = tbl.Refresh
@@ -189,8 +203,10 @@ local function buildList(panel)
 			if r and rowFrame:IsShown() then
 				drawSpark(rowFrame, r.key)
 				rowFrame:SetSelected(r.key == UI.itemKey)
+				rowFrame:SetAlpha(drag and drag.on and r.key == drag.key and 0.35 or 1) -- (the row being dragged: dimmed)
 			end
 		end
+		orderButton(panel)
 		if X.SparkBusy() then X.SparkAgain(self, function() if self:IsVisible() then self:Sort() end end) end
 	end
 	panel.tbl = tbl
@@ -198,15 +214,189 @@ end
 
 local function fillList(panel)
 	local rows = {}
-	for key in pairs(X.db.watch) do rows[#rows + 1] = {key = key} end
+	for i, key in ipairs(X.WatchOrder()) do rows[i] = {key = key} end -- (your order; a column sort is done by the table)
 	LIST_COLUMNS[5][1] = sparkOn() and "7 days" or "" -- (the title goes with the lines when Settings hides them)
 	panel.tbl:SetRows(rows, "Nothing tracked yet.\nType a name in Add an item.")
 	local key = UI.itemKey
 	if key and not X.Watched(key) then
 		panel.showing:SetText(GREY .. "Showing:|r " .. X.ItemText(key) .. GREY .. "  (not tracked)|r")
 	else
-		panel.showing:SetText(GREY .. "Tracked items: " .. #rows .. "  (right-click one: Stop tracking)|r")
+		panel.showing:SetText(GREY .. "Tracked items: " .. #rows .. (#rows > 1 and " - drag to move" or "") .. "|r")
 	end
+end
+
+-- [[ dragging a row ]] press on a row and move the mouse a few pixels with the button held: the row is picked up (dimmed,
+-- a copy of it follows the mouse, a line shows where it will land); let go to put it there. Near the top or bottom
+-- edge of the list it scrolls. A column sort shown at that moment: the order on screen becomes your order first, so
+-- nothing jumps. Only XNAH's own frames: OnMouseDown / OnMouseUp on the rows, an OnUpdate on a frame of our own that
+-- runs only while the button is held.
+local DRAG_START = 5               -- pixels the mouse has to move with the button held before a press is a drag
+local EDGE = 18                    -- this close to the top or the bottom of the rows: the list scrolls
+local SCROLL_NEAR, SCROLL_PAST = 0.12, 0.04 -- seconds per row while near the edge / past it
+
+local function cursorIn(frame)
+	local x, y = GetCursorPosition()
+	local s = frame:GetEffectiveScale() or 1
+	if s <= 0 then s = 1 end
+	return x / s, y / s
+end
+-- the gap the mouse is at: 0 = above the first item, n = under item n; nil when the mouse is well off the list
+-- (second value: the gap counted from the first row on screen)
+local function gapAt(tbl, x, y)
+	local top, left, right = tbl:GetTop(), tbl:GetLeft(), tbl:GetRight()
+	if not top then return nil end
+	if left and right and (x < left - 40 or x > right + 40) then return nil end
+	local shown = math.max(0, math.min(#tbl.rows, #tbl.items - tbl.offset))
+	local slot = math.floor((top - y - 2) / tbl.rowH + 0.5)
+	slot = math.max(0, math.min(shown, slot))
+	return tbl.offset + slot, slot
+end
+local function indexOf(tbl, key)
+	for i, r in ipairs(tbl.items) do if r.key == key then return i end end
+end
+
+local function placeMarks(panel, x, y)
+	local tbl = panel.tbl
+	local gap, slot = gapAt(tbl, x, y)
+	local line = panel.dropLine
+	line:ClearAllPoints()
+	line:SetPoint("TOPLEFT", tbl, "TOPLEFT", 2, -1 - (slot or 0) * tbl.rowH)
+	line:SetShown(gap ~= nil)
+	local ghost = panel.ghost
+	ghost:ClearAllPoints()
+	ghost:SetPoint("LEFT", tbl, "TOPLEFT", 18, y - (tbl:GetTop() or y))
+	ghost:Show()
+end
+
+local function startDrag(panel)
+	local tbl = panel.tbl
+	drag.on = true
+	GameTooltip:Hide()
+	-- sorted by a column: what is on screen becomes your order, and the list goes back to your order
+	if tbl.sortCol then
+		local keys = {}
+		for i, r in ipairs(tbl.items) do keys[i] = r.key end
+		X.SetWatchOrder(keys)
+		tbl.sortCol = nil
+		if tbl.saveKey then X.S().sorts[tbl.saveKey] = nil end
+		tbl:Sort() -- (the titles lose their sort mark; the rows stay where they are)
+	end
+	panel.ghost.label:SetText(X.ItemIcon(X.KeyID(drag.key), 12) .. " " .. X.ItemText(drag.key))
+	tbl:Refresh() -- (the row picked up: dimmed)
+end
+
+local function endDrag(panel, drop)
+	local d = drag
+	drag = nil
+	if panel.dragger:IsShown() then panel.dragger:Hide() end
+	panel.dropLine:Hide()
+	panel.ghost:Hide()
+	if not (d and d.on) then return end
+	justDragged = true
+	local tbl = panel.tbl
+	if drop then
+		local x, y = cursorIn(tbl)
+		local gap, from = gapAt(tbl, x, y), indexOf(tbl, d.key)
+		if gap and from then X.MoveWatched(d.key, gap < from and gap + 1 or gap) end
+	end
+	fillList(panel)
+end
+
+local function dragUpdate(panel, elapsed)
+	local d = drag
+	if not d then panel.dragger:Hide() return end
+	if not IsMouseButtonDown("LeftButton") then endDrag(panel, true) return end -- (let go where the row heard nothing)
+	local tbl = panel.tbl
+	local x, y = cursorIn(tbl)
+	if not d.on then
+		if math.max(math.abs(x - d.x), math.abs(y - d.y)) < DRAG_START then return end
+		startDrag(panel)
+	end
+	-- near the top or the bottom edge: scroll (faster past the edge)
+	local top = tbl:GetTop()
+	local maxOff = math.max(0, #tbl.items - #tbl.rows)
+	if top and maxOff > 0 then
+		local below = top - y - 2 -- pixels under the top of the first row
+		local rowsH = #tbl.rows * tbl.rowH
+		local dir, wait = 0, SCROLL_NEAR
+		if below < EDGE and tbl.offset > 0 then dir = -1 wait = below < 0 and SCROLL_PAST or SCROLL_NEAR
+		elseif below > rowsH - EDGE and tbl.offset < maxOff then dir = 1 wait = below > rowsH and SCROLL_PAST or SCROLL_NEAR end
+		if dir == 0 then d.acc = 0 else
+			d.acc = (d.acc or 0) + (elapsed or 0)
+			if d.acc >= wait then
+				d.acc = 0
+				tbl.offset = math.max(0, math.min(maxOff, tbl.offset + dir))
+				tbl:Refresh()
+			end
+		end
+	end
+	placeMarks(panel, x, y)
+end
+
+local function buildDrag(panel)
+	local tbl = panel.tbl
+	-- the Your order button (right of the line above the list)
+	local order = K.Flat(panel, 78, 16)
+	order:SetPoint("TOPLEFT", LIST_W - 78, -28)
+	order:SetScript("OnClick", function()
+		if tbl.sortCol then
+			tbl.sortCol = nil
+			if tbl.saveKey then X.S().sorts[tbl.saveKey] = nil end
+		end
+		fillList(panel)
+	end)
+	order:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine("Your order")
+		local c = tbl.sortCol and LIST_COLUMNS[tbl.sortCol]
+		if c then
+			local name = c[1] ~= "" and c[1] or "which way the price went"
+			GameTooltip:AddLine("Sorted by \"" .. name .. "\" now. Click here to go back to your own order.", 1, 1, 1, true)
+			GameTooltip:AddLine("Dragging a row also goes back to your order, starting from the order shown now.", 0.6, 0.6, 0.6, true)
+		else
+			GameTooltip:AddLine("The list is in your own order. Press on a row and drag it up or down to move it.", 1, 1, 1, true)
+			GameTooltip:AddLine("Click a column title to sort by that column instead; click here to come back.", 0.6, 0.6, 0.6, true)
+		end
+		GameTooltip:Show()
+	end)
+	order:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	panel.order = order
+	-- where the item will land, and the copy that follows the mouse
+	local line = tbl:CreateTexture(nil, "OVERLAY")
+	line:SetColorTexture(K.colors.accent[1], K.colors.accent[2], K.colors.accent[3], 1)
+	line:SetSize(tbl.rows[1] and tbl.rows[1]:GetWidth() or LIST_W - 16, 2)
+	line:Hide()
+	panel.dropLine = line
+	local ghost = K.Panel(tbl, LIST_W - 40, 18, {0.06, 0.06, 0.08, 0.9})
+	ghost:SetFrameStrata("TOOLTIP")
+	ghost:EnableMouse(false)
+	ghost.label = K.Label(ghost, "", "GameFontHighlightSmall")
+	ghost.label:SetPoint("LEFT", 4, 0)
+	ghost.label:SetPoint("RIGHT", -4, 0)
+	ghost.label:SetWordWrap(false)
+	ghost:Hide()
+	panel.ghost = ghost
+	-- runs only while the left button is held on a row
+	local dragger = CreateFrame("Frame", nil, tbl)
+	dragger:Hide()
+	dragger:SetScript("OnUpdate", function(_, elapsed) dragUpdate(panel, elapsed) end)
+	dragger:SetScript("OnHide", function() if drag then endDrag(panel, false) end end) -- (the window closed meanwhile)
+	panel.dragger = dragger
+	for i, rowFrame in ipairs(tbl.rows) do
+		rowFrame:SetScript("OnMouseDown", function(_, button)
+			justDragged = false
+			if button ~= "LeftButton" or drag then return end
+			local r = tbl.items[i + tbl.offset]
+			if not r then return end
+			local x, y = cursorIn(tbl)
+			drag = {key = r.key, x = x, y = y, acc = 0}
+			dragger:Show()
+		end)
+		rowFrame:SetScript("OnMouseUp", function(_, button)
+			if button == "LeftButton" and drag then endDrag(panel, true) end
+		end)
+	end
+	orderButton(panel)
 end
 
 -- [[ the analysis: header ]]
@@ -1001,6 +1191,7 @@ end, 1, "Everything about the item: the numbers, the price graph, the auction ho
 local function build(panel)
 	itemPanel = panel
 	buildList(panel)
+	buildDrag(panel)
 	local a = CreateFrame("Frame", nil, panel)
 	a:SetPoint("TOPLEFT", AX, 0)
 	a:SetSize(AW, UI.H)
@@ -1011,7 +1202,7 @@ local function build(panel)
 	panel.pages = UI.PageBar(a, PAGES, {x = 0, y = PAGE_BUTTONS_Y, px = 0, py = PAGE_Y, pw = AW, ph = PAGE_H, name = "items",
 		pick = function(key) X.S().itemPage = key refresh(panel) end})
 	panel.hint = K.Label(panel, "Pick an item on the left, type a name in Add an item, or use Find at the top: everything " ..
-		"about it shows here. Double-click an item on the left: its name goes into the auction house search box.", "GameFontDisable", "CENTER")
+		"about it shows here. Double-click an item on the left: it is searched in the auction house.", "GameFontDisable", "CENTER")
 	panel.hint:SetPoint("CENTER", panel, "TOPLEFT", AX + AW / 2, -UI.H / 2)
 	panel.hint:SetWidth(AW - 100)
 end

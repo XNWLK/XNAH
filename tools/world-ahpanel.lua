@@ -14,6 +14,11 @@
 --   W.ahBrowseResult(id, minPrice, qty, suffix)  one row of the item list as the game gives it
 --   W.ahFrame.calls              what was called on the window, in order ("mode Buy", "text Linen Cloth",
 --                                "open 2589:0", "search"), for scenes that check what XNAH asked of it
+--   W.browseQueries              every C_AuctionHouse.SendBrowseQuery (a copy of the query), in order
+-- The game's own tables the search reads (Blizzard_AuctionHouseSearchBar.lua / Blizzard_AuctionHouseFrame.lua):
+--   g_auctionHouseFilters {minLevel, maxLevel, filters = {[filter] = on}}, g_auctionHouseSortsBySearchContext,
+--   AuctionHouseSearchContext, AuctionCategories, and .CategoriesList (selectedCategoryIndex ...). The item list
+--   (.BrowseResultsFrame) fills itself from AUCTION_HOUSE_BROWSE_RESULTS_UPDATED, as the game's own does.
 
 local unpackf = table.unpack or unpack
 
@@ -21,7 +26,26 @@ table.insert(W.onReset, function()
 	-- a window from an earlier scene holds hooks of an earlier login: never re-used
 	if W.ahFrame and W.ahFrame.xnahStandIn then W.ahFrame = nil end
 	W.ahLists = nil
+	W.browseQueries = {}
+	W.gameCode = 0
 end)
+
+local function deepCopy(v)
+	if type(v) ~= "table" then return v end
+	local out = {}
+	for k, x in pairs(v) do out[k] = deepCopy(x) end
+	return out
+end
+W.deepCopy = deepCopy
+-- the game's own code running by itself (its event handlers, its window opening): W.gameCode > 0 meanwhile, so
+-- tools/tests-38-taint.lua can tell the game's own calls from XNAH's
+W.gameCode = 0
+function W.asGame(fn, ...)
+	W.gameCode = W.gameCode + 1
+	local ok, err = pcall(fn, ...)
+	W.gameCode = W.gameCode - 1
+	if not ok then error(err, 0) end
+end
 
 table.insert(W.onEnv, function(env)
 	local plain = env.hooksecurefunc
@@ -38,6 +62,16 @@ table.insert(W.onEnv, function(env)
 			return
 		end
 		return plain(a, b, c)
+	end
+	-- every browse search sent is written down (the stand-in server answers it as before)
+	local cah = env.C_AuctionHouse
+	if cah and cah.SendBrowseQuery and not cah.xnahRecorded then
+		local send = cah.SendBrowseQuery
+		cah.SendBrowseQuery = function(query)
+			W.browseQueries[#W.browseQueries + 1] = deepCopy(query)
+			return send(query)
+		end
+		cah.xnahRecorded = true
 	end
 	-- an item location's link and ID (only when the world has none)
 	if env.C_Item and not env.C_Item.GetItemLink then
@@ -137,8 +171,32 @@ function W.ahWindow()
 	f.SearchBar.StartSearch = function() f.searched = true called("search") end
 	-- the game's search box (a plain text box; the game empties it each time the search bar shows again)
 	f.SearchBar.SearchBox = W.newFrame("EditBox", nil, f.SearchBar)
-	f.SearchBar:SetScript("OnShow", function(self) self.SearchBox:SetText("") end)
+	f.SearchBar:SetScript("OnShow", function(self) W.asGame(function() self.SearchBox:SetText("") end) end)
 	W.ahLists = {browse = f.BrowseResultsFrame.ItemList, item = f.ItemBuyFrame.ItemList, commodity = f.CommoditiesBuyFrame.ItemList}
+	-- the game's list of items fills itself from the server's answer to any browse search (its own event handler,
+	-- registered when it loads: Blizzard_AuctionHouseBrowseResultsFrame.lua OnLoad / OnEvent / UpdateBrowseResults)
+	f.BrowseResultsFrame.browseResults = {}
+	f.BrowseResultsFrame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+	f.BrowseResultsFrame:SetScript("OnEvent", function(self)
+		W.asGame(function()
+			self.browseResults = env.C_AuctionHouse.GetBrowseResults()
+			self.ItemList:ShowRows(self.browseResults)
+		end)
+	end)
+	-- the categories on the left (none picked) and the game's saved search settings, as on a fresh character
+	f.CategoriesList = W.newFrame("Frame", nil, f)
+	f.CategoriesList.selectedCategoryIndex = false -- (false = none picked; a real key, so the stand-in does not answer it)
+	env.AuctionHouseSearchContext = {BrowseAll = 0, BrowseTradeGoods = 1, BrowseArmor = 2, BrowseWeapons = 3, AllFavorites = 13}
+	env.g_auctionHouseFilters = {minLevel = 0, maxLevel = 0,
+		filters = {[1] = false, [2] = false, [3] = false, [4] = false, [6] = true, [7] = true, [8] = true, [9] = true, [10] = true,
+			[11] = true, [12] = true}}
+	env.g_auctionHouseSortsBySearchContext = {auctionHouseSortVersion = 2,
+		[0] = {{sortOrder = 0, reverseSort = false}, {sortOrder = 1, reverseSort = false}},
+		[3] = {{sortOrder = 1, reverseSort = true}, {sortOrder = 0, reverseSort = false}}}
+	env.AuctionCategories = {
+		{name = "Weapons", filters = {{classID = 2}}, subCategories = {{name = "Swords", filters = {{classID = 2, subClassID = 7}}}}},
+		{name = "Trade Goods", filters = {{classID = 7}}},
+	}
 
 	f.SetDisplayMode = function(self, mode)
 		local keep = {}
@@ -175,7 +233,7 @@ function W.ahWindow()
 	end
 	f:SetDisplayMode(modes.Buy)
 	-- the game's window starts on the item list each time it opens
-	f:SetScript("OnShow", function(self) self:SetDisplayMode(modes.Buy) end)
+	f:SetScript("OnShow", function(self) W.asGame(function() self:SetDisplayMode(modes.Buy) end) end)
 	return f
 end
 

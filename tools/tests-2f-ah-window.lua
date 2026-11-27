@@ -1,10 +1,12 @@
 -- XNAH test scenes, part 2f: "Search on the auction house now" (the right-click menu of an item) and the double-click
--- put the item's name into the game's own auction house search box, and say "press Enter to search". XNAH calls none
--- of the game's window functions (that can make the game refuse its own protected actions later: the empty bank of
--- v0.9.0); tools/tests-38-taint.lua checks that with failing stand-ins. The window is the detailed stand-in of
+-- search the item in the game's own auction house window: on its list of items the name goes into its search box and
+-- XNAH sends the server the same kind of search its Search button sends (the game's list fills itself from the
+-- answer); elsewhere the name goes into the box and Enter searches. XNAH calls none of the game's window functions
+-- (that can make the game refuse its own protected actions later: the empty bank of v0.9.0);
+-- tools/tests-38-taint.lua checks that with failing stand-ins. The window is the detailed stand-in of
 -- tools/world-ahpanel.lua.
 
-T.scene("search: the item's name goes into the game's search box", function()
+T.scene("search: the item is searched in the game's window", function()
 	local X = W.start()
 	W.list(2589, 50, 20, 3)
 	W.ahWindow()
@@ -16,10 +18,19 @@ T.scene("search: the item's name goes into the game's search box", function()
 	X.Record("2589", X.Now(), 50, 50, 60, 3, "Linen Cloth", 1) -- the name XNAH knows
 	T.check("shown", X.ShowOnAuctionHouse("2589"), true)
 	T.check("its name in the search box", box.text, "Linen Cloth")
-	T.ok("the search box has the keyboard (Enter searches)", W.focus == box)
 	T.check("nothing asked of the game's window", table.concat(f.calls, " | "), "")
-	T.check("no search started by XNAH", f.searched, nil)
-	T.check("one chat line: press Enter", #W.said("is in the auction house search box - press Enter to search."), 1)
+	T.check("the game's own search not started by XNAH", f.searched, nil)
+	T.check("the search sent to the server", (W.browseQueries[1] or {}).searchString, "Linen Cloth")
+	T.check("one chat line: searching", #W.said("searching the auction house for Linen Cloth."), 1)
+	W.advance(1)
+	T.check("the game's list shows it", #W.ahLists.browse.ScrollBox.frames, 1)
+	-- on an item's page: the name in the box, Enter searches
+	f:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.ItemBuy)
+	T.check("item page: still true", X.ShowOnAuctionHouse("2589"), true)
+	T.ok("item page: the search box has the keyboard (Enter searches)", W.focus == box)
+	T.check("item page: no search sent", #W.browseQueries, 1)
+	T.check("item page: press Enter", #W.said("is in the auction house search box - press Enter to search"), 1)
+	f:SetDisplayMode(W.env.AuctionHouseFrameDisplayMode.Buy)
 	-- an item the game has not loaded (no name anywhere): a chat line, nothing typed
 	box:SetText("")
 	T.check("no name yet: not shown", X.ShowOnAuctionHouse("424242"), false)
@@ -42,6 +53,8 @@ T.scene("search: the item's name goes into the game's search box", function()
 	T.ok("a menu", menu ~= nil)
 	if menu then W.click("Search on the auction house now", menu) end
 	T.check("menu entry: the name in the box", box.text, "Linen Cloth")
+	W.advance(0.5)
+	T.check("menu entry: searched in the game's window", (W.browseQueries[#W.browseQueries] or {}).searchString, "Linen Cloth")
 	T.ok("and XNAH searches it", X.scan.state == "items" or #W.said("scan done") > 0, X.scan.state)
 	T.check("menu entry: nothing asked of the game's window", table.concat(f.calls, " | "), "")
 	-- auction house closed: nothing

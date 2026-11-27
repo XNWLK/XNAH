@@ -12,6 +12,7 @@
 --   vbuy  = {[itemID] = {p = copper per one, lim = true if limited stock, at = t, from = "NPC name"}}
 --   recipes = {[recipeID] = see Craft.lua}
 --   watch = {[key] = true}          the watch list (starred items)
+--   watchOrder = {key, ...}         your order of the tracked list (dragged in the Items view; X.WatchOrder)
 --   cleanup = 3                     the saved data of features taken out was deleted (X.CleanRemoved)
 -- }
 -- An item key is the item ID as text ("2589"), or "id:suffix" for an item with a random bonus ("15210:-19", "of the
@@ -994,8 +995,60 @@ function X.Watched(key)
 	return X.db.watch[key] ~= nil
 end
 function X.SetWatched(key, on)
-	if on then X.db.watch[key] = X.db.watch[key] or true else X.db.watch[key] = nil end
+	if on then
+		if X.db.watch[key] == nil then
+			local order = X.WatchOrder() -- (made whole first: the new item goes after every item tracked so far)
+			X.db.watch[key] = true
+			order[#order + 1] = key
+		end
+	elseif X.db.watch[key] ~= nil then
+		X.db.watch[key] = nil
+		X.WatchOrder() -- (taken out of your order too)
+	end
 	X.Fire("XNAH_WATCH")
+end
+-- [[ your order of the tracked list ]] XNAHDB.watchOrder = {key, ...}: the order you dragged the items into (Items view,
+-- the "Your order" sort). Kept for the whole account like the watch list. X.WatchOrder() gives it made whole: items no
+-- longer tracked dropped, each item once, tracked items missing from it (the first time: all of them, so the list shows
+-- as it did before - by name) added at the end by name. Newly tracked items go at the end (X.SetWatched).
+local function nameOf(key) return ((X.ItemName(key)) or tostring(key)):lower() end
+function X.WatchOrder()
+	local db = X.db
+	local watch, out, seen = db.watch, {}, {}
+	for _, key in ipairs(type(db.watchOrder) == "table" and db.watchOrder or {}) do
+		if watch[key] ~= nil and not seen[key] then seen[key] = true out[#out + 1] = key end
+	end
+	local missing = {}
+	for key in pairs(watch) do if not seen[key] then missing[#missing + 1] = key end end
+	if #missing > 0 then
+		local names = {}
+		for _, key in ipairs(missing) do names[key] = nameOf(key) end
+		table.sort(missing, function(a, b)
+			if names[a] ~= names[b] then return names[a] < names[b] end
+			return tostring(a) < tostring(b)
+		end)
+		for _, key in ipairs(missing) do out[#out + 1] = key end
+	end
+	db.watchOrder = out
+	return out
+end
+-- a whole new order (the keys in the order wanted; anything missing is added as X.WatchOrder does)
+function X.SetWatchOrder(keys)
+	X.db.watchOrder = {}
+	for i, key in ipairs(keys or {}) do X.db.watchOrder[i] = key end
+	return X.WatchOrder()
+end
+-- moves one tracked item to place `pos` of your order (1 = top); true when it moved
+function X.MoveWatched(key, pos)
+	local order = X.WatchOrder()
+	local from
+	for i, k in ipairs(order) do if k == key then from = i break end end
+	if not from then return false end
+	pos = math.max(1, math.min(#order, math.floor(tonumber(pos) or from)))
+	if pos == from then return false end
+	table.remove(order, from)
+	table.insert(order, pos, key)
+	return true
 end
 function X.WatchMax(key)
 	local w = X.db.watch[key]

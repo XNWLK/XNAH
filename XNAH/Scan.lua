@@ -448,14 +448,69 @@ function X.ScanItemsNext()
 	send()
 end
 
--- [[ the game's own auction house window ]] "Search on the auction house" and the double-click on an item: puts the
--- item's name into the game's search box, and you press Enter to search. Only while that window is open.
--- Why only that: everything XNAH does inside the game's auction house window can make the game refuse its own
--- protected actions later (in v0.9.0 the bank opened empty after a visit to the auction house). So XNAH never calls
--- the game's window functions (no changing its tab, no opening an item, no starting its search) and never presses its
--- buttons. Writing text into the search box is a plain text box action: the game only redraws the box (its magnifying
--- glass, its clear button, its grey "Search" hint) and stores nothing. Pressing Enter is your own key press, so the
--- search the game starts then is entirely its own.
+-- [[ the game's own auction house window ]] "Search on the auction house now" (the right-click menu of an item) and
+-- the double-click on an item: XNAH searches the item in the game's window. Only while that window is open.
+-- Why this way: everything XNAH runs inside the game's own window code can make the game refuse its own protected
+-- actions later. In v0.9.0 the bank opened empty after a visit to the auction house: the game's window manager opens
+-- and closes the auction house window, and when the window's own opening / closing code read something XNAH had
+-- written, the window manager itself got XNAH's mark - and the bank opens through that same window manager
+-- (Blizzard_UIParentPanelManager: SetUIPanel, "doublewide"; the bank's OnShow buys its free first tab, a protected
+-- action). So XNAH never calls the game's window functions and never presses its buttons. Its Search button, its
+-- search box's Enter and its StartSearch all write the level range into the game's saved filters (which its search
+-- bar reads each time the window opens) and may switch the window's view (read again when it opens): done by XNAH,
+-- those would carry XNAH's mark into the window manager.
+-- What XNAH does instead, while the window shows its list of items (its "Buy" view): it writes the item's name into
+-- the search box (a plain text box action: the game only redraws the box) and sends the server the same kind of
+-- search the game's Search button sends (C_AuctionHouse.SendBrowseQuery, open to any addon), made of XNAH's own new
+-- tables, with the game's level range, filters and sort order (only read, never written), in every category (so the
+-- item is found even when another category is picked on the left). The answer is the game's own message
+-- (AUCTION_HOUSE_BROWSE_RESULTS_UPDATED), and the game's own list fills itself from it in the game's own code.
+-- On an item's page there is no list to fill, and going back to the list is a view switch only the game may make:
+-- there the name goes into the box and you press Enter (your own key press, so the search is entirely the game's own).
+local function gameTable(name)
+	local t = _G[name]
+	return type(t) == "table" and t or nil
+end
+local function plainNumber(v)
+	v = X.Plain(v)
+	return type(v) == "number" and v or nil
+end
+-- the search query: the shape of Blizzard_AuctionHouseFrame.lua SendBrowseQueryInternal, all new tables of XNAH's own
+function X.AHBrowseQuery(text)
+	local q = {searchString = text, minLevel = 0, maxLevel = 0}
+	local saved = gameTable("g_auctionHouseFilters") -- the game's filter button (level range, qualities, usable only ...)
+	if saved then
+		q.minLevel = plainNumber(saved.minLevel) or 0
+		q.maxLevel = plainNumber(saved.maxLevel) or 0
+		if type(saved.filters) == "table" then
+			q.filters = {}
+			for filter, on in pairs(saved.filters) do
+				if on == true and type(filter) == "number" then q.filters[#q.filters + 1] = filter end
+			end
+			table.sort(q.filters)
+		end
+	end
+	-- the order the game's list of all categories uses (price, then name, unless you clicked another column)
+	q.sorts = {}
+	local sorts, contexts = gameTable("g_auctionHouseSortsBySearchContext"), gameTable("AuctionHouseSearchContext")
+	local all = sorts and contexts and contexts.BrowseAll ~= nil and sorts[contexts.BrowseAll]
+	if type(all) == "table" then
+		for _, s in ipairs(all) do
+			local order = type(s) == "table" and plainNumber(s.sortOrder)
+			if order then q.sorts[#q.sorts + 1] = {sortOrder = order, reverseSort = s.reverseSort == true} end
+		end
+	end
+	if #q.sorts == 0 then q.sorts = {{sortOrder = 0, reverseSort = false}, {sortOrder = 1, reverseSort = false}} end
+	return q
+end
+-- the game's window shows its list of items (not an item's page, the token page or the Sell / Auctions tabs)
+local function onItemList(f)
+	local modes = AuctionHouseFrameDisplayMode
+	local list = f.BrowseResultsFrame
+	return type(modes) == "table" and modes.Buy ~= nil and rawequal(f.displayMode, modes.Buy) and type(list) == "table"
+		and list.IsShown and X.Try(list.IsShown, list) and true or false
+end
+local searchTurn = 0 -- a newer double-click replaces a search still waiting for the server
 function X.ShowOnAuctionHouse(key)
 	local f = AuctionHouseFrame
 	if not (X.ahOpen and type(f) == "table" and f.IsShown and X.Try(f.IsShown, f) and key) then return false end
@@ -470,12 +525,42 @@ function X.ShowOnAuctionHouse(key)
 	local bar = f.SearchBar
 	local box = type(bar) == "table" and bar.SearchBox or nil
 	local shown = type(box) == "table" and box.SetText and box.IsVisible and X.Try(box.IsVisible, box)
-	if shown and pcall(box.SetText, box, name) then
-		if box.SetFocus then X.Try(box.SetFocus, box) end
-		X.Print(X.ItemText(key) .. " is in the auction house search box - press Enter to search.")
-	else
+	if not (shown and pcall(box.SetText, box, name)) then
 		X.Print("type " .. name .. " into the auction house search box (on its Buy tab) and press Enter.")
+		return true
 	end
+	searchTurn = searchTurn + 1
+	local turn, tries = searchTurn, 0
+	local function pressEnter(text)
+		if box.SetFocus then X.Try(box.SetFocus, box) end
+		X.Print(text)
+	end
+	local function send()
+		if turn ~= searchTurn or not X.ahOpen then return end
+		if not (X.Try(f.IsShown, f) and X.Try(box.IsVisible, box)) then return end
+		if X.Try(box.GetText, box) ~= name then return end -- you typed something else meanwhile
+		if not onItemList(f) then
+			pressEnter(X.ItemText(key) .. " is in the auction house search box - press Enter to search (XNAH searches by itself only while the auction house shows its list of items, not an item's page).")
+			return
+		end
+		if not C_AuctionHouse.SendBrowseQuery then
+			pressEnter(X.ItemText(key) .. " is in the auction house search box - press Enter to search.")
+			return
+		end
+		-- the server takes one search at a time: wait a moment while it is busy (XNAH's own searches, say)
+		if C_AuctionHouse.IsThrottledMessageSystemReady and not X.Try(C_AuctionHouse.IsThrottledMessageSystemReady) then
+			tries = tries + 1
+			if tries <= 12 then X.After(0.25, send) return end
+			pressEnter("the auction house is busy - " .. X.ItemText(key) .. " is in its search box: press Enter to search.")
+			return
+		end
+		if pcall(C_AuctionHouse.SendBrowseQuery, X.AHBrowseQuery(name)) then
+			X.Print("searching the auction house for " .. X.ItemText(key) .. ".")
+		else
+			pressEnter(X.ItemText(key) .. " is in the auction house search box - press Enter to search.")
+		end
+	end
+	send()
 	return true
 end
 
