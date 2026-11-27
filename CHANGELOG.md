@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.10.0
+
+More numbers: a new Trends view for the whole auction house, and more pages for one item and for your own gold.
+
+- Opportunities is gone. In its place is the new Trends view, with four pages.
+- Trends, Market index: one line that shows whether prices on the whole auction house go up or down, like a stock
+  index (100 = the prices at the start of the period), plus a line for each item group (cloth, herbs, armor ...)
+  that you can switch on and off. Over 7 days, 30 days, 90 days or a year.
+- Trends, Item groups: a table of every item group - how many items, units and gold are listed now, how its prices
+  moved over 7 and 30 days and how the number listed changed in 7 days. Click a group for its line and the items in
+  it that rose and fell the most.
+- Trends, Auction house size: the gold listed, the number of auctions, different items and units over time, and on
+  which weekdays and at which hours the auction house is fullest. It comes from your full scans.
+- Trends, What changed: since your last visit to this page, the last day or the last 7 days - the biggest risers and
+  fallers, what sold out, what is flooded, what is new and what is back on the market. Click a row to see the item.
+- Items: the picked item now has five pages, with Buy cheapest now above every page.
+- Items, Overview: as before, but the best time to sell is now a small weekday x time-of-day grid (green = cheaper,
+  red = dearer). Click it for the Patterns page.
+- Items, Patterns: a big grid of the 7 weekdays x 6 times of the day (server time) that shows when the item is cheap
+  or dear (Price) and when it is scarce or plentiful (Supply); how jumpy its price is (the month's low and high, and
+  where today sits); about how many sell a day and how much gold that is.
+- Items, Compare: the item and up to 4 more on one graph (ore against bars, a herb against its potion), as prices or
+  as % change from the start, with each one's price now and its change over 7 and 30 days.
+- Items, Sellers: how many sellers it has over time, how much of it the biggest seller holds, how often the price
+  gets cut, and who sells it right now.
+- Items, Crafting: what crafting it cost on each day against what it sold for after the auction house cut, the margin
+  over time, and the recipes that use it, each with its margin now.
+- Your gold, two new pages. Gold over time: the gold of each character and of all of them together, your net worth
+  and profit per week. Your items: per item what you sold and bought, average prices, total profit and profit of
+  one, time to sell (from putting an auction up to its sale) and sell-through (how much of what you put up sold).
+- In the new tables, point at a column title to see what it means.
+- Fixed: the bank could open empty, with a message that XNAH was blocked from an action, after the XNAH window had
+  been open at the auction house. XNAH now stays out of the auction house window's own code. Because of that,
+  double-clicking a tracked item now puts its name in the auction house search box (press Enter there to search)
+  instead of opening its listings.
+- If the game ever blocks XNAH from something, a red line in chat says what was blocked, so it can be fixed.
+- Good to know: the Patterns grid starts from the scans of the last 7 days and gets better with every day of scans.
+  Seller numbers come only from searches of that one item (Scan tracked, or picking the item in the game's auction
+  house): the full scan of the whole auction house gives no seller names. Time to sell fills in only for auctions you
+  put up from now on - XNAH learns them from your auctions list, so open the auction house's Auctions tab now and
+  then. Full scans made by older versions did not save the gold listed or the units, so those two start now.
+  Your saved data grows only a little. The old Opportunities settings are cleaned up once.
+
 ## v0.9.0
 
 XNAH is now an analytics addon: it shows the numbers, and you buy and sell with the game's own auction house.
