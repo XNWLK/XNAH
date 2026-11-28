@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.12.1
+
+Double-clicking a tracked item now really searches it in the game's auction house.
+
+- Fixed: double-clicking a tracked item while the auction house is open now really searches it. XNAH presses the
+  auction house's own Search button for you, in the safe way the game allows: a game-approved button that lies over
+  the row under the mouse. So it also works from an item's page in the auction house. The game searches inside the
+  category picked on its left, as when you press Search yourself.
+- Why it did not search in v0.12.0: the first click of the double-click made XNAH look the item up at once, and the
+  search from the second click came right behind it. Now XNAH's own look-up waits half a second after a click, and
+  after a double-click it waits for the auction house's answer.
+- "Search on the auction house now" in the right-click menu also waits for that answer before XNAH's own look-up.
+- In combat the game does not let this kind of button change, so there a double-click works the v0.12.0 way: XNAH
+  asks the server itself on the auction house's list, and elsewhere puts the name in the search box for Enter.
+- When a search cannot run, XNAH now says why in chat instead of doing nothing.
+- The new file needs a full game restart after updating, not just /reload.
+
 ## v0.12.0
 
 Double-click a tracked item to search it in the game's auction house again, and drag your tracked items into your own order.
