@@ -65,6 +65,7 @@ local HELP = {
 	"/xnah perf - what XNAH is doing and how much memory it uses",
 	"/xnah size 120 - window size in % (60 to 160; 100 = normal)",
 	"/xnah debug - more messages",
+	"/xnah dc - check the double-click on a tracked item (/xnah dc on: a line for each double-click, /xnah dc off)",
 	"/xnah forget - delete this realm's price data (asks first)",
 }
 SLASH_XNAH1 = "/xnah"
@@ -91,6 +92,13 @@ SlashCmdList.XNAH = function(msg)
 		X.Print("window size: " .. math.floor(X.S().uiScale * 100 + 0.5) .. "%")
 	elseif cmd == "perf" then
 		X.Perf()
+	elseif cmd == "dc" then
+		if X.SearchClickReport then
+			local ok, err = pcall(X.SearchClickReport, rest)
+			if not ok then X.Print("the double-click check could not run: " .. tostring(err)) end
+		else
+			X.Print("SearchClick.lua is not loaded: quit the game fully and start it again (a /reload does not load new files)")
+		end
 	elseif cmd == "debug" then
 		X.S().debug = not X.S().debug
 		X.Print("debug " .. (X.S().debug and "on" or "off"))

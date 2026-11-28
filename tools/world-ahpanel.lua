@@ -11,6 +11,8 @@
 --   W.ahWindow()                 builds the window (call after W.start(), before W.openAH())
 --   W.ahRows(listName, results)  shows rows in a list ("browse", "item", "commodity") and lets the scroll box update
 --   W.ahClickRow(i)              clicks row i of the item list (as the game does: SelectBrowseResult)
+--   rows of the item list are children of its ScrollBox.ScrollTarget (as in the game); a left click on one (its
+--   OnClick, the game's own code) opens that item's page; W.ahRowClicks counts those clicks
 --   W.ahBrowseResult(id, minPrice, qty, suffix)  one row of the item list as the game gives it
 --   W.ahFrame.calls              what XNAH called on the window, in order ("mode Buy", "text Linen Cloth",
 --                                "open 2589:0", "search"), for scenes that check what XNAH asked of it
@@ -32,6 +34,7 @@ table.insert(W.onReset, function()
 	W.ahLists = nil
 	W.browseQueries = {}
 	W.gameCode = 0
+	W.ahRowClicks = 0
 end)
 
 local function deepCopy(v)
@@ -103,6 +106,8 @@ local function newList(parent, kind)
 	local sb = W.newFrame("Frame", nil, list)
 	list.ScrollBox = sb
 	sb.pool, sb.frames, sb.updates = {}, {}, 0
+	-- as the game (Blizzard_SharedXML ScrollBox.xml): the rows are children of the scroll box's ScrollTarget
+	sb.ScrollTarget = W.newFrame("Frame", nil, sb)
 	sb.view = {frames = sb.frames} -- as the game: the scroll box's view keeps the shown rows
 	sb.GetFrames = function(self) return self.frames end
 	sb.Update = function(self) self.updates = self.updates + 1 end
@@ -120,8 +125,19 @@ local function newList(parent, kind)
 		for i, d in ipairs(results) do
 			local row = sb.pool[i]
 			if not row then
-				row = W.newFrame("Button", nil, sb)
+				row = W.newFrame("Button", nil, sb.ScrollTarget)
 				row.cells = {}
+				if kind == "browse" then
+					-- a left click on a row of the game's list opens that item's page (the game's own code:
+					-- Blizzard_AuctionHouseItemList.lua OnClick -> SetSelectedEntry -> OnBrowseResultSelected -> SelectBrowseResult)
+					row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+					row:SetScript("OnClick", function(self, button)
+						W.asGame(function()
+							W.ahRowClicks = (W.ahRowClicks or 0) + 1
+							if button == "LeftButton" and self.rowData then W.ahFrame:SelectBrowseResult(self.rowData) end
+						end)
+					end)
+				end
 				local total = 0
 				for c, col in ipairs(columns) do
 					local cell = W.newFrame("Frame", nil, row)

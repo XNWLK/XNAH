@@ -512,6 +512,17 @@ local function onItemList(f)
 	return type(modes) == "table" and modes.Buy ~= nil and rawequal(f.displayMode, modes.Buy) and type(list) == "table"
 		and list.IsShown and X.Try(list.IsShown, list) and true or false
 end
+X.AHOnItemList = onItemList
+-- the name of the view the game's window shows ("Buy" = its list, "ItemBuy" / "CommoditiesBuy" = an item's page ...),
+-- read from its own table of views (plain fields only); nil when none matches
+function X.AHModeName(f)
+	local modes = AuctionHouseFrameDisplayMode
+	if type(f) ~= "table" or type(modes) ~= "table" then return nil end
+	for name, mode in pairs(modes) do
+		if rawequal(f.displayMode, mode) then return tostring(name) end
+	end
+	return nil
+end
 -- the name to search for an item (nil, with a chat line saying why, when there is none yet)
 function X.AHSearchName(key)
 	if not key then return nil end
@@ -584,6 +595,7 @@ function X.ShowOnAuctionHouse(key)
 		end
 		if X.Try(box.GetText, box) ~= name then return end -- you typed something else meanwhile
 		if not onItemList(f) then
+			if X.DcOutcome then X.DcOutcome("the game's window shows " .. tostring(X.AHModeName(f) or "a view XNAH does not know") .. ", not its list: the name went into its box for Enter") end
 			pressEnter(X.ItemText(key) .. " is in the auction house search box - press Enter to search (XNAH searches by itself only while the auction house shows its list of items, not an item's page).")
 			return
 		end
@@ -600,6 +612,7 @@ function X.ShowOnAuctionHouse(key)
 		end
 		if X.HoldSearches then X.HoldSearches(3, true) end -- (XNAH's own search of the item waits for this answer)
 		if pcall(C_AuctionHouse.SendBrowseQuery, X.AHBrowseQuery(name)) then
+			if X.DcOutcome then X.DcOutcome("XNAH's own search of the game's list went out") end
 			X.Print("searching the auction house for " .. X.ItemText(key) .. ".")
 		else
 			pressEnter(X.ItemText(key) .. " is in the auction house search box - press Enter to search.")
