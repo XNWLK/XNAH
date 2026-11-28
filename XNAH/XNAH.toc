@@ -28,6 +28,7 @@ GraphNotes.lua
 Sparkline.lua
 UIMarket.lua
 UIItem.lua
+SearchClick.lua
 Patterns.lua
 Sellers.lua
 CraftHistory.lua

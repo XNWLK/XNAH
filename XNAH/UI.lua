@@ -491,8 +491,9 @@ function UI.ItemTooltip(owner, key)
 	end
 	GameTooltip:Show()
 end
--- double-click on an item in a list: searches it in the game's auction house (on its list of items; on an item page the name goes
--- into its search box for Enter; X.ShowOnAuctionHouse in Scan.lua says why). Only while that window is open.
+-- double-click on an item in a list when XNAH's secure button is not over it (SearchClick.lua presses the game's own
+-- Search button otherwise): searches it in the game's auction house (on its list of items; on an item page the name
+-- goes into its search box for Enter; X.ShowOnAuctionHouse in Scan.lua says why). Only while that window is open.
 function UI.ShowInAuctionHouse(key)
 	if not key then return false end
 	local f = AuctionHouseFrame
@@ -500,7 +501,9 @@ function UI.ShowInAuctionHouse(key)
 		X.Print("open the auction house first, then double-click again.")
 		return false
 	end
-	return X.Try(X.ShowOnAuctionHouse, key) and true or false
+	local ok, res = pcall(X.ShowOnAuctionHouse, key)
+	if not ok then X.OnError(res) return false end
+	return res and true or false
 end
 -- right-click menu on an item row: show it, track / stop tracking, search on the auction house, never suggest
 function UI.ItemMenu(anchor, key)
@@ -511,8 +514,12 @@ function UI.ItemMenu(anchor, key)
 	}
 	if X.ahOpen then
 		items[#items + 1] = {text = "Search on the auction house now", func = function()
-			X.ShowOnAuctionHouse(key)
-			X.ScanItems({key}, "one item")
+			-- XNAH's own search of the item only after the answer to the game's list search (the server takes one at a time)
+			if X.ShowOnAuctionHouse(key) and X.AfterBrowseAnswer then
+				X.AfterBrowseAnswer(function() if X.ahOpen then X.ScanItems({key}, "one item") end end, 3)
+			else
+				X.ScanItems({key}, "one item")
+			end
 		end}
 	end
 	if X.Ignored(key) then
@@ -538,6 +545,7 @@ end
 -- rowFrame). Rows with row.key get the item tooltip on hover. Optional: a left double-click on a row runs
 -- onDoubleClick(row, rowFrame) (the game runs the row's click for the first press, the double-click for the second),
 -- and doubleClickTip is a grey line added to the row's item tooltip. Tables without them are unchanged.
+-- tbl.onRowEnter(rowFrame), when set: runs after the row's hover (the tracked list lays its secure button over it).
 function K.Table(parent, w, h, columns, onClick, onDoubleClick, doubleClickTip)
 	local cols = {}
 	for i, c in ipairs(columns) do cols[i] = {c[1], c[2], c[3]} end
@@ -572,6 +580,7 @@ function K.Table(parent, w, h, columns, onClick, onDoubleClick, doubleClickTip)
 					GameTooltip:AddLine(tbl.doubleClickTip, 0.6, 0.6, 0.6, true)
 					GameTooltip:Show()
 				end
+				if tbl.onRowEnter then tbl.onRowEnter(self) end -- (the tracked list: SearchClick.lua)
 			end)
 			rowFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		else

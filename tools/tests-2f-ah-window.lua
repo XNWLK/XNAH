@@ -1,5 +1,5 @@
--- XNAH test scenes, part 2f: "Search on the auction house now" (the right-click menu of an item) and the double-click
--- search the item in the game's own auction house window: on its list of items the name goes into its search box and
+-- XNAH test scenes, part 2f: "Search on the auction house now" (the right-click menu of an item; XNAH's own search
+-- of the item goes out after the answer) and the row's own double-click (tests-45: the secure one) search the item in the game's own auction house window: on its list of items the name goes into its search box and
 -- XNAH sends the server the same kind of search its Search button sends (the game's list fills itself from the
 -- answer); elsewhere the name goes into the box and Enter searches. XNAH calls none of the game's window functions
 -- (that can make the game refuse its own protected actions later: the empty bank of v0.9.0);
@@ -55,7 +55,9 @@ T.scene("search: the item is searched in the game's window", function()
 	T.check("menu entry: the name in the box", box.text, "Linen Cloth")
 	W.advance(0.5)
 	T.check("menu entry: searched in the game's window", (W.browseQueries[#W.browseQueries] or {}).searchString, "Linen Cloth")
-	T.ok("and XNAH searches it", X.scan.state == "items" or #W.said("scan done") > 0, X.scan.state)
+	T.ok("XNAH's own search waits for the answer of the game's list search", X.scan.state == "idle", X.scan.state)
+	W.advance(0.6) -- (the server was busy a moment with the search of the item shown, then answered)
+	T.ok("and then XNAH searches it", X.scan.state == "items" or #W.said("scan done") > 0, X.scan.state)
 	T.check("menu entry: nothing asked of the game's window", table.concat(f.calls, " | "), "")
 	-- auction house closed: nothing
 	W.closeAH()

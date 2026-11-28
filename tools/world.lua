@@ -440,13 +440,16 @@ function Frame:GetCursorPosition() return 0 end
 function Frame:SetBackdrop(b) self.backdrop = b end
 function Frame:GetBackdrop() return self.backdrop end
 -- clicks like a mouse would: a check box flips first, then OnClick
-function Frame:Click(button)
+-- (down = true: the click of a button registered for presses, RegisterForClicks "...Down": tools/world-mouse.lua)
+function Frame:Click(button, down)
 	if self.disabled then return end
+	down = down and true or false
 	if self.kind == "CheckButton" then self.checked = not self.checked end
-	local s = self.scripts.PreClick if s then step(s, self, button or "LeftButton", false) end
-	s = self.scripts.OnClick if s then step(s, self, button or "LeftButton", false) end
-	s = self.scripts.PostClick if s then step(s, self, button or "LeftButton", false) end
+	local s = self.scripts.PreClick if s then step(s, self, button or "LeftButton", down) end
+	s = self.scripts.OnClick if s then step(s, self, button or "LeftButton", down) end
+	s = self.scripts.PostClick if s then step(s, self, button or "LeftButton", down) end
 end
+function Frame:RegisterForClicks(...) self.clicksFor = {...} end
 -- a double-click as the game gives it: the first press is a click; the second runs OnDoubleClick when the button has
 -- one (and then no OnClick), else it is a second click
 function Frame:DoubleClick(button)

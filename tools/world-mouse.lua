@@ -4,7 +4,17 @@
 --   W.mouseDown(frame, x, y, button)   press on a frame with the mouse at x, y (screen pixels, as GetCursorPosition)
 --   W.mouseMove(x, y, over)            the mouse moves (held or not); over = the frame under it now (optional)
 --   W.mouseUp(button)                  let go
+--   Clicks follow RegisterForClicks as the game does: a button registered for "...Down" (or "AnyDown") also gets a
+--   click when pressed (OnClick with down = true); "...Up" / "AnyUp" (or nothing registered) when let go.
 W.onReset[#W.onReset + 1] = function() W.held, W.pressed = {}, nil end
+local function wants(f, button, dir)
+	if not f.clicksFor then return dir == "Up" end
+	for _, c in ipairs(f.clicksFor) do
+		if c == button .. dir or c == "Any" .. dir then return true end
+	end
+	return false
+end
+W.wantsClick = wants
 W.onEnv[#W.onEnv + 1] = function(env)
 	env.IsMouseButtonDown = function(button)
 		if button == nil then return next(W.held or {}) ~= nil end
@@ -20,6 +30,7 @@ function W.mouseDown(f, x, y, button)
 	W.pressed = f
 	local s = f.scripts.OnMouseDown
 	if s then W.step(s, f, button) end
+	if wants(f, button, "Down") then f:Click(button, true) end
 end
 function W.mouseMove(x, y, over)
 	W.cursor = {x, y}
@@ -33,5 +44,5 @@ function W.mouseUp(button)
 	if not f then return end
 	local s = f.scripts.OnMouseUp
 	if s then W.step(s, f, button) end
-	if W.mouseFocus == f then f:Click(button) end
+	if W.mouseFocus == f and wants(f, button, "Up") then f:Click(button, false) end
 end

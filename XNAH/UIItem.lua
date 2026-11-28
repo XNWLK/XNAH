@@ -88,7 +88,7 @@ local LIST_COLUMNS = {
 	{"Item", 96, "LEFT", text = function(r) return X.ItemIcon(X.KeyID(r.key), 12) .. " " .. X.ItemText(r.key) end,
 		sort = function(r) return (X.ItemName(r.key) or r.key):lower() end, desc = false,
 		tip = "The items you track. Click one to see everything about it on the right, right-click it for more (like Stop tracking), " ..
-			"double-click it to put its name in the auction house search box. " ..
+			"double-click it to search it on the auction house (while it is open). " ..
 			"Press on a row and drag it up or down to move it: the list keeps your own order (the Your order button above it)."},
 	{"Cheapest", 62, "RIGHT", text = function(r)
 		local it = X.Items()[r.key]
@@ -187,8 +187,13 @@ local function buildList(panel)
 	-- click: shown on the right; double-click: its name goes into the game's own auction house search box
 	local tbl = K.Table(panel, LIST_W, UI.H - 62, LIST_COLUMNS, function(row, button, rowFrame)
 		if justDragged or (drag and drag.on) then justDragged = false return end -- (a row was dragged, not clicked)
-		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) else UI.ShowItem(row.key) end
+		if button == "RightButton" then UI.ItemMenu(rowFrame, row.key) return end
+		-- XNAH's own search of the item (for Buy cheapest now) waits for the double-click time: a second click may
+		-- start the game's own search of its list, and the server takes one search at a time
+		if X.ahOpen and X.HoldSearches then X.HoldSearches(X.DOUBLE_CLICK) end
+		UI.ShowItem(row.key)
 	end, function(row)
+		-- (only when XNAH's secure button is not over the row, in combat say: SearchClick.lua does the double-click)
 		UI.ShowInAuctionHouse(row.key) -- (the first press of the double-click already showed it on the right)
 	end, "Double-click: search it in the auction house")
 	tbl:SetPoint("TOPLEFT", 0, -62)
@@ -207,6 +212,7 @@ local function buildList(panel)
 			end
 		end
 		orderButton(panel)
+		if UI.SearchClickCheck then UI.SearchClickCheck() end -- (the secure button follows the row under the mouse)
 		if X.SparkBusy() then X.SparkAgain(self, function() if self:IsVisible() then self:Sort() end end) end
 	end
 	panel.tbl = tbl
@@ -1192,6 +1198,10 @@ local function build(panel)
 	itemPanel = panel
 	buildList(panel)
 	buildDrag(panel)
+	-- the double-click searches through the game's own Search button (a secure button laid over the row: SearchClick.lua)
+	if UI.SearchClickAttach then
+		UI.SearchClickAttach(panel.tbl, {dragged = function() return justDragged or (drag and drag.on) and true or false end})
+	end
 	local a = CreateFrame("Frame", nil, panel)
 	a:SetPoint("TOPLEFT", AX, 0)
 	a:SetSize(AW, UI.H)

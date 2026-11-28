@@ -1,5 +1,6 @@
--- XNAH test scenes, part 32: double-clicking an item on the tracked list (Items view) searches it in the game's own
--- auction house window. While that window shows its list of items, XNAH puts the name into its search box and sends
+-- XNAH test scenes, part 32: the row's OWN double-click on the tracked list (Items view), used when XNAH's secure
+-- button is not over the row (in combat, say; the normal double-click presses the game's Search button through that
+-- secure button: tools/tests-45-secure-search.lua), searches the item in the game's own auction house window. While that window shows its list of items, XNAH puts the name into its search box and sends
 -- the server the same kind of search the game's Search button sends (C_AuctionHouse.SendBrowseQuery); the game's own
 -- list fills itself from the answer. On an item's page XNAH only puts the name into the box and you press Enter
 -- (going back to the list is a view switch only the game may make). XNAH never calls the game's window functions or

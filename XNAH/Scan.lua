@@ -448,8 +448,10 @@ function X.ScanItemsNext()
 	send()
 end
 
--- [[ the game's own auction house window ]] "Search on the auction house now" (the right-click menu of an item) and
--- the double-click on an item: XNAH searches the item in the game's window. Only while that window is open.
+-- [[ the game's own auction house window ]] "Search on the auction house now" (the right-click menu of an item), and
+-- the double-click on a tracked item when XNAH's secure button is not over it (in combat, say): XNAH searches the item
+-- in the game's window. Only while that window is open. (The double-click itself normally presses the game's own
+-- Search button through a secure button: SearchClick.lua.)
 -- Why this way: everything XNAH runs inside the game's own window code can make the game refuse its own protected
 -- actions later. In v0.9.0 the bank opened empty after a visit to the auction house: the game's window manager opens
 -- and closes the auction house window, and when the window's own opening / closing code read something XNAH had
@@ -510,17 +512,52 @@ local function onItemList(f)
 	return type(modes) == "table" and modes.Buy ~= nil and rawequal(f.displayMode, modes.Buy) and type(list) == "table"
 		and list.IsShown and X.Try(list.IsShown, list) and true or false
 end
-local searchTurn = 0 -- a newer double-click replaces a search still waiting for the server
-function X.ShowOnAuctionHouse(key)
-	local f = AuctionHouseFrame
-	if not (X.ahOpen and type(f) == "table" and f.IsShown and X.Try(f.IsShown, f) and key) then return false end
-	if not X.KeyID(key) then return false end
+-- the name to search for an item (nil, with a chat line saying why, when there is none yet)
+function X.AHSearchName(key)
+	if not key then return nil end
+	if not X.KeyID(key) then
+		X.Print("this item cannot be searched on the auction house (XNAH does not know its item number).")
+		return nil
+	end
 	local name = X.ItemName(key)
 	if name and name:find("^item %-?%d+$") then name = nil end -- not known yet (X.ItemName's stand-in)
 	if not name or name == "" then
 		X.Print("the game has not loaded this item's name yet - try again in a moment.")
+		return nil
+	end
+	return name
+end
+-- fn() once the server answered a search of the game's list of items (AUCTION_HOUSE_BROWSE_RESULTS_UPDATED), or after
+-- `limit` seconds without one (the right-click menu's own search of the item goes out after the game's list search)
+local browseWaiters = {}
+function X.AfterBrowseAnswer(fn, limit)
+	local w = {fn = fn}
+	browseWaiters[#browseWaiters + 1] = w
+	local function run()
+		if w.done then return end
+		w.done = true
+		local ok, err = pcall(w.fn)
+		if not ok then X.OnError(err) end
+	end
+	w.run = run
+	X.After(limit or 3, run)
+end
+X.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", function()
+	local list = browseWaiters
+	if #list == 0 then return end
+	browseWaiters = {}
+	X.After(0.1, function() for _, w in ipairs(list) do w.run() end end) -- (the game's list fills first)
+end)
+local searchTurn = 0 -- a newer double-click replaces a search still waiting for the server
+function X.ShowOnAuctionHouse(key)
+	if not key then return false end
+	local f = AuctionHouseFrame
+	if not (X.ahOpen and type(f) == "table" and f.IsShown and X.Try(f.IsShown, f)) then
+		X.Print("open the auction house first, then try again.")
 		return false
 	end
+	local name = X.AHSearchName(key)
+	if not name then return false end
 	-- the search box sits on the window's Buy pages only (the game empties it each time it shows it again)
 	local bar = f.SearchBar
 	local box = type(bar) == "table" and bar.SearchBox or nil
@@ -529,6 +566,9 @@ function X.ShowOnAuctionHouse(key)
 		X.Print("type " .. name .. " into the auction house search box (on its Buy tab) and press Enter.")
 		return true
 	end
+	-- the box holds at most 63 letters (bytes): a longer name is cut there, and the cut name is what is searched
+	local inBox = X.Try(box.GetText, box)
+	if type(inBox) == "string" and inBox ~= "" then name = inBox end
 	searchTurn = searchTurn + 1
 	local turn, tries = searchTurn, 0
 	local function pressEnter(text)
@@ -537,7 +577,11 @@ function X.ShowOnAuctionHouse(key)
 	end
 	local function send()
 		if turn ~= searchTurn or not X.ahOpen then return end
-		if not (X.Try(f.IsShown, f) and X.Try(box.IsVisible, box)) then return end
+		if not X.Try(f.IsShown, f) then return end
+		if not X.Try(box.IsVisible, box) then
+			X.Print("the search of " .. X.ItemText(key) .. " stopped: the auction house went to another tab meanwhile.")
+			return
+		end
 		if X.Try(box.GetText, box) ~= name then return end -- you typed something else meanwhile
 		if not onItemList(f) then
 			pressEnter(X.ItemText(key) .. " is in the auction house search box - press Enter to search (XNAH searches by itself only while the auction house shows its list of items, not an item's page).")
@@ -554,6 +598,7 @@ function X.ShowOnAuctionHouse(key)
 			pressEnter("the auction house is busy - " .. X.ItemText(key) .. " is in its search box: press Enter to search.")
 			return
 		end
+		if X.HoldSearches then X.HoldSearches(3, true) end -- (XNAH's own search of the item waits for this answer)
 		if pcall(C_AuctionHouse.SendBrowseQuery, X.AHBrowseQuery(name)) then
 			X.Print("searching the auction house for " .. X.ItemText(key) .. ".")
 		else

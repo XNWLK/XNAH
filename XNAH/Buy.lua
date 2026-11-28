@@ -19,6 +19,19 @@ X.QUOTE_WAIT = 5   -- seconds to wait for the exact price of a commodity purchas
 
 local queue, pending, pumping = {}, nil, false
 local lastOurs, lastForeign = -100, -100
+local holdUntil, holdForBrowse = -100, false
+
+-- XNAH's own searches of one item wait a moment: X.HoldSearches(seconds) after the first click on a tracked item, for
+-- the double-click time (the second click may start the game's own search of its list, and the server takes one
+-- search at a time); X.HoldSearches(seconds, true): until the answer of a search of the game's list of items comes
+-- (AUCTION_HOUSE_BROWSE_RESULTS_UPDATED), at most `seconds`. A plain click still looks the item up, a moment later.
+X.DOUBLE_CLICK = 0.5 -- seconds between the two presses of a double-click
+function X.HoldSearches(seconds, untilBrowse)
+	local t = GetTime() + (seconds or 0)
+	if t > holdUntil then holdUntil = t end
+	if untilBrowse then holdForBrowse = true end
+end
+function X.SearchesHeld() return GetTime() < holdUntil end
 
 local function itemKeyFor(key)
 	local id = X.KeyID(key)
@@ -67,6 +80,7 @@ pump = function()
 		for _, p in ipairs(q) do finish(p, nil) end
 		return
 	end
+	if GetTime() < holdUntil then later(0.1) return end -- (a double-click may be on its way: X.HoldSearches)
 	local ready = not C_AuctionHouse.IsThrottledMessageSystemReady or C_AuctionHouse.IsThrottledMessageSystemReady()
 	if X.scan.state ~= "idle" or not ready or GetTime() - lastOurs < X.SEARCH_GAP then later(0.3) return end
 	local p = table.remove(queue, 1)
@@ -175,7 +189,13 @@ X.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
 	end
 	answered(keys)
 end)
-X.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", function() lastForeign = GetTime() end)
+X.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", function()
+	lastForeign = GetTime()
+	if holdForBrowse then -- the answer XNAH's own searches waited for (X.HoldSearches): they may go now
+		holdForBrowse = false
+		holdUntil = math.min(holdUntil, GetTime())
+	end
+end)
 X.On("AUCTION_HOUSE_CLOSED", function()
 	if X.buy.state ~= "idle" then
 		X.buy.state = "closed"

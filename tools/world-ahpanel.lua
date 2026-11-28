@@ -12,9 +12,13 @@
 --   W.ahRows(listName, results)  shows rows in a list ("browse", "item", "commodity") and lets the scroll box update
 --   W.ahClickRow(i)              clicks row i of the item list (as the game does: SelectBrowseResult)
 --   W.ahBrowseResult(id, minPrice, qty, suffix)  one row of the item list as the game gives it
---   W.ahFrame.calls              what was called on the window, in order ("mode Buy", "text Linen Cloth",
+--   W.ahFrame.calls              what XNAH called on the window, in order ("mode Buy", "text Linen Cloth",
 --                                "open 2589:0", "search"), for scenes that check what XNAH asked of it
---   W.browseQueries              every C_AuctionHouse.SendBrowseQuery (a copy of the query), in order
+--   W.ahFrame.gameCalls          the same, called by the game's own code (W.asGame)
+--   .SearchBar.SearchButton      the game's Search button: its OnClick (the game's code) runs StartSearch, which reads
+--                                the box, writes the level range back and calls the window's SendBrowseQuery
+--   W.browseQueries              every C_AuctionHouse.SendBrowseQuery (a copy of the query; byGame = sent by the
+--                                game's own code), in order
 -- The game's own tables the search reads (Blizzard_AuctionHouseSearchBar.lua / Blizzard_AuctionHouseFrame.lua):
 --   g_auctionHouseFilters {minLevel, maxLevel, filters = {[filter] = on}}, g_auctionHouseSortsBySearchContext,
 --   AuctionHouseSearchContext, AuctionCategories, and .CategoriesList (selectedCategoryIndex ...). The item list
@@ -68,7 +72,9 @@ table.insert(W.onEnv, function(env)
 	if cah and cah.SendBrowseQuery and not cah.xnahRecorded then
 		local send = cah.SendBrowseQuery
 		cah.SendBrowseQuery = function(query)
-			W.browseQueries[#W.browseQueries + 1] = deepCopy(query)
+			local q = deepCopy(query)
+			q.byGame = W.gameCode > 0 -- (sent by the game's own code, not by XNAH)
+			W.browseQueries[#W.browseQueries + 1] = q
 			return send(query)
 		end
 		cah.xnahRecorded = true
@@ -165,10 +171,41 @@ function W.ahWindow()
 	f.CommoditiesBuyFrame.ItemList = newList(f.CommoditiesBuyFrame, "commodity")
 	f.ItemSellFrame = W.newFrame("Frame", nil, f)
 	f.CommoditiesSellFrame = W.newFrame("Frame", nil, f)
-	f.calls = {}
-	local function called(text) f.calls[#f.calls + 1] = text end
+	-- calls made by XNAH go to f.calls; the game's own code (W.asGame) writes to f.gameCalls instead
+	f.calls, f.gameCalls = {}, {}
+	local function called(text)
+		local list = W.gameCode > 0 and f.gameCalls or f.calls
+		list[#list + 1] = text
+	end
 	f.SearchBar = W.newFrame("Frame", nil, f)
-	f.SearchBar.StartSearch = function() f.searched = true called("search") end
+	-- as Blizzard_AuctionHouseSearchBar.lua StartSearch: reads the box, writes the level range back into its saved
+	-- filters, then the window's SendBrowseQuery (the picked category, the sort order, back to the list)
+	f.SearchBar.StartSearch = function(self)
+		f.searched = true
+		called("search")
+		local saved = env.g_auctionHouseFilters
+		local filters = {}
+		if saved then
+			saved.minLevel, saved.maxLevel = saved.minLevel, saved.maxLevel
+			for k, on in pairs(saved.filters or {}) do if on then filters[#filters + 1] = k end end
+			table.sort(filters)
+		end
+		f:SendBrowseQuery(f.SearchBar.SearchBox:GetText() or "", saved and saved.minLevel or 0, saved and saved.maxLevel or 0, filters)
+	end
+	f.SendBrowseQuery = function(self, text, minLevel, maxLevel, filters)
+		called("browse " .. tostring(text))
+		local cat = env.AuctionCategories and self.CategoriesList.selectedCategoryIndex
+		local picked = cat and env.AuctionCategories[cat]
+		local sorts = env.g_auctionHouseSortsBySearchContext
+		env.C_AuctionHouse.SendBrowseQuery({searchString = text, minLevel = minLevel, maxLevel = maxLevel, filters = filters,
+			itemClassFilters = picked and picked.filters or nil, sorts = sorts and sorts[0] or {}})
+		self:SetDisplayMode(modes.Buy)
+	end
+	-- the game's Search button (its OnClick is the game's own code: StartSearch)
+	f.SearchBar.SearchButton = W.newFrame("Button", nil, f.SearchBar, "UIPanelButtonTemplate")
+	f.SearchBar.SearchButton:SetScript("OnClick", function(self)
+		W.asGame(function() self:GetParent():StartSearch() end)
+	end)
 	-- the game's search box (a plain text box; the game empties it each time the search bar shows again)
 	f.SearchBar.SearchBox = W.newFrame("EditBox", nil, f.SearchBar)
 	f.SearchBar:SetScript("OnShow", function(self) W.asGame(function() self.SearchBox:SetText("") end) end)
