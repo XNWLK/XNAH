@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.12.2
+
+The double-click on a tracked item is still being worked on; this version adds a check that shows what happens.
+
+- The double-click on a tracked item is still being worked on. In the game it still goes the old way: the auction
+  house's list fills, but on an item's page the name only goes into the search box for Enter.
+- New chat command /xnah dc: lists what XNAH sees of the double-click, for a screenshot when something goes wrong.
+  /xnah dc on adds a chat line for each double-click (which way it went and why); /xnah dc off stops them.
+- After a double-click has searched an item and the auction house's list shows it, the next click on the item in
+  XNAH's list (within a minute) is meant to open the item's own page there, with all its auctions and the Back button.
+  A chat line says so the first time.
+- When the list already shows the item, a double-click is meant to open its page at once; when that page is already
+  open, a double-click leaves it as it is.
+- The invisible button that catches the double-click now stays over the row under the mouse the whole time the
+  auction house is open. Even so, the row below it still gets the clicks: that is what is being worked on.
+- Not handled yet: the list shows the item in several rows (for example different item levels), its row is scrolled
+  out of sight in the list, or you are in combat. There a double-click searches the item, or puts its name in the
+  search box, as before.
+
 ## v0.12.1
 
 Double-clicking a tracked item now really searches it in the game's auction house.
